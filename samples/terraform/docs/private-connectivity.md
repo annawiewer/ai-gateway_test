@@ -10,17 +10,20 @@ gateway resource retained by this sample; see [resource type and lifecycle](refe
 Private client -> gateway private endpoint -> private model endpoint
 ```
 
-**Settings used by this profile:**
+**Choose the intended end state:**
 
-| Setting | Value |
-| --- | --- |
-| `enable_private_networking` | `true` |
-| `gateway_private_endpoint_manual_approval` | `true` (create Pending, then explicitly approve) |
-| `gateway_public_network_access` | `Enabled` (stays on; public calls with a valid key still work) |
-| `models_public_network_access` | `Disabled` after step 4 |
+| Setting | `private-connectivity` (hybrid) | `private-only` (final gateway isolation) |
+| --- | --- | --- |
+| `enable_private_networking` | `true` | `true` |
+| `gateway_private_endpoint_manual_approval` | `true` (Pending, then explicitly approve) | `true` |
+| `gateway_public_network_access` | `Enabled` | `Disabled` after private-route verification |
+| `models_public_network_access` | `Disabled` after step 4 | `Disabled` |
 
-Always pass the profile on every plan, including drift checks:
-`-var-file=profiles\private-connectivity.tfvars.json`. It overrides `terraform.tfvars`.
+The profiles express desired configuration, not runtime proof. The public
+Terraform defaults and the existing hybrid profile remain unchanged. Keep the
+**selected** profile last on every plan, including drift/monitoring changes;
+it overrides earlier var-files and `terraform.tfvars`. A wrong hybrid selection
+can plan to reopen a disabled gateway.
 
 The gateway endpoint uses a manual request followed by an explicit APIM
 connection approval. Terraform waits for approval before creating its DNS zone
@@ -58,16 +61,21 @@ has disappeared.
 See the [AI Gateway private networking guide](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking)
 for the Pending/Approve sequence.
 
-> **Pending: private-only gateway ingress.** The observed public-disable failure
-> is under investigation with the product group. Until a fix is verified, the
-> profile keeps gateway public access enabled and is **not private-only**. See the
-> [status and observed behavior](reference.md#known-blocker-private-only-gateway-ingress).
+> **October 25, 2026: portal disable succeeded for the observed gateway.**
+> ARM confirmed `Disabled` / `Succeeded` with an approved private connection.
+> A later private-agent request returned OK with correlated gateway/backend
+> HTTP 200; an authenticated public gateway request returned network-denial 403.
+> This does not prove the Terraform update path or first-create behavior.
+> See [evidence and verification boundaries](reference.md#private-only-gateway-ingress-status).
 >
 > Hosted-agent networking and proof of agent execution remain outside this profile.
+> A separate opt-in [private hosted-agent extension](private-hosted-agent.md)
+> configures the new agent account at creation. Its separately deployed
+> application passed a live test; the extension is not enabled by this profile.
 
 **Already have a working private deployment?** Go to
 [existing private deployments](#existing-private-deployments); do not repeat
-staging or re-enable model public access.
+staging or re-enable gateway/model public access.
 
 ## Prerequisites
 
@@ -77,7 +85,7 @@ state/backend. Do not run the public-path plan/apply. Additional requirements:
 
 - Complete the [two-stage OTLP destination setup](monitoring.md) before planning
   the exporter. Keep the private profile on those plans too; readiness discovery
-  must not re-enable a private model backend or rebuild the gateway.
+  must not re-enable a private gateway/model backend or rebuild the gateway.
 - `Microsoft.Network` registered
 - For the test VM: `Microsoft.Compute`, regional VM quota, and permission to use VM Run Command
 
@@ -124,9 +132,11 @@ private_test_client_ssh_public_key = "ssh-ed25519 <your-public-key>"
 
 Use this stage when adding private networking to an existing legacy gateway
 whose model backend is still public. It is not the final posture, and it is not
-a way to create a new legacy gateway.
+a way to create a new legacy gateway. **Do not run it on an already-disabled
+gateway or backend.**
 
 ```powershell
+$networkProfile = 'private-connectivity'
 terraform plan "-var-file=profiles\private-connectivity.tfvars.json" "-var=models_public_network_access=Enabled" "-out=private-connectivity-stage1.tfplan"
 ```
 
@@ -171,14 +181,59 @@ Expected change: model public access becomes `Disabled` (network ACL Deny). Gate
 terraform apply "private-connectivity.tfplan"
 ```
 
+### Optional final stage: Disable gateway public access
+
+Skip this stage if public gateway ingress is intentional. Otherwise, after both
+private endpoints are approved/provisioned and the private probe succeeds with
+model public access disabled, review all callers. A hosted agent, public CI
+runner or laptop needs its own supported route and DNS to the gateway private
+endpoint. Entra authentication does not supply that network route.
+
+For an existing gateway that is still public, plan the explicit final profile:
+
+```powershell
+$networkProfile = 'private-only'
+terraform plan "-var-file=profiles\$networkProfile.tfvars.json" "-out=private-only.tfplan"
+```
+
+Retain all original environment inputs before the profile. Expected networking
+change: gateway public access becomes `Disabled`; existing endpoints, outbound
+integration, private models and gateway identity remain. Stop on unexpected
+replacement, deletion or public reopening. After reviewing the plan:
+
+```powershell
+terraform apply "private-only.tfplan"
+```
+
+Terraform already maps the setting to ARM `publicNetworkAccess`. However,
+earlier Terraform/CLI updates failed; only the later portal operation is
+confirmed successful. Allow asynchronous completion, then verify ARM
+`Disabled` / `Succeeded` and the private connection `Approved` / `Succeeded`.
+Do not mistake an initial accepted response for completion, invent a fixed
+timeout, or automatically reopen public ingress after a failure. On timeout or
+error, inspect the actual operation/resource state before any new plan/retry.
+This staged procedure is not a verified one-apply private-only creation path.
+
+**Already disabled through the portal?** Do not toggle it back. Select
+`private-only`, preserve the authoritative backend/state and original inputs,
+discard stale plans, and inspect a fresh full plan. If it exits `0`, no apply is
+needed. Other changes require separate review, not an automatic apply.
+
 ## Step 5: Prove the final private path
+
+Set `$networkProfile` to the chosen end state (`private-only` or
+`private-connectivity`) before running these commands:
 
 ```powershell
 .\scripts\Test-PrivateGateway.ps1
-terraform plan "-var-file=profiles\private-connectivity.tfvars.json" -detailed-exitcode
+terraform plan "-var-file=profiles\$networkProfile.tfvars.json" -detailed-exitcode
 ```
 
-**Done when:** the probe reports `"passed": true` with `OK` for every alias, and the plan exits `0`.
+**Private-route check complete when:** the probe reports `"passed": true` with
+`OK` for every alias, and the plan exits `0`. For private-only acceptance, also
+require an authenticated public request to be rejected by the network boundary.
+A missing/invalid-key failure on the private route is not that proof. Record
+required hosted-agent reachability and fresh telemetry separately.
 
 The probe also rejects missing/invalid keys on the same route after positive
 controls and emits per-call trace IDs. It does not itself verify all role
@@ -187,6 +242,9 @@ Complete the [customer acceptance guide](acceptance.md) before handing over the
 deployment, not the public-path plan/apply. A DNS/inference pass is only the
 private-route part of acceptance. The [end-to-end runner](end-to-end.md) adds
 VM lifecycle handling, backend checks, correlated telemetry and portal evidence.
+Pass `-NetworkProfile private-only` to that runner for a disabled gateway; it
+uses the same selected profile for both the live posture check and drift plan.
+Its private runtime pass does not certify public network rejection.
 
 ## Step 6: Stop the VM when you are done
 
@@ -200,6 +258,14 @@ Restart with `az vm start` using the same arguments. Disks, private endpoints, D
 
 ## Existing private deployments
 
-If you already have a working private backend with model public access disabled, start at Step 4, review the plan, then run Step 5.
+Preserve the authoritative state/backend and all approved environment inputs.
+Choose the intended ingress explicitly:
+
+- Gateway already `Disabled`: set `$networkProfile = 'private-only'`, inspect
+  a fresh plan with that profile last, then run Step 5. Do not repeat staging.
+- Gateway intentionally `Enabled`, model already `Disabled`: set
+  `$networkProfile = 'private-connectivity'`, inspect a fresh plan and run Step 5.
+- Gateway still `Enabled`, but private-only required: verify the existing
+  private path, then follow the optional final stage above.
 
 Do not apply stale private-only plans, and do not re-enable public access as an automatic recovery step.

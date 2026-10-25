@@ -27,7 +27,20 @@ Do not call an integration pass a greenfield pass. A container sandbox can isola
 tools but cannot emulate Azure provisioning, quotas, Private Link, DNS, managed
 identities, ingestion or the real portal. No hosted agent/image is deployed by
 this sample, so image pull, artifact access and agent execution need a separate
-approved test. Private routing is **not** private-only gateway ingress.
+approved test. Private routing alone is **not** private-only gateway ingress.
+The explicit `private-only` profile requests disabled gateway public access;
+the October 25 portal/ARM finding proves configuration for one gateway. A later
+[private-agent deployment](private-hosted-agent.md#observed-deployment-and-proof)
+proved agent OK, correlated gateway/backend HTTP 200 and authenticated public
+network rejection. That evidence does not establish universal Terraform update
+support or a greenfield legacy-gateway deployment.
+
+For new **agent** deployments, enable the
+[private configuration from account creation](private-hosted-agent.md#configure-new-agent-accounts-from-the-start).
+Application deployment, runtime identity binding and
+[hosted-agent repeat checks](private-hosted-agent.md#repeat-the-evidence-not-the-original-provisioning)
+are separate from this runner. The base `project_id` output still names the
+base project; use `private_hosted_agent` outputs for the private reference.
 
 Before any new cloud rehearsal, record the approved subscription/tenant, regions,
 unique environment name/group, model quota, permissions, cost ceiling, expiry,
@@ -74,6 +87,7 @@ $parameters = @{
     TenantId = '<approved-tenant-guid>'
     ResourceGroup = '<expected-shared-group>'
     ReportDirectory = 'C:\protected-evidence\gateway'
+    NetworkProfile = 'private-only'
 }
 .\scripts\Test-CustomerAcceptance.ps1 @parameters
 ```
@@ -82,6 +96,13 @@ Reports go into a unique run-ID subdirectory. Store them outside the checkout or
 in the ignored `acceptance-results` directory with access restricted to the test
 team; IDs, IPs and screenshots still contain operational information. Do not
 publish them to a public repository or an unrestricted CI artifact.
+
+Choose `private-only` for a disabled gateway. Use `private-connectivity` only
+for intentional hybrid ingress (the backwards-compatible runner default).
+The live check requires the exact gateway access value in the selected file;
+it does not accept either value indiscriminately. The report records the
+selected profile, expected and observed access, and the untested public-rejection
+boundary. A mismatch fails and blocks the runtime probe.
 
 The default checks context, a clean source commit, single-group state placement,
 live identities/resources/catalog/aliases, six exact service roles, three
@@ -104,12 +125,15 @@ Do not create a second monitoring stack in the portal or assume ingestion delay
 repairs missing configuration. Actual API behavior, delivery and visible portal
 metrics still need runtime proof.
 
-Every drift plan includes `profiles\private-connectivity.tfvars.json` last.
+Every drift plan includes `profiles\<NetworkProfile>.tfvars.json` last.
 For additional explicitly approved nonautomatic input files use
 `-AdditionalVarFile 'C:\protected-inputs\environment.tfvars'`. Existing automatic
 tfvars still apply: review them and `TF_VAR_*` values. Remove hidden
 `TF_CLI_ARGS`/`TF_CLI_ARGS_plan`; targeted plans are not acceptance. State, raw
 plan text and raw service errors are never included in reports.
+An earlier `Disabled` value does not override the hybrid profile's `Enabled`.
+Select the correct `-NetworkProfile` instead. Drift exit `2` requires review;
+the runner never applies that plan or changes gateway public access.
 
 ## 3. Explicit private runtime and telemetry
 
@@ -138,6 +162,12 @@ exactly `OK`. Negative requests must fail with 401 or a key/authentication-speci
 403; a generic firewall 403, 429, 500 or timeout is not authentication proof.
 There is no load test or model-call retry. Existing managed-identity key lookup
 retries at most 12 times, with 15-second waits for 403 propagation.
+
+Neither a private probe nor ARM `Disabled` alone proves public network
+rejection. This runner does not send a valid-credential request from outside
+the private network; `privateOnlyIngress` remains `NOT certified`, even on a
+backend pass. A separate approved public-boundary test and any required
+hosted-agent test are needed for private-only end-to-end acceptance.
 
 Each positive request sends a unique W3C `traceparent`. The verifier queries the
 linked Log Analytics workspace for those exact `TraceId` values in `OTelSpans`

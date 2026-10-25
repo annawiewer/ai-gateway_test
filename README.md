@@ -106,6 +106,26 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
 samples and infrastructure that build on the AI Gateway tier in Azure API Management.
 
+### Understand the Terraform sample
+
+The [Terraform sample](samples/terraform/README.md) connects a client-facing AI
+Gateway to dedicated Foundry model deployments. The gateway checks access and
+policy; **the model generates the answer**. The sample also prepares the
+infrastructure for a separately deployed hosted agent.
+
+![How an application reaches Foundry models through AI Gateway, with separate agent dependencies and monitoring](samples/terraform/docs/images/architecture-overview.svg)
+
+Read the [architecture guide](samples/terraform/docs/architecture.md) for what
+each service does and how the base sample differs from the
+[verified private-agent reference](samples/terraform/docs/architecture.md#3-private-agent-reference).
+The optional extension configures network injection when the agent account is
+created. A separately deployed agent passed private gateway/model inference and
+public gateway rejection on October 25, 2026.
+The guide separates the **current authentication sequence** (runtime identity
+retrieves a gateway API key) from the **future Entra-only caller sequence**.
+This diagram describes the sample, not every AI Gateway deployment. It retains
+the legacy resource type and preview limitations described in the sample README.
+
 ## Contributing
 
 This project welcomes contributions and suggestions. Most contributions require you

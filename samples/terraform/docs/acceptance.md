@@ -2,8 +2,17 @@
 
 Use this after the chosen [networking path](../README.md#choose-your-networking-path)
 has been applied successfully. It is **not** a new-deployment or recovery guide.
-The [legacy-resource limitation](reference.md#resource-type-and-lifecycle) and
-**Pending private-only gateway ingress** remain in effect.
+The [legacy-resource limitation](reference.md#resource-type-and-lifecycle) remains.
+The observed gateway's public-disable configuration blocker was resolved through
+the portal on October 25, 2026. A subsequent
+[private-agent proof](private-hosted-agent.md#observed-deployment-and-proof)
+passed; Terraform update/first-create support remains a separate boundary.
+
+The blocks below address the base gateway/model/project deployment. They do
+not automatically select or verify the optional private agent. Use its
+`private_hosted_agent` output and the
+[separate runtime/identity checks](private-hosted-agent.md#repeatable-operation-after-deployment)
+for new private agent deployments.
 
 **Automated private-profile entrypoint:** follow the [end-to-end runbook](end-to-end.md)
 and `scripts\Test-CustomerAcceptance.ps1` for executable checks, sanitized reports,
@@ -175,13 +184,15 @@ For the **private path**, run `.\scripts\Test-PrivateGateway.ps1` from the
 [private guide](private-connectivity.md#step-5-prove-the-final-private-path) with
 the test VM running. Verify the live model account still has
 `publicNetworkAccess = Disabled` and `networkAcls.defaultAction = Deny`; the
-gateway currently remains `Enabled`. Both private endpoints must report
+gateway must match the explicitly selected profile. Both private endpoints must report
 `Succeeded` and `Approved`:
 
 ```powershell
+$networkProfile = 'private-only' # Use 'private-connectivity' only for intentional hybrid ingress.
+$selectedProfile = Get-Content -LiteralPath "profiles\$networkProfile.tfvars.json" -Raw | ConvertFrom-Json
 if ($models.properties.publicNetworkAccess -ne 'Disabled' -or
     $models.properties.networkAcls.defaultAction -ne 'Deny' -or
-    $gateway.properties.publicNetworkAccess -ne 'Enabled' -or
+    $gateway.properties.publicNetworkAccess -ne $selectedProfile.gateway_public_network_access -or
     $gateway.properties.virtualNetworkType -ne 'External' -or
     -not $gateway.properties.virtualNetworkConfiguration.subnetResourceId) {
     throw 'Live network posture does not match the current private profile.'
@@ -324,7 +335,7 @@ positive metric samples are not an exact token total for just your calls.
 For a private deployment:
 
 ```powershell
-terraform plan "-var-file=profiles\private-connectivity.tfvars.json" -detailed-exitcode
+terraform plan "-var-file=profiles\$networkProfile.tfvars.json" -detailed-exitcode
 switch ($LASTEXITCODE) {
     0 { 'No pending Terraform changes.' }
     1 { throw 'Plan failed; acceptance is incomplete.' }
@@ -343,7 +354,15 @@ statuses, telemetry evidence, drift exit code and VM power state. Mark every ite
 **passed**, **failed** or **not verified**; do not include keys or raw state.
 
 Acceptance remains limited to the demonstrated gateway/model route. Explicitly
-record the still-public gateway endpoint and Pending private-only investigation.
-If the customer requires private-only ingress, unsupported model tests, or
-hosted-agent execution not demonstrated above, those requirements remain
-**unmet** regardless of other checks passing.
+record the expected/observed gateway public access, not a hardcoded public
+assumption. For private-only ingress, require a new positive private call per
+alias and a valid-credential public request rejected specifically by the network
+boundary. Use an approved client outside the private network, record its DNS/
+network context and the actual response without credentials. A 401,
+authentication-specific 403, DNS error or timeout alone is insufficient.
+
+The automated runner does not perform this public-boundary test. Nor does
+disabled gateway ingress imply a private Foundry hosted-agent network or change
+API-key clients to Entra. Record any required hosted-agent/image/artifact tests
+separately. Undemonstrated customer requirements remain **unmet**, even when
+the selected configuration and private backend checks pass.

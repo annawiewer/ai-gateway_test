@@ -41,6 +41,7 @@ $null = New-Item -ItemType Directory -Path $testDirectory
 function New-Fixture {
     $global:acceptanceTest = @{
         scenario = ''; calls = [Collections.Generic.List[string]]::new(); power = 'deallocated'
+        profile = 'private-connectivity'
         resources = @{}; traces = @(('a' * 32), ('b' * 32))
         outputs = @{
             resource_group_name = @{ value = 'test' }
@@ -189,8 +190,20 @@ function terraform {
         return ($f.outputs | ConvertTo-Json -Depth 20)
     }
     if ('plan' -in $args) {
-        if ('-var-file=profiles/private-connectivity.tfvars.json' -notin $args) { throw 'Private profile missing.' }
-        if ($f.scenario -eq 'drift') { $global:LASTEXITCODE = 2 }
+        $f.planArguments = @($args)
+        if ($args[-1] -cne "-var-file=profiles/$($f.profile).tfvars.json") { throw 'Selected private profile must be last.' }
+        $effectiveAccess = $null
+        foreach ($argument in $args) {
+            if ($argument -like '-var-file=*') {
+                $path = $argument.Substring('-var-file='.Length)
+                if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path (Split-Path $PSScriptRoot -Parent) $path }
+                $values = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+                $effectiveAccess = $values.gateway_public_network_access
+            }
+        }
+        $expectedAccess = if ($f.profile -eq 'private-only') { 'Disabled' } else { 'Enabled' }
+        if ($effectiveAccess -cne $expectedAccess) { throw 'Drift plan does not preserve selected gateway ingress.' }
+        if ($f.scenario -in @('drift', 'private-only-drift')) { $global:LASTEXITCODE = 2 }
         if ($f.scenario -eq 'plan-error') { $global:LASTEXITCODE = 1 }
         return 'SECRET-DO-NOT-LOG'
     }
@@ -285,6 +298,9 @@ function az {
 }
 
 $cases = [ordered]@{
+    'private-only-pass' = @('PASS', 'runtime'); 'private-only-readonly' = @('BLOCKED', 'runtime')
+    'private-only-public' = @('FAIL', 'private-network'); 'hybrid-disabled' = @('FAIL', 'private-network')
+    'private-only-pending' = @('FAIL', 'private-network'); 'private-only-drift' = @('FAIL', 'drift')
     pass = @('PASS', 'runtime'); readonly = @('BLOCKED', 'runtime')
     'omitted-api-format' = @('PASS', 'runtime'); 'lowercase-exporter-kind' = @('PASS', 'runtime')
     'arm-dcr-fallback' = @('PASS', 'runtime')
@@ -314,7 +330,7 @@ $cases = [ordered]@{
     'nonfinite-metrics' = @('FAIL', 'telemetry'); 'relinked-law' = @('FAIL', 'monitoring')
     'wrong-dce-endpoint' = @('FAIL', 'monitoring'); 'unsafe-query-endpoint' = @('FAIL', 'monitoring')
 }
-$runtimeCases = @('pass', 'manual-approved', 'omitted-api-format', 'lowercase-exporter-kind', 'arm-dcr-fallback', 'runtime-error',
+$runtimeCases = @('private-only-pass', 'pass', 'manual-approved', 'omitted-api-format', 'lowercase-exporter-kind', 'arm-dcr-fallback', 'runtime-error',
     'missing-telemetry', 'missing-logs', 'missing-metrics', 'metrics-error', 'telemetry-schema', 'uncorrelated-telemetry',
     'wrong-metric-scope', 'stale-metrics', 'nonfinite-metrics', 'cleanup-error')
 try {
@@ -322,6 +338,15 @@ try {
         New-Fixture
         $f = $global:acceptanceTest
         $f.scenario = $case
+        $parameters = @{}
+        if ($case.StartsWith('private-only-')) {
+            $f.profile = 'private-only'
+            $f.resources[$gateway].properties.publicNetworkAccess = 'Disabled'
+            $parameters.NetworkProfile = 'private-only'
+        }
+        $additionalFile = Join-Path $testDirectory 'opposite-ingress.tfvars.json'
+        $oppositeAccess = if ($f.profile -eq 'private-only') { 'Enabled' } else { 'Disabled' }
+        @{ gateway_public_network_access = $oppositeAccess } | ConvertTo-Json | Set-Content -LiteralPath $additionalFile
         if ($case -in @('manual-approved', 'manual-pending', 'manual-wrong-target', 'mixed-connections')) {
             $properties = $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties
             $properties.manualPrivateLinkServiceConnections = $properties.privateLinkServiceConnections
@@ -334,6 +359,9 @@ try {
             }
         }
         switch ($case) {
+            'private-only-public' { $f.resources[$gateway].properties.publicNetworkAccess = 'Enabled' }
+            'hybrid-disabled' { $f.resources[$gateway].properties.publicNetworkAccess = 'Disabled' }
+            'private-only-pending' { $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status = 'Pending' }
             'wrong-scope' { $f.outputs.gateway_id.value = $gateway.Replace('/resourceGroups/test/', '/resourceGroups/other/') }
             'missing-output' { $f.outputs.Remove('resource_group_name') }
             'failed-endpoint' { $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties.provisioningState = 'Failed' }
@@ -377,7 +405,8 @@ try {
         $console = @()
         try {
             $console = @(& $runner -SubscriptionId $subscription -TenantId $tenant -ResourceGroup test `
-                -ReportDirectory $destination -RunPrivateProbe:($case -ne 'readonly') -TelemetryWaitSeconds 0 6>&1)
+                -ReportDirectory $destination -AdditionalVarFile $additionalFile @parameters `
+                -RunPrivateProbe:($case -notin @('readonly', 'private-only-readonly')) -TelemetryWaitSeconds 0 6>&1)
         }
         catch { $caught = $_.Exception.Message }
         $file = Get-ChildItem -LiteralPath $destination -Recurse -Filter acceptance.json
@@ -388,8 +417,18 @@ try {
             throw "Case $case returned $($result.backendStatus); error=$caught; checks=$($result.checks | ConvertTo-Json -Depth 5 -Compress)"
         }
         $expectedCheck = $cases[$case][1]
-        $expectedStatus = if ($cases[$case][0] -eq 'PASS') { 'PASS' } elseif ($case -eq 'readonly') { 'NOT RUN' } else { 'FAIL' }
+        $expectedStatus = if ($cases[$case][0] -eq 'PASS') { 'PASS' } elseif ($case -in @('readonly', 'private-only-readonly')) { 'NOT RUN' } else { 'FAIL' }
         if ($result.checks.$expectedCheck.status -ne $expectedStatus) { throw "Wrong failure boundary in $case." }
+        if ($result.profile -cne "profiles/$($f.profile).tfvars.json") { throw "Wrong reported profile in $case." }
+        if ($result.checks.'private-network'.status -eq 'PASS') {
+            $network = $result.checks.'private-network'.evidence
+            if ($network.gatewayPublicAccess -cne $f.resources[$gateway].properties.publicNetworkAccess -or
+                $network.expectedGatewayPublicAccess -cne $network.gatewayPublicAccess -or
+                $network.privateOnlyIngress -cne 'NOT certified' -or $network.publicNetworkRejection -cne 'NOT RUN') {
+                throw "Misleading network evidence in $case."
+            }
+        }
+        if ($f.planArguments -and "-var-file=$additionalFile" -notin $f.planArguments) { throw "Additional inputs omitted in $case." }
         if ($case -in @('missing-exporter-kind', 'null-exporter-kind') -and
             $result.checks.monitoring.detail -notmatch 'portal cannot recognize') { throw "Missing portal diagnostic in $case." }
         if ($case -notin $runtimeCases -and

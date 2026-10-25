@@ -5,6 +5,7 @@
 *.tfvars
 *.tfvars.json
 !profiles/private-connectivity.tfvars.json
+!profiles/private-only.tfvars.json
 crash.log
 crash.*.log
 override.tf

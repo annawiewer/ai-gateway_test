@@ -62,13 +62,44 @@ variable "storage_public_network_access" {
 }
 
 variable "enable_private_networking" {
-  description = "Create gateway/model private endpoints, DNS, and gateway outbound VNet integration. Hosted-agent networking is not changed."
+  description = "Create gateway/model private endpoints, DNS, and gateway outbound VNet integration. Does not by itself enable private hosted-agent execution."
   type        = bool
   default     = false
 }
 
+variable "enable_private_hosted_agent" {
+  description = "Add a separate private Foundry account/project with Basic VNet injection, delegated subnet and private registry access. Keeps the original agent account and outputs unchanged; does not deploy an agent."
+  type        = bool
+  default     = false
+  validation {
+    condition = !var.enable_private_hosted_agent || (
+      var.enable_private_networking && lower(var.location) == lower(var.gateway_location)
+    )
+    error_message = "Private hosted agents require private networking and the same Foundry/VNet region (location must equal gateway_location)."
+  }
+  validation {
+    condition = !var.enable_private_hosted_agent || can(regex(
+      "^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)", var.private_network_address_prefix
+    ))
+    error_message = "The private hosted-agent VNet must use RFC1918 IPv4 address space."
+  }
+}
+
+variable "private_hosted_agent_runtime_principal_id" {
+  description = "Optional actual managed-identity object ID discovered after private agent deployment. Grants gateway key retrieval at gateway scope only; never supply the old agent identity as a placeholder."
+  type        = string
+  default     = ""
+  validation {
+    condition = var.private_hosted_agent_runtime_principal_id == "" || (
+      var.enable_private_hosted_agent &&
+      can(regex("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.private_hosted_agent_runtime_principal_id))
+    )
+    error_message = "Supply an actual Entra object UUID only when enable_private_hosted_agent is true, or leave the runtime principal empty."
+  }
+}
+
 variable "private_network_address_prefix" {
-  description = "Non-overlapping IPv4 /16 for the optional PoC VNet; three /24 subnets are derived from it."
+  description = "Non-overlapping IPv4 /16 for the optional PoC VNet; three /24 subnets, plus subnet index 3 for optional private hosted agents, are derived from it."
   type        = string
   default     = "10.247.0.0/16"
   validation {
@@ -78,7 +109,7 @@ variable "private_network_address_prefix" {
 }
 
 variable "gateway_public_network_access" {
-  description = "Keep Enabled for the private-connectivity PoC. Disabled requests private-only ingress and requires separate live validation; see the observed preview limitation."
+  description = "Gateway public ingress. For an existing gateway, select Disabled after private endpoint approval and private-route verification; preserve that end state on subsequent plans. First-create and Terraform update behavior require live validation."
   type        = string
   default     = "Enabled"
   validation {

@@ -123,6 +123,11 @@ run "models_and_access_without_developer" {
       length(azapi_resource.role_assignment) == 7 &&
       length(azapi_resource.private_endpoint) == 0 &&
       length(azapi_resource.private_test_vm) == 0 &&
+      length(azapi_resource.private_agents) == 0 &&
+      length(azapi_resource.private_agent_endpoint) == 0 &&
+      length(azapi_resource.private_agent_role_assignment) == 0 &&
+      length(azapi_resource.private_agent_key_role) == 0 &&
+      output.private_hosted_agent == null &&
       alltrue([for key in keys(azapi_resource.role_assignment) : !startswith(key, "developer-")])
     )
     error_message = "No developer access may be created unless a principal is supplied."
@@ -356,7 +361,7 @@ run "private_connectivity_poc_profile" {
       azapi_resource.models.body.properties.publicNetworkAccess == "Disabled" &&
       azapi_resource.models.body.properties.networkAcls.defaultAction == "Deny"
     )
-    error_message = "The PoC profile must retain AIGateway, outbound integration and private models without requesting blocked private-only ingress."
+    error_message = "The hybrid profile must retain AIGateway, public gateway ingress, outbound integration and private models."
   }
 
   assert {
@@ -372,6 +377,7 @@ run "private_connectivity_poc_profile" {
       data.azapi_resource.gateway_private_endpoint_connection[0].parent_id == azapi_resource.gateway.id &&
       data.azapi_resource.gateway_private_endpoint_connection[0].name == "gateway-manual" &&
       azapi_resource_action.gateway_private_endpoint_approval[0].when == "apply" &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].resource_id == "${azapi_resource.gateway.id}/privateEndpointConnections/gateway-manual" &&
       azapi_resource.private_endpoint["models"].body.properties.privateLinkServiceConnections[0].properties.privateLinkServiceId == azapi_resource.models.id &&
       length(azapi_resource.private_test_vm) == 0 &&
       azapi_resource.agents.body.properties.publicNetworkAccess == "Enabled" &&
@@ -411,6 +417,34 @@ run "private_connectivity_poc_profile" {
       endswith(azapi_resource.role_assignment["gateway-monitoring-publisher"].body.properties.roleDefinitionId, "/3913510d-42f4-4e42-8a64-420c390055eb")
     )
     error_message = "The profile must retain gateway API-key provisioning and workspace telemetry without payload capture."
+  }
+}
+
+run "private_only_profile" {
+  command = plan
+  variables {
+    enable_private_networking                = jsondecode(file("profiles/private-only.tfvars.json")).enable_private_networking
+    gateway_private_endpoint_manual_approval = jsondecode(file("profiles/private-only.tfvars.json")).gateway_private_endpoint_manual_approval
+    gateway_public_network_access            = jsondecode(file("profiles/private-only.tfvars.json")).gateway_public_network_access
+    models_public_network_access             = jsondecode(file("profiles/private-only.tfvars.json")).models_public_network_access
+  }
+
+  assert {
+    condition = (
+      azapi_resource.gateway.body.sku.name == "AIGateway" &&
+      azapi_resource.gateway.body.properties.publicNetworkAccess == "Disabled" &&
+      azapi_resource.gateway.body.properties.virtualNetworkType == "External" &&
+      azapi_resource.models.body.properties.publicNetworkAccess == "Disabled" &&
+      azapi_resource.models.body.properties.networkAcls.defaultAction == "Deny" &&
+      length(azapi_resource.private_endpoint) == 2 &&
+      length(azapi_resource.private_dns_zone) == 4 &&
+      length(azapi_resource.private_endpoint["gateway"].body.properties.manualPrivateLinkServiceConnections) == 1 &&
+      length(azapi_resource_action.gateway_private_endpoint_approval) == 1 &&
+      length(azapi_resource.private_test_vm) == 0 &&
+      azapi_resource.agents.body.properties.publicNetworkAccess == "Enabled" &&
+      azapi_resource.registry.body.properties.publicNetworkAccess == "Enabled"
+    )
+    error_message = "The private-only end-state profile must disable gateway/model public access, retain private networking, and not imply private agent execution or force a VM."
   }
 }
 
@@ -474,4 +508,213 @@ run "reject_public_disable_without_network" {
     models_public_network_access  = "Disabled"
   }
   expect_failures = [var.gateway_public_network_access, var.models_public_network_access]
+}
+
+run "additional_private_hosted_agent" {
+  command = plan
+  variables {
+    location                      = "swedencentral"
+    enable_private_networking     = true
+    enable_private_hosted_agent   = true
+    gateway_public_network_access = "Disabled"
+    models_public_network_access  = "Disabled"
+    developer_principal_id        = "00000000-0000-0000-0000-000000000005"
+  }
+  override_resource {
+    target          = azapi_resource.private_subnet["agents"]
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.Network/virtualNetworks/test/subnets/agents"
+    }
+  }
+  override_resource {
+    target          = azapi_resource.private_agents[0]
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.CognitiveServices/accounts/private-agents"
+    }
+  }
+  override_resource {
+    target          = azapi_resource.private_project[0]
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.CognitiveServices/accounts/private-agents/projects/private"
+      identity = {
+        type         = "SystemAssigned"
+        principal_id = "00000000-0000-0000-0000-000000000006"
+        tenant_id    = "00000000-0000-0000-0000-000000000007"
+      }
+    }
+  }
+  assert {
+    condition = (
+      azapi_resource.agents.body.properties.publicNetworkAccess == "Enabled" &&
+      !can(azapi_resource.agents.body.properties.networkInjections) &&
+      azapi_resource.project.name == local.names.project &&
+      output.project_endpoint == "https://${local.names.agents}.services.ai.azure.com/api/projects/${local.names.project}" &&
+      azapi_resource.registry.body.properties.publicNetworkAccess == "Enabled" &&
+      length(azapi_resource.model_deployment) == 1
+    )
+    error_message = "The opt-in extension must retain the original account/project, registry access, compatibility output and existing models."
+  }
+  assert {
+    condition = (
+      azapi_resource.private_agents[0].name != azapi_resource.agents.name &&
+      azapi_resource.private_agents[0].body.properties.publicNetworkAccess == "Disabled" &&
+      azapi_resource.private_agents[0].body.properties.disableLocalAuth &&
+      azapi_resource.private_agents[0].body.properties.networkAcls.defaultAction == "Deny" &&
+      azapi_resource.private_agents[0].body.properties.networkInjections[0].scenario == "agent" &&
+      !azapi_resource.private_agents[0].body.properties.networkInjections[0].useMicrosoftManagedNetwork &&
+      azapi_resource.private_agents[0].body.properties.networkInjections[0].subnetArmId == azapi_resource.private_subnet["agents"].id
+    )
+    error_message = "The new account must be private and Entra-only with BYO agent injection in its creation body."
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_subnet) == 4 &&
+      azapi_resource.private_subnet["agents"].body.properties.addressPrefix == "10.247.3.0/24" &&
+      azapi_resource.private_subnet["agents"].body.properties.delegations[0].properties.serviceName == "Microsoft.App/environments" &&
+      azapi_resource.private_subnet["gateway"].body.properties.delegations[0].properties.serviceName == "Microsoft.Web/serverFarms" &&
+      length(azapi_resource.private_nsg["agents"].body.properties.securityRules) == 4 &&
+      length(azapi_resource.private_endpoint) == 2 &&
+      length(azapi_resource.private_agent_endpoint) == 2 &&
+      length(azapi_resource.private_dns_zone) == 5 &&
+      azapi_resource.private_agent_endpoint["agents"].body.properties.privateLinkServiceConnections[0].properties.groupIds[0] == "account" &&
+      azapi_resource.private_agent_endpoint["registry"].body.properties.privateLinkServiceConnections[0].properties.groupIds[0] == "registry" &&
+      local.private_dns_zones.registry == "privatelink.azurecr.io"
+    )
+    error_message = "Use a dedicated agent subnet, retain gateway delegation and add only the Foundry/registry private paths."
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_project_capability_host[0].body.properties) == 1 &&
+      azapi_resource.private_project_capability_host[0].body.properties.capabilityHostKind == "Agents" &&
+      length(azapi_resource.private_agent_role_assignment) == 3 &&
+      azapi_resource.private_agent_role_assignment["developer-project"].parent_id == azapi_resource.private_project[0].id &&
+      azapi_resource.private_agent_role_assignment["developer-account-reader"].parent_id == azapi_resource.private_agents[0].id &&
+      azapi_resource.private_registry_connection[0].body.properties.credentials.clientId == "00000000-0000-0000-0000-000000000006" &&
+      length(azapi_resource.private_agent_key_binding) == 0 &&
+      !output.private_hosted_agent.runtime_key_binding_configured &&
+      azapi_resource.private_agent_key_role[0].body.properties.permissions[0].actions[0] == "Microsoft.ApiManagement/service/apiKeys/listSecrets/action"
+    )
+    error_message = "Use Basic platform-managed data, scoped roles, the new project registry identity and no placeholder runtime key binding."
+  }
+}
+
+run "private_agent_runtime_reuses_existing_key_role" {
+  command = plan
+  variables {
+    location                                  = "swedencentral"
+    enable_private_networking                 = true
+    enable_private_hosted_agent               = true
+    enable_private_test_client                = true
+    private_test_client_ssh_public_key        = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleOnlyNotForDeployment"
+    private_hosted_agent_runtime_principal_id = "00000000-0000-0000-0000-000000000008"
+  }
+  override_resource {
+    target          = azapi_resource.private_test_key_role[0]
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleDefinitions/00000000-0000-0000-0000-000000000009"
+    }
+  }
+  override_resource {
+    target          = azapi_resource.gateway
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.ApiManagement/service/gateway"
+      output = {
+        properties = { gatewayUrl = "https://gateway.azure-api.net" }
+      }
+    }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_agent_key_role) == 0 &&
+      length(azapi_resource.private_agent_key_binding) == 1 &&
+      azapi_resource.private_agent_key_binding[0].parent_id == azapi_resource.gateway.id &&
+      azapi_resource.private_agent_key_binding[0].body.properties.roleDefinitionId == azapi_resource.private_test_key_role[0].id &&
+      azapi_resource.private_agent_key_binding[0].body.properties.principalId == var.private_hosted_agent_runtime_principal_id &&
+      azapi_resource.private_agent_key_binding[0].body.properties.principalType == "ServicePrincipal" &&
+      output.private_hosted_agent.runtime_key_binding_configured
+    )
+    error_message = "Only bind the supplied runtime identity at gateway scope, reusing the existing narrow key-reader role."
+  }
+}
+
+run "reject_private_agent_without_network" {
+  command = plan
+  variables {
+    location                    = "swedencentral"
+    enable_private_hosted_agent = true
+  }
+
+  expect_failures = [var.enable_private_hosted_agent]
+}
+
+run "private_agent_runtime_without_probe_vm" {
+  command = plan
+  variables {
+    location                                  = "swedencentral"
+    enable_private_networking                 = true
+    enable_private_hosted_agent               = true
+    private_hosted_agent_runtime_principal_id = "00000000-0000-0000-0000-000000000008"
+  }
+  override_resource {
+    target          = azapi_resource.private_agent_key_role[0]
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleDefinitions/00000000-0000-0000-0000-000000000010"
+    }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_test_key_role) == 0 &&
+      length(azapi_resource.private_agent_role_assignment) == 1 &&
+      length(azapi_resource.private_agent_key_role[0].body.properties.permissions[0].actions) == 1 &&
+      length(azapi_resource.private_agent_key_role[0].body.properties.permissions[0].dataActions) == 0 &&
+      azapi_resource.private_agent_key_binding[0].body.properties.roleDefinitionId == azapi_resource.private_agent_key_role[0].id &&
+      output.private_hosted_agent.key_reader_role_definition_id == azapi_resource.private_agent_key_role[0].id
+    )
+    error_message = "Without a probe VM, use only the dedicated narrow runtime key role and omit optional developer grants."
+  }
+}
+
+run "reject_private_agent_region_mismatch" {
+  command = plan
+  variables {
+    enable_private_networking   = true
+    enable_private_hosted_agent = true
+  }
+  expect_failures = [var.enable_private_hosted_agent]
+}
+
+run "reject_private_agent_non_rfc1918" {
+  command = plan
+  variables {
+    location                       = "swedencentral"
+    enable_private_networking      = true
+    enable_private_hosted_agent    = true
+    private_network_address_prefix = "100.64.0.0/16"
+  }
+  expect_failures = [var.enable_private_hosted_agent]
+}
+
+run "reject_runtime_identity_without_private_agent" {
+  command = plan
+  variables {
+    private_hosted_agent_runtime_principal_id = "00000000-0000-0000-0000-000000000008"
+  }
+  expect_failures = [var.private_hosted_agent_runtime_principal_id]
+}
+
+run "reject_malformed_runtime_identity" {
+  command = plan
+  variables {
+    location                                  = "swedencentral"
+    enable_private_networking                 = true
+    enable_private_hosted_agent               = true
+    private_hosted_agent_runtime_principal_id = "not-a-principal-id"
+  }
+  expect_failures = [var.private_hosted_agent_runtime_principal_id]
 }

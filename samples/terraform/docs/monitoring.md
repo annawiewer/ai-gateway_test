@@ -34,15 +34,19 @@ not reader access.
 ## Two-stage bootstrap or legacy-exporter upgrade
 
 Use the existing authoritative state and approved inputs. Keep the private
-profile on **every** plan for private deployments. Do not use these targeted
+profile on **every** plan for private deployments: `private-only` if gateway
+public access is disabled, or `private-connectivity` for intentional hybrid
+ingress. The hybrid profile can otherwise plan to reopen the gateway.
+Do not use these targeted
 plans as final drift/acceptance evidence. No command below should be applied
 without reviewing its saved plan and service-side effects.
 
 **Stage A: enable only the destination.** From `samples\terraform`:
 
 ```powershell
+$networkProfile = 'private-only' # Select the existing intended posture, not a bootstrap default.
 terraform plan '-target=azapi_resource.insights["gateway"]' `
-    '-var-file=profiles\private-connectivity.tfvars.json' '-out=monitoring-destination.tfplan'
+    "-var-file=profiles\$networkProfile.tfvars.json" '-out=monitoring-destination.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Destination plan failed.' }
 # Review and approve the saved plan before running:
 terraform apply 'monitoring-destination.tfplan'
@@ -85,7 +89,7 @@ investigating rather than repeatedly mutating the exporter.
 
 ```powershell
 terraform plan '-target=azapi_resource.telemetry_exporter' `
-    '-var-file=profiles\private-connectivity.tfvars.json' '-out=monitoring-exporter.tfplan'
+    "-var-file=profiles\$networkProfile.tfvars.json" '-out=monitoring-exporter.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Exporter plan failed.' }
 # Review and approve the saved plan before running:
 terraform apply 'monitoring-exporter.tfplan'
@@ -114,7 +118,7 @@ failed plan, deleting resources manually, or restoring old state:
 ```powershell
 terraform plan '-target=azapi_resource.telemetry_exporter' `
     '-replace=azapi_resource.telemetry_exporter' `
-    '-var-file=profiles\private-connectivity.tfvars.json' `
+    "-var-file=profiles\$networkProfile.tfvars.json" `
     '-out=monitoring-exporter-replacement.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Exporter replacement plan failed.' }
 ```

@@ -9,12 +9,14 @@ Review the limitations before changing an existing deployment.
 | --- | --- |
 | [terraform.tfvars.example](../terraform.tfvars.example) | Template for your ignored `terraform.tfvars` |
 | [profiles/private-connectivity.tfvars.json](../profiles/private-connectivity.tfvars.json) | Four private-connectivity settings, including explicit gateway endpoint approval (no secrets) |
+| [profiles/private-only.tfvars.json](../profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
 | [variables.tf](../variables.tf) / [outputs.tf](../outputs.tf) | Inputs, validation, outputs |
 | [ai-gateway.tf](../ai-gateway.tf) | Gateway, provider, catalog, aliases, runtime key, telemetry exporter |
 | [foundry-models.tf](../foundry-models.tf) | Model account and versioned deployments |
 | [foundry-agents.tf](../foundry-agents.tf) | Agent account/project, Storage, Premium ACR, connections |
 | [main.tf](../main.tf) / [rbac.tf](../rbac.tf) | Naming, shared resource group, monitoring, role assignments |
 | [private-network.tf](../private-network.tf) / [private-test-client.tf](../private-test-client.tf) | Optional VNet, private endpoints, DNS, probe VM |
+| [private-hosted-agent.tf](../private-hosted-agent.tf) / [private-hosted-agent.md](private-hosted-agent.md) | Opt-in additional private Foundry account/project; separate application deployment |
 | [scripts/Test-PrivateGateway.ps1](../scripts/Test-PrivateGateway.ps1) / [private-path-probe.py](../scripts/private-path-probe.py) | Private probe (wrapper sends the Python to the VM) |
 | [scripts/Test-ModelAliases.ps1](../scripts/Test-ModelAliases.ps1) | Public test of every alias |
 | [scripts/Get-GatewayMonitoring.ps1](../scripts/Get-GatewayMonitoring.ps1) / [monitoring.md](monitoring.md) | Read-only bounded OTLP readiness, linked managed groups, two-stage setup |
@@ -35,6 +37,8 @@ Required values are in the [shared setup](../README.md#shared-setup).
 | `publisher_name`, `project_display_name`, `project_description`, `tags` | Display metadata and tags |
 | `private_network_address_prefix` | Private-path VNet IPv4 /16. Default `10.247.0.0/16`. Pick a non-overlapping range before creating the network. |
 | `enable_private_test_client` | Default `false`. Requires private networking. |
+| `enable_private_hosted_agent` | Default `false`. Adds a separate VNet-injected Basic account/project, agent subnet and Foundry/registry private endpoints. Requires private networking and matching Foundry/VNet regions; preserves the original account. |
+| `private_hosted_agent_runtime_principal_id` | Default empty. Set only after discovering the new agent's real managed-identity object ID; creates a gateway-scoped key-reader binding. |
 | `private_test_client_ssh_public_key` | OpenSSH **public** key, required when the VM is created |
 | `private_test_client_vm_size` | Default `Standard_B2s_v2`. Check availability and quota. |
 
@@ -55,6 +59,7 @@ Optional fields: `model_format`, `sku_name`, `api_format`, `endpoints`, `descrip
 | `model_deployment_ids` | Model IDs keyed by alias |
 | `model_api_configuration` | API format and endpoints per alias; compatibility check for both sample probes |
 | `project_endpoint`, `project_id` | Hosted-agent app setup (not a model-call URL) |
+| `private_hosted_agent` | New private project, subnet, registry and gateway metadata when explicitly enabled. Original project outputs are unchanged. Not runtime proof. |
 | `container_registry_endpoint`, `storage_account_name` | Image and artifact setup for the agent app |
 | `resource_group_name` | The shared application group; excludes verified Azure-managed OTLP helper groups |
 | `resource_groups` | Compatibility map: `gateway`, `models` and `agents` all contain that same group name |
@@ -236,17 +241,26 @@ deployments.
 ### Microsoft-documented constraints
 
 - **AI Gateway preview:** best-effort, **no SLA**. APIs, limits, regions and pricing can change. Documented regions include East US 2 and Sweden Central, with access varying by subscription. ([overview](https://learn.microsoft.com/azure/api-management/ai-gateway-overview))
-- **Hosted-agent VNet injection is set at account creation** and cannot be added later. This sample does not configure it. If you need private agent execution, choose a supported network-secured Foundry setup before creating the account. ([Foundry networking limits](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks#limitations))
+- **Hosted-agent VNet injection is set at account creation** and cannot be added later. Enable the [private hosted-agent configuration](private-hosted-agent.md) from the start for new agent accounts. A separately deployed agent passed the private gateway/model path on October 25; application deployment, runtime roles and acceptance remain required for each new environment. ([Foundry networking limits](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks#limitations))
 - **Private endpoints can be added later** to an existing legacy `service`/`AIGateway` resource, with outbound integration configured separately. Private endpoints alone do not give the gateway or agents outbound access. This does not establish support on the replacement `aigateways` resource. ([private networking](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking))
 - **Private ACR image pulls** are supported for Foundry projects created after June 25, 2026. Older projects need public ACR reachability. This sample leaves ACR public.
 
-### Known blocker: private-only gateway ingress
+<a id="known-blocker-private-only-gateway-ingress"></a>
 
-**Status: Pending - product-group investigation (October 23, 2026).** Resolution
-of the observed public-disable failure is being clarified with the product group.
-No fix has been verified for this public-preview sample yet. The current profile
-therefore keeps gateway public access enabled; this status is not a promise of
-private-only access or a confirmed permanent product limitation.
+### Private-only gateway ingress status
+
+**Configuration blocker resolved for the observed gateway (October 25, 2026).**
+The operator disabled public access in the portal. Completion took a long time
+(no measured duration captured). A subsequent read-only ARM GET confirmed
+`publicNetworkAccess = Disabled`, `provisioningState = Succeeded`, and the
+gateway private connection `Approved` / `Succeeded`. Outbound integration
+remained `virtualNetworkType = External`; that value does not mean public
+ingress is enabled.
+
+This is a successful portal update, **not** evidence that a new gateway can be
+created private-only, that the earlier Terraform/CLI update failure is fixed,
+or that every subscription/region behaves identically. The separately documented
+legacy-resource lifecycle restrictions remain unchanged.
 
 **Observed in our tests, not a universal SKU limit.** Microsoft [documents disabling public access after private connectivity is verified](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking#inbound-private-link). In our **October 18, 2026, Sweden Central** tests:
 
@@ -254,16 +268,41 @@ private-only access or a confirmed permanent product limitation.
 - Disabling gateway public access failed with `UpdateApiServiceFailed`, through both Terraform and the CLI's public-access PATCH. Private access kept working, but public access stayed on.
 - A minimal gateway in the same subscription and region reproduced the failure. Its private endpoint still worked. Test resources were deleted.
 
-Root cause is unknown. Do not set gateway public access to `Disabled` in this PoC or describe it as private-only.
+Those failures and the October 23 product-group investigation are historical
+observations, not a current prohibition against `Disabled`. Their root cause
+is still unknown; do not attribute success to a timeout change or product fix.
 
-Before this pending item can be closed, a private-only version must show:
+Use the explicit [private-only profile](../profiles/private-only.tfvars.json)
+for the intended end state. Keep it last on all plans, including monitoring and
+drift checks; the hybrid profile still intentionally sets `Enabled`.
+For an already-disabled gateway, align inputs and inspect a fresh plan without
+reopening public access or reusing a saved pre-change plan.
 
-1. The gateway reports `Disabled`.
-2. Every alias works privately.
-3. A previously working valid-key public call gets a network rejection (not just a 401).
-4. The planned end state has no pending changes.
+**Subsequent private-agent proof completed on October 25, 2026:**
 
-No automatic recovery or destructive workaround is included.
+A fresh agent Responses call returned **OK**. The exact trace contained gateway
+and model-backend **HTTP 200** for `gpt-mini`. An authenticated public gateway
+call returned an explicit **HTTP 403 public-network denial**. Gateway, model and
+new Foundry public access stayed disabled, temporary executor roles were removed,
+the VM was deallocated and the final Terraform plan had no changes.
+See the [private-agent reference](private-hosted-agent.md#observed-deployment-and-proof).
+This verifies the tested path, not universal SKU behavior, every alias, Entra
+caller authentication or every preview agent ingress surface.
+
+**Repeat these gates for each new environment or relevant change:**
+
+1. Every alias succeeds from a private client, with current private DNS evidence.
+2. A previously working valid-credential public call gets a network-boundary
+   rejection. A 401, authentication-specific 403, timeout or DNS failure alone
+   does not prove this. Record the public test location and actual response.
+3. The selected end-state plan has no pending changes.
+4. Any required hosted-agent path and fresh telemetry are verified separately.
+   Use a fresh session/version and correlate its exact gateway/backend trace.
+
+The acceptance runner checks the selected ARM posture and (when requested)
+private runtime/telemetry; it does **not** test public network rejection or
+certify private-only runtime isolation. No automatic recovery, Azure mutation
+or destructive workaround is included in that runner.
 
 ## Cost and cleanup
 

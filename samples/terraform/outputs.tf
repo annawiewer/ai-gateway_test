@@ -75,10 +75,27 @@ output "gateway_monitoring" {
 }
 
 output "private_endpoint_ids" {
-  description = "Gateway and model private endpoint IDs when private networking is enabled."
-  value       = { for key, endpoint in azapi_resource.private_endpoint : key => endpoint.id }
+  description = "Gateway, model and optional private agent and registry private endpoint IDs."
+  value = merge(
+    { for key, endpoint in azapi_resource.private_endpoint : key => endpoint.id },
+    { for key, endpoint in azapi_resource.private_agent_endpoint : key => endpoint.id }
+  )
 }
 
+output "private_hosted_agent" {
+  description = "Additional private project setup, not proof of a deployed agent. Original project_id/project_endpoint remain unchanged. No keys are exported."
+  value = var.enable_private_hosted_agent ? {
+    account_id                     = azapi_resource.private_agents[0].id
+    project_id                     = azapi_resource.private_project[0].id
+    project_endpoint               = "https://${local.private_agent_name}.services.ai.azure.com/api/projects/${local.private_project_name}"
+    project_principal_id           = azapi_resource.private_project[0].identity[0].principal_id
+    subnet_id                      = azapi_resource.private_subnet["agents"].id
+    gateway_endpoint               = azapi_resource.gateway.output.properties.gatewayUrl
+    registry_endpoint              = azapi_resource.registry.output.properties.loginServer
+    key_reader_role_definition_id  = var.enable_private_test_client ? azapi_resource.private_test_key_role[0].id : azapi_resource.private_agent_key_role[0].id
+    runtime_key_binding_configured = var.private_hosted_agent_runtime_principal_id != ""
+  } : null
+}
 output "private_test_vm_id" {
   description = "Optional private test VM ID. Start/deallocate separately; power state is not Terraform configuration."
   value       = var.enable_private_test_client ? azapi_resource.private_test_vm[0].id : null

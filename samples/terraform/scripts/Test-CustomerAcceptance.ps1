@@ -7,7 +7,8 @@ param(
     [Parameter(Mandatory)][string]$ReportDirectory,
     [string[]]$AdditionalVarFile = @(),
     [switch]$RunPrivateProbe,
-    [ValidateRange(0, 900)][int]$TelemetryWaitSeconds = 300
+    [ValidateRange(0, 900)][int]$TelemetryWaitSeconds = 300,
+    [ValidateSet('private-connectivity', 'private-only')][string]$NetworkProfile = 'private-connectivity'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,8 +28,8 @@ $report = [ordered]@{
     subscriptionId = $subscription
     tenantId = $tenant
     resourceGroup = $ResourceGroup
-    scope = 'Existing legacy gateway; private route, not private-only ingress or hosted-agent runtime'
-    profile = 'profiles/private-connectivity.tfvars.json'
+    scope = 'Existing legacy gateway; selected network posture and private route. Public network rejection and hosted-agent runtime are not tested.'
+    profile = "profiles/$NetworkProfile.tfvars.json"
     commit = $null
     backendStatus = 'BLOCKED'
     overallStatus = 'BLOCKED'
@@ -146,6 +147,12 @@ function Invoke-Check([string]$Name, [string[]]$Needs, [scriptblock]$Action) {
 }
 
 Invoke-Check 'context' @() {
+    $context.networkProfile = Read-Json (Get-Content -LiteralPath (Join-Path $root $report.profile) -Raw)
+    if ($context.networkProfile.enable_private_networking -ne $true -or
+        $context.networkProfile.models_public_network_access -ne 'Disabled' -or
+        $context.networkProfile.gateway_public_network_access -notin @('Enabled', 'Disabled')) {
+        Stop-Check 'Selected file is not a valid private-network profile.'
+    }
     $account = Invoke-AzureJson @('account', 'show')
     if ($account.id -ne $subscription -or $account.tenantId -ne $tenant) { Stop-Check 'Subscription/tenant mismatch.' }
     $json = & terraform "-chdir=$root" output -json 2>$null
@@ -333,7 +340,7 @@ Invoke-Check 'monitoring' @('resources') {
 Invoke-Check 'private-network' @('resources') {
     if ($context.models.properties.publicNetworkAccess -ne 'Disabled' -or
         $context.models.properties.networkAcls.defaultAction -ne 'Deny' -or
-        $context.gateway.properties.publicNetworkAccess -ne 'Enabled' -or
+        $context.gateway.properties.publicNetworkAccess -ne $context.networkProfile.gateway_public_network_access -or
         $context.gateway.properties.virtualNetworkType -ne 'External') { Stop-Check 'Private profile posture mismatch.' }
     $subnetId = [string]$context.gateway.properties.virtualNetworkConfiguration.subnetResourceId
     Assert-GroupId $subnetId
@@ -377,7 +384,13 @@ Invoke-Check 'private-network' @('resources') {
             }
         }
     }
-    @{ gatewayPublicAccess = 'Enabled'; modelsPublicAccess = 'Disabled'; privateOnlyIngress = 'NOT certified' }
+    @{
+        gatewayPublicAccess = $context.gateway.properties.publicNetworkAccess
+        expectedGatewayPublicAccess = $context.networkProfile.gateway_public_network_access
+        modelsPublicAccess = $context.models.properties.publicNetworkAccess
+        privateOnlyIngress = 'NOT certified'
+        publicNetworkRejection = 'NOT RUN'
+    }
 }
 
 Invoke-Check 'drift' @('context') {
@@ -387,7 +400,7 @@ Invoke-Check 'drift' @('context') {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { Stop-Check 'Additional var-file does not exist; use an absolute path.' }
         $arguments += "-var-file=$([IO.Path]::GetFullPath($file))"
     }
-    $arguments += '-var-file=profiles/private-connectivity.tfvars.json'
+    $arguments += "-var-file=$($report.profile)"
     $previous = $env:ARM_SKIP_PROVIDER_REGISTRATION
     try {
         $env:ARM_SKIP_PROVIDER_REGISTRATION = 'true'

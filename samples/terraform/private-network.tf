@@ -1,15 +1,15 @@
 locals {
-  private_dns_zones = var.enable_private_networking ? {
+  private_dns_zones = var.enable_private_networking ? merge({
     gateway           = "privatelink.azure-api.net"
     cognitiveservices = "privatelink.cognitiveservices.azure.com"
     openai            = "privatelink.openai.azure.com"
     services          = "privatelink.services.ai.azure.com"
-  } : {}
-  private_subnets = var.enable_private_networking ? {
+  }, var.enable_private_hosted_agent ? { registry = "privatelink.azurecr.io" } : {}) : {}
+  private_subnets = var.enable_private_networking ? merge({
     gateway   = cidrsubnet(var.private_network_address_prefix, 8, 0)
     endpoints = cidrsubnet(var.private_network_address_prefix, 8, 1)
     client    = cidrsubnet(var.private_network_address_prefix, 8, 2)
-  } : {}
+  }, var.enable_private_hosted_agent ? { agents = cidrsubnet(var.private_network_address_prefix, 8, 3) } : {}) : {}
   private_endpoints = var.enable_private_networking ? {
     gateway = {
       resource_id         = azapi_resource.gateway.id
@@ -41,7 +41,7 @@ resource "azapi_resource" "private_vnet" {
 }
 
 resource "azapi_resource" "private_nsg" {
-  for_each  = var.enable_private_networking ? toset(["gateway", "client"]) : toset([])
+  for_each  = var.enable_private_networking ? toset(concat(["gateway", "client"], var.enable_private_hosted_agent ? ["agents"] : [])) : toset([])
   type      = "Microsoft.Network/networkSecurityGroups@2024-05-01"
   name      = "${local.names.gateway}-${each.key}-nsg"
   parent_id = azapi_resource.resource_group["gateway"].id
@@ -61,7 +61,7 @@ resource "azapi_resource" "private_nsg" {
           sourceAddressPrefix      = "*"
           destinationAddressPrefix = "*"
         }
-        }] : [for index, service in ["Storage", "AzureKeyVault"] : {
+        }] : [for index, service in(each.key == "agents" ? ["AzureActiveDirectory", "AzureResourceManager", "AzureContainerRegistry", "AzureMonitor"] : ["Storage", "AzureKeyVault"]) : {
         name = "Allow${service}Https"
         properties = {
           priority                 = 100 + index
@@ -91,10 +91,10 @@ resource "azapi_resource" "private_subnet" {
       each.key != "endpoints" ? {
         networkSecurityGroup = { id = azapi_resource.private_nsg[each.key].id }
       } : {},
-      each.key == "gateway" ? {
+      contains(["gateway", "agents"], each.key) ? {
         delegations = [{
-          name       = "gateway-integration"
-          properties = { serviceName = "Microsoft.Web/serverFarms" }
+          name       = "${each.key}-integration"
+          properties = { serviceName = each.key == "agents" ? "Microsoft.App/environments" : "Microsoft.Web/serverFarms" }
         }]
       } : {},
       # Only the isolated PoC client uses default outbound internet for its VM agent.
@@ -156,13 +156,14 @@ data "azapi_resource" "gateway_private_endpoint_connection" {
   name                   = local.private_endpoints["gateway"].connection_name
   parent_id              = azapi_resource.gateway.id
   response_export_values = ["properties.privateEndpoint.id", "properties.privateLinkServiceConnectionState.status"]
-  depends_on             = [azapi_resource.private_endpoint]
+  depends_on             = [azapi_resource.private_endpoint["gateway"]]
 }
 
 resource "azapi_resource_action" "gateway_private_endpoint_approval" {
-  count       = var.enable_private_networking && var.gateway_private_endpoint_manual_approval ? 1 : 0
-  type        = "Microsoft.ApiManagement/service/privateEndpointConnections@2025-09-01-preview"
-  resource_id = data.azapi_resource.gateway_private_endpoint_connection[0].id
+  count = var.enable_private_networking && var.gateway_private_endpoint_manual_approval ? 1 : 0
+  type  = "Microsoft.ApiManagement/service/privateEndpointConnections@2025-09-01-preview"
+  # Keep identity stable when another endpoint defers the connection read.
+  resource_id = "${azapi_resource.gateway.id}/privateEndpointConnections/${local.private_endpoints["gateway"].connection_name}"
   method      = data.azapi_resource.gateway_private_endpoint_connection[0].output.properties.privateLinkServiceConnectionState.status == "Approved" ? "GET" : "PUT"
   when        = "apply"
   locks       = [azapi_resource.gateway.id]
@@ -176,7 +177,7 @@ resource "azapi_resource_action" "gateway_private_endpoint_approval" {
       }
     }
   }
-  depends_on = [azapi_resource.private_endpoint]
+  depends_on = [azapi_resource.private_endpoint["gateway"]]
   lifecycle {
     replace_triggered_by = [azapi_resource.private_endpoint["gateway"]]
     precondition {
