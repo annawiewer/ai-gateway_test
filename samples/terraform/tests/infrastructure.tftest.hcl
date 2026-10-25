@@ -659,6 +659,9 @@ run "private_agent_runtime_without_probe_vm" {
     enable_private_networking                 = true
     enable_private_hosted_agent               = true
     private_hosted_agent_runtime_principal_id = "00000000-0000-0000-0000-000000000008"
+    gateway_access_principals = {
+      independent-caller = { principal_id = "00000000-0000-0000-0000-000000000009" }
+    }
   }
   override_resource {
     target          = azapi_resource.private_agent_key_role[0]
@@ -670,6 +673,9 @@ run "private_agent_runtime_without_probe_vm" {
   assert {
     condition = (
       length(azapi_resource.private_test_key_role) == 0 &&
+      length(azapi_resource.role_assignment) == 8 &&
+      azapi_resource.runtime_api_key.name == "default" &&
+      azapi_resource.role_assignment["gateway-models-user-independent-caller"].body.properties.principalId == var.gateway_access_principals["independent-caller"].principal_id &&
       length(azapi_resource.private_agent_role_assignment) == 1 &&
       length(azapi_resource.private_agent_key_role[0].body.properties.permissions[0].actions) == 1 &&
       length(azapi_resource.private_agent_key_role[0].body.properties.permissions[0].dataActions) == 0 &&
@@ -717,4 +723,79 @@ run "reject_malformed_runtime_identity" {
     private_hosted_agent_runtime_principal_id = "not-a-principal-id"
   }
   expect_failures = [var.private_hosted_agent_runtime_principal_id]
+}
+
+run "additive_gateway_entra_access" {
+  command = plan
+  variables {
+    gateway_access_principals = {
+      application = { principal_id = "00000000-0000-0000-0000-000000000002" }
+      developer = {
+        principal_id   = "00000000-0000-0000-0000-000000000003"
+        principal_type = "User"
+      }
+      team = {
+        principal_id   = "00000000-0000-0000-0000-000000000004"
+        principal_type = "Group"
+      }
+    }
+  }
+  override_resource {
+    target          = azapi_resource.gateway
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.ApiManagement/service/test"
+      output = {
+        properties = { gatewayUrl = "https://gateway.example" }
+      }
+    }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.role_assignment) == 10 &&
+      alltrue([for key, principal in var.gateway_access_principals :
+        azapi_resource.role_assignment["gateway-models-user-${key}"].parent_id == azapi_resource.gateway.id &&
+        azapi_resource.role_assignment["gateway-models-user-${key}"].body.properties.principalId == principal.principal_id &&
+        azapi_resource.role_assignment["gateway-models-user-${key}"].body.properties.principalType == principal.principal_type &&
+        azapi_resource.role_assignment["gateway-models-user-${key}"].body.properties.roleDefinitionId == "${local.subscription_scope}/providers/Microsoft.Authorization/roleDefinitions/a6b68e3d-a1f0-4c60-8678-237c050cf4ea" &&
+        azapi_resource.role_assignment["gateway-models-user-${key}"].name == uuidv5("url", "${azapi_resource.gateway.id}/${principal.principal_id}/a6b68e3d-a1f0-4c60-8678-237c050cf4ea")
+      ]) &&
+      azapi_resource.role_assignment["gateway-models-user-application"].body.properties.principalType == "ServicePrincipal" &&
+      azapi_resource.runtime_api_key.name == "default" &&
+      azapi_resource.gateway.body.properties.publicNetworkAccess == "Enabled"
+    )
+    error_message = "Entra caller bindings must be deterministic gateway-scoped model-invocation grants for the supplied identities, without changing API keys, networking or backend roles."
+  }
+}
+
+run "reject_invalid_gateway_caller_id" {
+  command = plan
+  variables {
+    gateway_access_principals = { caller = { principal_id = "not-an-object-id" } }
+  }
+  expect_failures = [var.gateway_access_principals]
+}
+
+run "reject_invalid_gateway_caller_type" {
+  command = plan
+  variables {
+    gateway_access_principals = {
+      caller = {
+        principal_id   = "00000000-0000-0000-0000-000000000002"
+        principal_type = "Application"
+      }
+    }
+  }
+  expect_failures = [var.gateway_access_principals]
+}
+
+run "reject_duplicate_gateway_callers" {
+  command = plan
+  variables {
+    gateway_access_principals = {
+      first  = { principal_id = "aaaaaaaa-0000-0000-0000-000000000002" }
+      second = { principal_id = "AAAAAAAA-0000-0000-0000-000000000002" }
+    }
+  }
+  expect_failures = [var.gateway_access_principals]
 }

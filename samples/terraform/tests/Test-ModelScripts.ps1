@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $scripts = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts'
 $global:modelScriptTest = @{}
+$caseCount = 0
 
 function New-TestOutputs {
     @{
@@ -24,6 +25,17 @@ function terraform {
 function az {
     $global:modelScriptTest.azCalls++
     $global:LASTEXITCODE = $global:modelScriptTest.azExit
+    if ($args[0] -eq 'account') {
+        if ($args[1] -ne 'get-access-token' -or
+            $args[[Array]::IndexOf($args, '--resource') + 1] -ne 'https://azure-api.net/aigateway' -or
+            $args[[Array]::IndexOf($args, '--query') + 1] -ne 'accessToken') {
+            throw 'Unexpected token command or audience.'
+        }
+        return $global:modelScriptTest.token
+    }
+    if ($global:modelScriptTest.authentication -eq 'EntraId') {
+        throw 'Entra mode must not retrieve an API key.'
+    }
     if ($args[0] -eq 'vm') {
         $index = [Array]::IndexOf($args, '--scripts')
         if ($index -lt 0) { throw 'Missing Run Command script.' }
@@ -43,26 +55,38 @@ function az {
 
 function Invoke-RestMethod {
     param($Method, $Uri, $Headers, $ContentType, $Body)
-    if ($Uri -ne 'https://gateway.example/default/models/openai/v1/chat/completions' -or
-        $Headers['Api-Key'] -ne 'test-key-must-not-appear') {
-        throw 'Unexpected inference target/authentication.'
+    if ($Uri -ne 'https://gateway.example/default/models/openai/v1/chat/completions') {
+        throw 'Unexpected inference target.'
     }
+    if ($global:modelScriptTest.authentication -eq 'EntraId') {
+        if ($Headers.Authorization -cne 'Bearer test-token-must-not-appear' -or $Headers.ContainsKey('Api-Key')) {
+            throw 'Entra invocation must send only the bearer credential.'
+        }
+    }
+    elseif ($Headers['Api-Key'] -ne 'test-key-must-not-appear' -or $Headers.ContainsKey('Authorization')) {
+        throw 'Key invocation must send only the API-key credential.'
+    }
+    if ($global:modelScriptTest.restFailure) { throw $global:modelScriptTest.restFailure }
     $global:modelScriptTest.models.Add(($Body | ConvertFrom-Json).model)
     @{ choices = @(@{ message = @{ content = 'OK' } }) }
 }
 
 function Reset-Test {
+    $script:caseCount++
     $global:modelScriptTest.outputs = New-TestOutputs
     $global:modelScriptTest.terraformExit = 0
     $global:modelScriptTest.azExit = 0
     $global:modelScriptTest.azCalls = 0
+    $global:modelScriptTest.authentication = 'ApiKey'
+    $global:modelScriptTest.token = 'test-token-must-not-appear'
+    $global:modelScriptTest.restFailure = $null
     $global:modelScriptTest.models = [System.Collections.Generic.List[string]]::new()
 }
 
 function Assert-Rejected {
-    param([string]$ScriptName, [string]$Expected, [int]$ExpectedAzCalls = 0)
+    param([string]$ScriptName, [string]$Expected, [int]$ExpectedAzCalls = 0, [hashtable]$ScriptArguments = @{})
     $failure = $null
-    try { & (Join-Path $scripts $ScriptName) | Out-Null }
+    try { & (Join-Path $scripts $ScriptName) @ScriptArguments | Out-Null }
     catch { $failure = $_.Exception.Message }
     if (-not $failure -or $failure -notmatch $Expected) {
         throw "Expected rejection matching '$Expected', got '$failure'."
@@ -113,4 +137,39 @@ if (-not $privateResult.passed -or $global:modelScriptTest.azCalls -ne 1 -or
     throw 'Private wrapper metadata transport or temporary-file cleanup failed.'
 }
 
-'Model-script checks passed (11 cases; no Azure or model calls).'
+Reset-Test
+$global:modelScriptTest.authentication = 'EntraId'
+$global:modelScriptTest.outputs.Remove('gateway_api_key_id')
+$result = (& (Join-Path $scripts 'Test-ModelAliases.ps1') -Authentication EntraId) -join "`n"
+if ($global:modelScriptTest.azCalls -ne 1 -or $global:modelScriptTest.models.Count -ne 2 -or
+    $result -match 'test-token-must-not-appear|test-key-must-not-appear') {
+    throw 'Entra must test every alias without requiring a key ID or exposing credentials.'
+}
+
+foreach ($case in @('token-failure', 'empty-token', 'whitespace-token', 'unauthorized', 'forbidden')) {
+    Reset-Test
+    $global:modelScriptTest.authentication = 'EntraId'
+    $expected = 'Unable to acquire an AI Gateway Entra token'
+    switch ($case) {
+        'token-failure' { $global:modelScriptTest.azExit = 1 }
+        'empty-token' { $global:modelScriptTest.token = '' }
+        'whitespace-token' { $global:modelScriptTest.token = '   ' }
+        'unauthorized' { $global:modelScriptTest.restFailure = 'HTTP 401'; $expected = 'HTTP 401' }
+        'forbidden' { $global:modelScriptTest.restFailure = 'HTTP 403'; $expected = 'HTTP 403' }
+    }
+    Assert-Rejected 'Test-ModelAliases.ps1' $expected 1 @{ Authentication = 'EntraId' }
+}
+
+Reset-Test
+$global:modelScriptTest.authentication = 'EntraId'
+$global:modelScriptTest.outputs.model_api_configuration.value.full.endpoints = @('/openai/v1/responses')
+Assert-Rejected 'Test-ModelAliases.ps1' 'Unsupported probe API' 0 @{ Authentication = 'EntraId' }
+
+Reset-Test
+$global:modelScriptTest.outputs.Remove('gateway_api_key_id')
+Assert-Rejected 'Test-ModelAliases.ps1' 'Gateway API key resource ID is missing'
+
+Reset-Test
+Assert-Rejected 'Test-ModelAliases.ps1' 'Authentication|ValidateSet' 0 @{ Authentication = 'Invalid' }
+
+"Model-script checks passed ($caseCount cases; no Azure or model calls)."

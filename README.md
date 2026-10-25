@@ -108,8 +108,9 @@ samples and infrastructure that build on the AI Gateway tier in Azure API Manage
 
 The [Terraform sample](samples/terraform/README.md) provides **Public** and
 **Private-only** configurations for AI Gateway and Foundry, with optional private
-hosted-agent infrastructure. Its README includes the two architecture diagrams
-and a compact deployment guide.
+hosted-agent infrastructure. Both paths support application access with
+**Microsoft Entra ID or API keys**. Its README includes the two architecture
+diagrams and links to the adjacent [deployment guide](samples/terraform/deployment.md).
 
 ## Contributing
 

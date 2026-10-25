@@ -13,20 +13,25 @@ the answer. This is standalone Terraform, not an `azd` application.
 
 ### Public
 
-![Public application and optional hosted-agent calls through AI Gateway to Foundry Models, with separate image and telemetry dependencies](docs/images/architecture-public.svg)
+![Public application authenticates with Entra ID or an API key; AI Gateway uses its separate managed identity for Foundry Models](docs/images/architecture-public.svg)
 
-Clients call the gateway with an API key; the gateway authorizes to Foundry Models
-using its managed identity. Agent hosting resources are provisioned, but the
+Clients use an API key or optional Entra token; the gateway authorizes to Foundry
+Models using its managed identity. Agent hosting resources are provisioned, but the
 container image and agent application are deployed separately.
 
 ### Private-only
 
-![Private client and hosted-agent route through distinct Foundry, gateway and model private endpoints, with registry and monitoring dependencies](docs/images/architecture-private-only.svg)
+![Private application authenticates with Entra ID or an API key through the gateway private endpoint; gateway managed identity reaches the private model backend](docs/images/architecture-private-only.svg)
 
 Private endpoints (PE), DNS and outbound VNet integration connect the private
 request path. The optional private agent requires creation-time network injection
 and a later application deployment/runtime-role binding. It is part of
 Private-only, not a third networking option.
+
+In both diagrams, the **Application** is the caller: it sends an **Entra token
+with an invocation role, or an API key** to the gateway. Its hosting location is
+your choice; Private-only additionally requires private DNS and a network route.
+The optional hosted agent is a separate application, not a required model-call hop.
 
 These are logical flows, not subnet-placement diagrams. The Foundry inbound PE,
 agent outbound injection, gateway inbound PE and gateway outbound integration are
@@ -34,9 +39,29 @@ separate controls. Identity, control-plane and telemetry traffic are not claimed
 to be fully private. Registry/Storage and monitoring are supporting resources,
 not extra model-serving hops; registry public access is unchanged by the agent extension.
 
+## Access
+
+Grant identity-based access with **Microsoft Entra ID**, or manage **API keys**.
+Access is independent of Public/Private-only.
+
+| Option | Configuration |
+| --- | --- |
+| Microsoft Entra ID | Add caller object IDs to `gateway_access_principals`; grants **AI Gateway Models User** for all models in this gateway. |
+| API keys (existing default) | Leave the map empty. Existing keys remain available even when Entra callers are added. |
+
+The existing agent and private test VM keep their API-key flow. This is additive,
+**not an Entra-only switch**. See [Access setup](deployment.md#access) for
+post-deployment configuration and `Test-ModelAliases.ps1 -Authentication EntraId`.
+
+**Live-verified over the private route:** both sample models returned **200** with
+managed-identity Entra access, **403** without the invocation role, and **401**
+for missing/invalid credentials. API-key calls also passed; gateway/backend
+traces matched. The temporary grant was removed afterward. This verifies the
+managed-identity caller flow, not custom delegated-user applications.
+
 ## Deploy
 
-Follow the **[deployment guide](docs/deployment.md)** for prerequisites, inputs,
+Follow the **[deployment guide](deployment.md)**, next to this README, for prerequisites, inputs,
 monitoring bootstrap, the chosen network path, private-agent setup and acceptance.
 Keep the selected private profile on all later plans. The retained
 `private-connectivity` profile is only an intermediate provisioning stage.

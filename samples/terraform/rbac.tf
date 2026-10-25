@@ -31,6 +31,12 @@ locals {
         role_id        = "7f951dda-4ed3-4680-a7ca-43fe172d538d"
       }
     },
+    { for key, principal in var.gateway_access_principals : "gateway-models-user-${key}" => {
+      scope          = azapi_resource.gateway.id
+      principal_id   = principal.principal_id
+      principal_type = principal.principal_type
+      role_id        = "a6b68e3d-a1f0-4c60-8678-237c050cf4ea"
+    } },
     { for key, role in local.cognitive_roles : "project-${key}" => {
       scope          = azapi_resource.agents.id
       principal_id   = azapi_resource.project.identity[0].principal_id

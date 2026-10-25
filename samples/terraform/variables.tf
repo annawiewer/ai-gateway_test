@@ -7,6 +7,30 @@ variable "subscription_id" {
   }
 }
 
+variable "gateway_access_principals" {
+  description = "Optional caller identities granted AI Gateway Models User at gateway scope. Additive Entra access for all gateway models; API keys and existing agent/test-VM authentication remain unchanged."
+  type = map(object({
+    principal_id   = string
+    principal_type = optional(string, "ServicePrincipal")
+  }))
+  default  = {}
+  nullable = false
+  validation {
+    condition = alltrue([for principal in var.gateway_access_principals : try(
+      can(regex("(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", principal.principal_id)) &&
+      contains(["User", "Group", "ServicePrincipal"], principal.principal_type), false
+    )])
+    error_message = "Each gateway caller requires an Entra object UUID and principal_type User, Group or ServicePrincipal."
+  }
+  validation {
+    condition = try(
+      length(distinct([for principal in var.gateway_access_principals : lower(principal.principal_id)])) == length(var.gateway_access_principals),
+      false
+    )
+    error_message = "Each gateway caller object ID must appear only once, regardless of letter case."
+  }
+}
+
 variable "environment_name" {
   description = "Short environment label used in the shared resource group name and tags."
   type        = string

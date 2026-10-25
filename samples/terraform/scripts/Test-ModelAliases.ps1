@@ -1,7 +1,12 @@
 # Sends a short chat request to every configured model alias through the gateway.
 # Run from samples/terraform after a successful apply, signed in with az login.
-# Needs permission to read the gateway key (Microsoft.ApiManagement/service/apiKeys/listSecrets/action).
+# ApiKey needs key-read permission; EntraId needs the AI Gateway Models User role.
 # Model calls incur inference charges.
+
+param(
+    [ValidateSet('ApiKey', 'EntraId')]
+    [string]$Authentication = 'ApiKey'
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -12,8 +17,11 @@ $outputs = $outputsJson | ConvertFrom-Json
 $gatewayUrl = ([string]$outputs.gateway_endpoint.value).TrimEnd('/')
 $keyId = $outputs.gateway_api_key_id.value
 $modelNames = @($outputs.model_deployment_ids.value.PSObject.Properties.Name)
-if (!$gatewayUrl -or !$keyId -or $modelNames.Count -eq 0) {
-    throw "Gateway endpoint, API key resource ID, or model aliases are missing."
+if (!$gatewayUrl -or $modelNames.Count -eq 0) {
+    throw "Gateway endpoint or model aliases are missing."
+}
+if ($Authentication -eq 'ApiKey' -and !$keyId) {
+    throw "Gateway API key resource ID is missing."
 }
 $modelApis = $outputs.model_api_configuration.value
 if (-not $modelApis) {
@@ -28,14 +36,26 @@ foreach ($model in $modelNames) {
 }
 
 $apiKey = $null
+$accessToken = $null
 try {
-    $apiKey = az rest --method post `
-        --url "https://management.azure.com${keyId}/listSecrets?api-version=2025-09-01-preview" `
-        --query primaryKey --output tsv --only-show-errors
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiKey)) {
-        throw "Unable to retrieve the gateway key. Check your Azure identity and permissions."
+    if ($Authentication -eq 'EntraId') {
+        $accessToken = az account get-access-token `
+            --resource https://azure-api.net/aigateway `
+            --query accessToken --output tsv --only-show-errors
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($accessToken)) {
+            throw "Unable to acquire an AI Gateway Entra token. Check your Azure CLI login and tenant; no API-key fallback is attempted."
+        }
+        $headers = @{ Authorization = "Bearer $accessToken" }
     }
-    $headers = @{ "Api-Key" = $apiKey }
+    else {
+        $apiKey = az rest --method post `
+            --url "https://management.azure.com${keyId}/listSecrets?api-version=2025-09-01-preview" `
+            --query primaryKey --output tsv --only-show-errors
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiKey)) {
+            throw "Unable to retrieve the gateway key. Check your Azure identity and permissions."
+        }
+        $headers = @{ "Api-Key" = $apiKey }
+    }
 
     foreach ($model in $modelNames) {
         $body = @{
@@ -55,5 +75,6 @@ try {
 }
 finally {
     $apiKey = $null
+    $accessToken = $null
     $headers = $null
 }

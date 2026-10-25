@@ -1,6 +1,6 @@
 # Deployment guide
 
-[Overview and diagrams](../README.md)
+[Overview and diagrams](README.md)
 
 ## Prerequisites
 
@@ -21,18 +21,41 @@ Register the providers used by your configuration: `Microsoft.ApiManagement`,
 and `Microsoft.Monitor`; also `Microsoft.Network` for networking, `Microsoft.Compute`
 for the optional test VM, and `Microsoft.App` for private hosted agents.
 
-Public/private routing is independent of authentication. Clients currently use a
-gateway **API key**; the gateway uses its **managed identity** for model invocation.
-Caller-to-gateway Entra-only authentication is not implemented here. It can be a
-separately designed policy/client change later, without supplying a missing network route.
+Public/private routing is independent of [Access](#access): callers can use an
+API key or an Entra token with an invocation role. The gateway uses its own managed
+identity for backend model calls. Adding Entra does not remove existing keys or
+supply a missing private network route.
 
 ## Inputs and state
 
+The fork does not track `.gitignore`. Before creating deployment inputs, configure
+local-only exclusions in `.git/info/exclude` (this file is never committed):
+
+```powershell
+@'
+/samples/terraform/.gitignore
+/samples/terraform/.terraform/
+/samples/terraform/*.tfstate*
+/samples/terraform/*.tfplan
+/samples/terraform/*.tfvars
+/samples/terraform/*.tfvars.json
+/samples/terraform/crash*.log
+/samples/terraform/*override.tf
+/samples/terraform/*override.tf.json
+/samples/terraform/**/__pycache__/
+/samples/terraform/acceptance-results/
+'@ | Add-Content -LiteralPath (git rev-parse --path-format=absolute --git-path info/exclude)
+```
+
+Tracked profiles and `terraform.tfvars.example` remain versioned. Exclusions are
+not secret protection for already tracked files; review `git diff --cached` before
+every commit and never force-add deployment inputs, state or credentials.
+
 Run commands from `samples\terraform`. For a **new environment only**, copy
-[terraform.tfvars.example](../terraform.tfvars.example) to `terraform.tfvars` and
+[terraform.tfvars.example](terraform.tfvars.example) to `terraform.tfvars` and
 set the subscription, environment name, publisher email, regions and model map.
-The map keys become client-facing aliases. See [variables.tf](../variables.tf)
-and [outputs.tf](../outputs.tf) for the complete input/output contract.
+The map keys become client-facing aliases. See [variables.tf](variables.tf)
+and [outputs.tf](outputs.tf) for the complete input/output contract.
 
 For an existing deployment, reuse its **authoritative state/backend and complete
 input files**. Never overwrite inputs with the example, initialize a second state
@@ -55,6 +78,67 @@ unexpected replacement, deletion, public reopening or permission expansion.
 Changing names/regions or consolidating an older multi-resource-group layout is
 a migration, not a harmless update. The current sample uses one application group;
 gateway OTLP can additionally create Azure-managed monitoring helper groups.
+
+## Access
+
+Grant identity-based access with **Microsoft Entra ID**, or manage **API keys**.
+API-key behavior remains the default. To add Entra callers, extend the existing
+ignored input file; do not replace its other settings:
+
+```hcl
+gateway_access_principals = {
+  application = {
+    principal_id   = "<actual-managed-identity-or-service-principal-object-id>"
+    principal_type = "ServicePrincipal"
+  }
+}
+```
+
+Use Entra **object IDs**, not application/client IDs, from the gateway
+subscription's tenant. Types are `User`, `Group` or `ServicePrincipal` (default,
+including managed identities); each object ID may appear once. Terraform grants
+**AI Gateway Models User** (`a6b68e3d-a1f0-4c60-8678-237c050cf4ea`) at gateway scope:
+all models, not MCP tools, management operations or key retrieval. For one-model
+access, use a separately reviewed alias-scoped assignment instead of this map.
+The executor needs role-assignment permission at the gateway scope.
+
+This works as an **additive post-deployment change**: reuse the original state and
+complete inputs, retain the final Private-only profile last, and review a fresh
+saved plan before applying it. Keep map keys stable and entries on subsequent
+plans; removing an entry removes its managed role. Import equivalent pre-existing
+assignments at the intended address or keep them externally managed, not duplicated.
+
+Use audience `https://azure-api.net/aigateway`; SDK clients calling as themselves
+request `https://azure-api.net/aigateway/.default`. Custom apps signing in users
+need delegated `https://azure-api.net/aigateway/Data.All` consent plus the user's
+invocation role. This custom-app consent setup does not apply to managed identities,
+client credentials or built-in Azure CLI/PowerShell clients. Send
+`Authorization: Bearer <token>`, never an ARM or model-backend token. See the
+[portal security and identity guide](https://ai.gateway.azure.com/docs/security-identity).
+
+```powershell
+.\scripts\Test-ModelAliases.ps1 -Authentication EntraId
+# Existing default:
+.\scripts\Test-ModelAliases.ps1 -Authentication ApiKey
+```
+
+The Entra probe uses the current Azure CLI identity, does not retrieve keys and
+does not fall back to them. It calls every compatible alias and incurs inference
+charges. The caller needs the selected network/DNS route and propagated RBAC.
+Verify both authorized and unauthorized identities and fresh telemetry; offline
+checks are not a live Entra proof.
+
+**Live-verified:** a managed-identity caller reached both sample aliases over the
+private endpoint: HTTP 403 before the Terraform-managed invocation grant, HTTP
+200 afterward, with matching gateway/backend traces. Missing, invalid and
+wrong-audience credentials returned 401; API-key calls remained successful.
+The temporary grant was removed and the final plan had no changes. This does
+not validate custom delegated-user clients or migrate the hosted agent.
+
+**Not Entra-only:** keys are neither disabled nor deleted. The existing agent and
+private VM retain their key-reader roles and API-key calls. The gateway's backend
+Foundry User binding stays unchanged. An empty map also does not remove roles
+managed outside this sample.
 
 ## Monitoring setup
 
@@ -111,7 +195,7 @@ your machine. All aliases must answer; final plan exit `0` means no changes,
 
 ## Private-only
 
-The final [private-only profile](../profiles/private-only.tfvars.json) disables
+The final [private-only profile](profiles/private-only.tfvars.json) disables
 **both gateway and model public access**. Private clients reach the gateway's
 private endpoint; separate gateway outbound VNet integration reaches the model
 private endpoint. Private DNS, endpoint approval and working routes are all required.
