@@ -4,6 +4,17 @@ Deploy AI Gateway, Foundry model deployments and infrastructure for a separately
 deployed hosted agent. The gateway handles access and policy; the model generates
 the answer. This is standalone Terraform, not an `azd` application.
 
+> [!NOTE]
+> **Legacy SKU and migration deadline:** This sample uses
+> `Microsoft.ApiManagement/service` with SKU `AIGateway`. Microsoft requires
+> migration **before January 15, 2027**. This SKU is retained here for the
+> private-endpoint scenario: as of October 25, 2026, the newer
+> `Microsoft.ApiManagement/aigateways` resource does **not** support private
+> endpoints. This is a time-limited preview reference, not a long-term deployment
+> target. Plan migration without assuming private-endpoint feature parity;
+> this sample does not perform that migration. See Microsoft's
+> [migration deadline and limitations](https://learn.microsoft.com/azure/api-management/ai-gateway-resource).
+
 ## Two networking options
 
 | Configuration | Gateway public access | Model public access |
