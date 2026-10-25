@@ -13,9 +13,57 @@
 > this sample does not perform that migration. See Microsoft's
 > [migration deadline and limitations](https://learn.microsoft.com/azure/api-management/ai-gateway-resource).
 
+## Terraform implementation
+
+> [!IMPORTANT]
+> **Terraform Registry disclaimer (checked October 25, 2026):** No dedicated
+> Microsoft-published Registry module was identified for this standalone
+> `AIGateway` preview. The [general API Management AVM](https://registry.terraform.io/modules/Azure/avm-res-apimanagement-service/azurerm)
+> and community gateway modules are not the same as a dedicated module for this
+> preview. This directory is our own root configuration, not an official
+> Registry module to install.
+
+A **module** packages reusable Terraform configuration; a **provider** implements
+communication with Azure. We use Microsoft's
+[AzAPI provider](https://learn.microsoft.com/azure/developer/terraform/overview-azapi-provider),
+declared as `Azure/azapi` in [versions.tf](versions.tf), rather than a custom
+provider or a gateway-specific module.
+
+[ai-gateway.tf](ai-gateway.tf) declares `azapi_resource` with
+`Microsoft.ApiManagement/service@2025-09-01-preview` and SKU `AIGateway`.
+It also explicitly defines the gateway's child resources and their API versions.
+AzAPI sends these definitions to Azure Resource Manager (ARM) and Terraform
+manages their state and dependencies. The documented
+[AzureRM API Management SKU list](https://registry.terraform.io/providers/hashicorp/azurerm/5.11.0/docs/resources/api_management)
+does not include `AIGateway`; that is distinct from saying Terraform cannot deploy it.
+
+Some preview child resources are not in AzAPI's bundled schema, so their local
+`schema_validation_enabled` check is selectively disabled in the source.
+This does **not** bypass Azure API validation, RBAC or Azure Policy. API contracts
+remain explicit sample-maintenance responsibilities; `terraform validate` and
+mock tests alone cannot prove that Azure will accept a deployment.
+
+## Runbook order
+
+Do not execute every code block from top to bottom: Public and Private-only are
+alternative paths. Commands use PowerShell 7; replace `<...>` placeholders first.
+Run deployment commands one at a time and stop on errors; these blocks are not
+unattended deployment scripts.
+
+1. Complete [prerequisites](#prerequisites) and [inputs and state](#inputs-and-state).
+2. Choose Public or Private-only. Add optional [Entra caller inputs](#access) and,
+   if needed, the [private-agent flags](#optional-private-hosted-agent) before
+   the first full plan. Do not run their probes or deploy an agent yet.
+3. Bootstrap [monitoring](#monitoring-setup), using the profile for your starting state.
+4. Follow **one** path: [Public](#public) or [Private-only](#private-only).
+   Review and apply the required plans, then run the appropriate client probes.
+5. Deploy the optional agent application separately, if selected, then complete
+   [acceptance](#acceptance-and-maintenance). Existing environments must retain
+   their original state and complete inputs throughout.
+
 ## Prerequisites
 
-Use Terraform 1.11+ (below 2.0), Azure CLI, and PowerShell 7 for the helper scripts.
+Use Git, Terraform 1.11+ (below 2.0), Azure CLI, and PowerShell 7 for the helper scripts.
 Python 3 is needed for offline tests. Check model versions, capacity and hosted-agent
 availability in the chosen regions, plus inherited Azure Policy, required tags and
 permissions to manage resources and scoped role assignments.
@@ -62,7 +110,13 @@ Tracked profiles and `terraform.tfvars.example` remain versioned. Exclusions are
 not secret protection for already tracked files; review `git diff --cached` before
 every commit and never force-add deployment inputs, state or credentials.
 
-Run commands from `samples\terraform`. For a **new environment only**, copy
+From the root of your local clone, enter the Terraform directory:
+
+```powershell
+Set-Location .\samples\terraform
+```
+
+Run all remaining commands there. For a **new environment only**, copy
 [terraform.tfvars.example](terraform.tfvars.example) to `terraform.tfvars` and
 set the subscription, environment name, publisher email, regions and model map.
 The map keys become client-facing aliases. See [variables.tf](variables.tf)
@@ -128,6 +182,7 @@ client credentials or built-in Azure CLI/PowerShell clients. Send
 [portal security and identity guide](https://ai.gateway.azure.com/docs/security-identity).
 
 ```powershell
+# Run these probes only after deployment, from a client with the selected route.
 .\scripts\Test-ModelAliases.ps1 -Authentication EntraId
 # Existing default:
 .\scripts\Test-ModelAliases.ps1 -Authentication ApiKey
@@ -153,16 +208,30 @@ managed outside this sample.
 
 ## Monitoring setup
 
-The gateway exporter needs real OTLP endpoints and a linked DCR, discovered from
-Application Insights. Do not supply guessed endpoints or copy generated IDs.
-Use a two-stage setup before the full deployment plan:
+The gateway exporter needs real OpenTelemetry Protocol (OTLP) endpoints and a
+linked Data Collection Rule (DCR), discovered from Application Insights.
+First create that monitoring destination, then create a fresh full deployment plan.
+Do not supply guessed endpoints or copy generated IDs.
+
+**Choose the starting state first.** Copy the assignment from exactly one row
+into the same PowerShell session before running the commands below. If you use
+extra environment `-var-file` arguments, put them before the listed profile/overrides.
+
+| Starting state | Set the monitoring plan arguments |
+| --- | --- |
+| Intentionally Public | `$networkArgs = @()` |
+| Already Private-only | `$networkArgs = @('-var-file=profiles\private-only.tfvars.json')` |
+| New private environment or public-to-private transition, with temporary public access explicitly approved | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json', '-var=models_public_network_access=Enabled')` |
+
+For new private environments where even temporary public access is prohibited,
+**stop**: this guide does not provide a validated private-from-first-create procedure.
 
 ```powershell
-# Existing Private-only: always retain this profile.
-$networkArgs = @('-var-file=profiles\private-only.tfvars.json')
-# For an intentionally Public deployment only, replace the above with @().
+if ($null -eq $networkArgs) { throw 'Choose the monitoring arguments for your starting state first.' }
 terraform plan @networkArgs '-target=azapi_resource.insights["gateway"]' '-out=monitoring-destination.tfplan'
-# Only after a successful plan and explicit review:
+# Stop on plan failure. Inspect the saved plan before deciding to apply:
+terraform show monitoring-destination.tfplan
+# Only after explicit review:
 terraform apply monitoring-destination.tfplan
 
 $metadata = terraform output -json gateway_monitoring
@@ -174,8 +243,7 @@ $metadata = $metadata | ConvertFrom-Json
     -ExpectedLogAnalyticsId $metadata.log_analytics_id -WaitSeconds 120
 ```
 
-Set `$networkArgs` to the intended stage below for a new private deployment; never
-drop the private profile on an existing private environment. Review targeted plans
+Never drop the private profile on an existing private environment. Review targeted plans
 too: they can include dependencies. The helper is read-only and checks destination
 readiness, DCR/DCE ownership and the linked Log Analytics/Azure Monitor workspaces.
 After it succeeds, create a **fresh full plan** for your selected path. Terraform
@@ -194,6 +262,7 @@ default, **not** a required prerequisite for Private-only.
 
 ```powershell
 terraform plan -out=deployment.tfplan
+terraform show deployment.tfplan
 # Review, then apply only the successful saved plan:
 terraform apply deployment.tfplan
 .\scripts\Test-ModelAliases.ps1
@@ -215,8 +284,9 @@ For an **already private** deployment, skip temporary-public staging. Keep
 `-var-file=profiles\private-only.tfvars.json` last on every full, monitoring and
 drift plan. Never apply the intermediate profile to an already-disabled gateway.
 
-For an environment **transitioning from public**, where temporary public access
-is explicitly permitted, use these provisioning stages. The retained
+For a **new environment or one transitioning from public**, use these provisioning
+stages only where temporary public access is explicitly permitted and the legacy
+resource contract is available. The retained
 `private-connectivity` file is an intermediate stage, **not a third deployment path**:
 
 | Stage | Plan arguments, after all environment inputs | Required gate before continuing |
@@ -225,7 +295,8 @@ is explicitly permitted, use these provisioning stages. The retained
 | Close model public access | `-var-file=profiles\private-connectivity.tfvars.json` | Review/apply; model disabled. Repeat the private probe. |
 | Close gateway public access | `-var-file=profiles\private-only.tfvars.json` | Review/apply; both disabled. Recheck private inference and authenticated public-network rejection. |
 
-Save each plan with `-out=<stage>.tfplan` and apply only that reviewed plan.
+Save each plan with `-out=<stage>.tfplan`, inspect it with
+`terraform show <stage>.tfplan`, and apply only that reviewed plan.
 Do not reopen access to bypass a failure or Azure Policy. If temporary public access
 is prohibited, do not use this staged procedure unchanged: validate a supported
 private creation sequence first. First-create behavior is not proven by a

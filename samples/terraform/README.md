@@ -15,6 +15,16 @@ the answer. This is standalone Terraform, not an `azd` application.
 > this sample does not perform that migration. See Microsoft's
 > [migration deadline and limitations](https://learn.microsoft.com/azure/api-management/ai-gateway-resource).
 
+> [!IMPORTANT]
+> **Terraform Registry disclaimer (checked October 25, 2026):** No dedicated
+> Microsoft-published Registry module was identified for the standalone
+> `AIGateway` preview used here. General API Management and community gateway
+> modules do exist; this directory is a repository-specific Terraform
+> configuration, not an official Registry module. Instead, it uses Microsoft's
+> **`Azure/azapi` provider** to manage explicit ARM resource types and preview
+> API versions. See [how this is implemented](deployment.md#terraform-implementation)
+> for the distinction and validation limits.
+
 ## Two networking options
 
 | Configuration | Gateway public access | Model public access |
