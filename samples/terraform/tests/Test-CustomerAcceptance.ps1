@@ -1,5 +1,24 @@
 $ErrorActionPreference = 'Stop'
 $runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\Test-CustomerAcceptance.ps1'
+$ast = [Management.Automation.Language.Parser]::ParseFile($runner, [ref]$null, [ref]$null)
+$converter = $ast.Find({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'ConvertTo-AzureCliArguments'
+}, $true)
+. ([scriptblock]::Create($converter.Extent.Text))
+$url = 'https://test.example/query_range?query=metric%20%3E%200&start=1&end=2&step=15s'
+$arguments = @('rest', '--url', $url)
+$batchArguments = @(ConvertTo-AzureCliArguments $arguments $true)
+if ($batchArguments.Count -ne 3 -or $batchArguments[2] -cne ('"' + $url + '"') -or
+    $batchArguments[0] -cne 'rest' -or $batchArguments[1] -cne '--url') {
+    throw 'Windows batch URL quoting changed argument boundaries.'
+}
+if (@(Compare-Object $arguments @(ConvertTo-AzureCliArguments $arguments $false)).Count) {
+    throw 'Non-batch Azure CLI arguments must remain unchanged.'
+}
+$rejected = $false
+try { $null = ConvertTo-AzureCliArguments @('https://test.example/"&echo invalid') $true }
+catch { $rejected = $_.Exception.Message -eq 'ACCEPTANCE: Unsafe Azure CLI URL argument.' }
+if (-not $rejected) { throw 'Unsafe batch URL was not rejected.' }
 $subscription = '00000000-0000-0000-0000-000000000001'
 $tenant = '00000000-0000-0000-0000-000000000002'
 $group = "/subscriptions/$subscription/resourceGroups/test"

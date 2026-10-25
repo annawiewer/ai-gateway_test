@@ -43,7 +43,20 @@ function Read-Json([string]$Text) {
     catch { Stop-Check 'Invalid JSON response; raw content omitted.' }
 }
 
+function ConvertTo-AzureCliArguments([string[]]$Arguments, [bool]$WindowsBatch) {
+    foreach ($argument in $Arguments) {
+        if ($WindowsBatch -and $argument -match '^https?://') {
+            if ($argument -match '["\r\n]') { throw 'ACCEPTANCE: Unsafe Azure CLI URL argument.' }
+            # az.cmd otherwise lets cmd.exe split query parameters at ampersands.
+            '"' + $argument + '"'
+        }
+        else { $argument }
+    }
+}
+
 function Invoke-AzureJson([string[]]$Arguments) {
+    $batch = $IsWindows -and (Get-Command az -ErrorAction Stop).Source -match '\.(cmd|bat)$'
+    $Arguments = @(ConvertTo-AzureCliArguments $Arguments $batch)
     $text = & az @Arguments --subscription $subscription --only-show-errors --output json 2>$null
     if ($LASTEXITCODE -ne 0) { Stop-Check "Azure CLI failed (exit $LASTEXITCODE); response omitted." }
     Read-Json ($text -join "`n")

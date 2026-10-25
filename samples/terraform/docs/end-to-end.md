@@ -115,6 +115,10 @@ plan text and raw service errors are never included in reports.
 
 Only after approving model and VM costs:
 
+On Windows, the runner quotes HTTP URL arguments for the `az.cmd` launcher so
+`cmd.exe` does not split Prometheus query parameters at `&`. Direct executable
+and non-Windows Azure CLI invocations retain their normal argument handling.
+
 ```powershell
 .\scripts\Test-CustomerAcceptance.ps1 @parameters -RunPrivateProbe -TelemetryWaitSeconds 300
 ```
