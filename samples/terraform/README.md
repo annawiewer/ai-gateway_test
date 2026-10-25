@@ -52,6 +52,36 @@ path or repeat the temporary-public staging step for an already-private backend.
 - **Need private hosted-agent execution?** Set it when the Foundry account is created. This sample does not configure it, and you cannot add it to an existing account later.
 - **Need private-only gateway ingress?** Pending product-group investigation; the current profile does not meet this requirement. See the [status and observed behavior](docs/reference.md#known-blocker-private-only-gateway-ingress).
 
+### Platform team: policy compatibility
+
+Before deployment, review the effective Azure Policy assignments at the target
+scope, including inherited management-group and subscription assignments,
+initiative parameters, exclusions and applicable exemptions. Compare them with
+the resources and settings in your selected deployment path.
+
+| Check | Required outcome before apply |
+| --- | --- |
+| Allowed regions, resource types, SKUs and mandatory tags | All planned resources comply, including Azure-managed monitoring helper resources. |
+| Public network access for the gateway, model account, Storage and Container Registry | The selected path meets your requirements, including any temporary access used during staged deployment. |
+| Private endpoints, DNS, routing and outbound restrictions | Deployment clients and each runtime identity have a supported network path to the services they need; disabling public access alone does not provide that path. |
+| Identity, authentication and RBAC requirements | Deployment permissions, managed identities, role assignments and the gateway's runtime API-key authentication are compatible with your controls. |
+| Monitoring and security requirements | Required diagnostics, retention and destinations are accounted for, along with any automatically enabled Defender plans and their costs. |
+
+Resolve incompatibilities in the IaC and deployment inputs **before apply**.
+For example, if your policies require private Storage access, provide or reuse
+the necessary private endpoint, DNS and connectivity for every client that
+needs Storage. This is a conditional requirement, not a prerequisite for every
+customer. Do not disable policies or reopen restricted endpoints to make the
+sample deploy.
+
+A successful `terraform plan` is **not** proof of policy compatibility:
+`Deny` can block resource creation, `Modify` can change requested settings, and
+`DeployIfNotExists` can deploy related resources. After deployment and any policy
+remediation, inspect the actual configuration, run a fresh plan with the same
+inputs, and verify DNS, connectivity, authentication and telemetry from the
+intended clients. Investigate policy-induced drift rather than blindly applying
+a plan that would undo an enforced setting.
+
 ## What gets deployed
 
 | Component | Purpose |
