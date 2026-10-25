@@ -4,9 +4,9 @@ location         = "eastus2"
 gateway_location = "eastus2"
 publisher_email  = "platform@example.com"
 
-# Select profiles/private-connectivity.tfvars.json explicitly for the private-connectivity PoC.
-# It keeps gateway public access Enabled and disables model public access; see README staging.
-# Optional private gateway/model networking; prove connectivity before disabling public access.
+# Public is the default; select profiles/private-only.tfvars.json for the final private posture.
+# profiles/private-connectivity.tfvars.json is an intermediate provisioning stage only.
+# See docs/deployment.md before staging; never reopen an already-private endpoint.
 # enable_private_networking     = true
 # gateway_public_network_access = "Enabled"
 # models_public_network_access  = "Enabled"
