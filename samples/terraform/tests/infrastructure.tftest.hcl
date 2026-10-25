@@ -640,6 +640,13 @@ run "private_agent_runtime_reuses_existing_key_role" {
     )
     error_message = "Only bind the supplied runtime identity at gateway scope, reusing the existing narrow key-reader role."
   }
+  assert {
+    condition = (
+      azapi_resource.private_agent_key_binding[0].name == uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/${azapi_resource.private_test_key_role[0].name}") &&
+      azapi_resource.private_agent_key_binding[0].name != uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/${uuidv5("url", "${azapi_resource.resource_group["gateway"].id}/private-agent-key-reader")}")
+    )
+    error_message = "Enabling the test VM must use a role-specific assignment identity distinct from the dedicated agent-role assignment."
+  }
 }
 
 run "reject_private_agent_without_network" {
@@ -670,6 +677,16 @@ run "private_agent_runtime_without_probe_vm" {
       id = "/subscriptions/00000000-0000-0000-0000-000000000001/providers/Microsoft.Authorization/roleDefinitions/00000000-0000-0000-0000-000000000010"
     }
   }
+  override_resource {
+    target          = azapi_resource.gateway
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.ApiManagement/service/gateway"
+      output = {
+        properties = { gatewayUrl = "https://gateway.azure-api.net" }
+      }
+    }
+  }
   assert {
     condition = (
       length(azapi_resource.private_test_key_role) == 0 &&
@@ -683,6 +700,15 @@ run "private_agent_runtime_without_probe_vm" {
       output.private_hosted_agent.key_reader_role_definition_id == azapi_resource.private_agent_key_role[0].id
     )
     error_message = "Without a probe VM, use only the dedicated narrow runtime key role and omit optional developer grants."
+  }
+  assert {
+    condition = (
+      azapi_resource.private_agent_key_binding[0].name == uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/${azapi_resource.private_agent_key_role[0].name}") &&
+      azapi_resource.private_agent_key_binding[0].name != uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/${uuidv5("url", "${azapi_resource.resource_group["gateway"].id}/private-test-key-reader")}") &&
+      azapi_resource.private_agent_key_binding[0].parent_id == azapi_resource.gateway.id &&
+      azapi_resource.private_agent_key_binding[0].body.properties.principalId == var.private_hosted_agent_runtime_principal_id
+    )
+    error_message = "Disabling the test VM must restore a distinct dedicated-role assignment while preserving gateway scope and runtime principal."
   }
 }
 

@@ -16,7 +16,7 @@ publisher_email  = "platform@example.com"
 
 # Public is the default; select profiles/private-only.tfvars.json for the final private posture.
 # profiles/private-connectivity.tfvars.json is an intermediate provisioning stage only.
-# See docs/deployment.md before staging; never reopen an already-private endpoint.
+# See deployment.md before staging; never reopen an already-private endpoint.
 # enable_private_networking     = true
 # gateway_public_network_access = "Enabled"
 # models_public_network_access  = "Enabled"

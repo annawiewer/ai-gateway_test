@@ -218,9 +218,10 @@ resource "azapi_resource" "private_agent_key_role" {
 }
 
 resource "azapi_resource" "private_agent_key_binding" {
-  count     = var.enable_private_hosted_agent && var.private_hosted_agent_runtime_principal_id != "" ? 1 : 0
-  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
-  name      = uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/private-agent-key-reader")
+  count = var.enable_private_hosted_agent && var.private_hosted_agent_runtime_principal_id != "" ? 1 : 0
+  type  = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  # A role change must replace the assignment, not update its immutable roleDefinitionId.
+  name      = uuidv5("url", "${azapi_resource.gateway.id}/${var.private_hosted_agent_runtime_principal_id}/${var.enable_private_test_client ? azapi_resource.private_test_key_role[0].name : azapi_resource.private_agent_key_role[0].name}")
   parent_id = azapi_resource.gateway.id
   body = {
     properties = {

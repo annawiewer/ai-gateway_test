@@ -310,6 +310,11 @@ Terraform does **not** deploy an image or agent application:
 Remove only job-created temporary roles and deallocate the executor after use.
 Keep the runtime-principal input on subsequent plans, or its binding can be removed.
 
+Changing `enable_private_test_client` changes the private agent's key-reader role.
+Terraform replaces that role assignment rather than updating its immutable role.
+Upgrading an older assignment also requires a one-time replacement; review the
+plan and allow for a brief interruption of the agent's key retrieval.
+
 ## Acceptance and maintenance
 
 Require fresh results in the selected environment, not screenshots from another
