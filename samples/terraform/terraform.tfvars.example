@@ -1,3 +1,7 @@
+# New workload only: copy to terraform.tfvars; never overwrite existing inputs.
+# Follow deployment.md#inputs-and-state for each value and the approved backend.
+# HCL belongs in this file, not in PowerShell. Save after editing.
+# Replace the UUID, contact, regions and model choices with approved values.
 subscription_id  = "00000000-0000-0000-0000-000000000000"
 environment_name = "aigateway"
 location         = "eastus2"
@@ -18,15 +22,46 @@ publisher_email  = "platform@example.com"
 # profiles/private-connectivity.tfvars.json is an intermediate provisioning stage only.
 # See deployment.md before staging; never reopen an already-private endpoint.
 # enable_private_networking     = true
-# gateway_public_network_access = "Enabled"
-# models_public_network_access  = "Enabled"
+#
+# Independently choose ONE network ownership profile on every plan:
+# profiles/network-create.tfvars.json: sample-created gateway network/DNS (default).
+# profiles/network-existing.tfvars.json: copy to an ignored customer file and replace ALL IDs.
+# Load customer inputs, then network ownership, then the private-access profile last.
+# Existing mode requires private networking; missing IDs never create a fallback network.
+# Keep ownership inputs in that selected file, rather than duplicating them here.
+# Defaults shown for reference:
+# private_network_mode              = "create"
+# existing_private_network          = null
+# private_dns_zone_group_management = "workload"
+# "platform" zone-group management is allowed only with existing mode.
+# Never switch an already-deployed create network to existing without a reviewed migration.
+# The address prefix applies only to the sample-created foundation:
 # private_network_address_prefix = "10.247.0.0/16"
 #
-# Optional billable VM for private-path testing; no public IP or inbound access.
+# Optional policy-compatible Blob access (not hosted-agent VNet integration).
+# Existing mode also needs endpoint_subnet_ids.storage and private_dns_zone_ids.storage.
+# storage_public_network_access   = "Disabled"
+# enable_storage_private_endpoint = true
+#
+# Optional private hosted agent, configured before creating its account.
+# Existing mode needs agent_subnet_id, endpoint_subnet_ids.agents / .registry,
+# and private_dns_zone_ids.registry, in addition to the core network/DNS inputs.
+# This sample supports agent subnets at least /27 and wholly within RFC1918 IPv4.
+# This address-space subset is a sample constraint, not a universal platform limit.
+# enable_private_hosted_agent = true
+#
+# Optional billable VM for private-path testing; no public IP, uses Run Command.
+# Existing mode also needs an explicit existing_private_network.client_subnet_id.
+# The client subnet must belong to subscription_id; VM/NIC location follows its VNet.
 # enable_private_test_client         = true
 # private_test_client_ssh_public_key = "ssh-ed25519 <your-public-key>"
 
 # Examples, not a guarantee of regional availability or quota. Choose supported versions.
+# Each model defaults to sku_name = "GlobalStandard" if omitted.
+# An EU resource region alone does not establish EU-only processing.
+# To choose another approved model deployment type, add sku_name inside EACH model.
+# This model setting is separate from the unchanged AIGateway gateway SKU.
+# capacity units depend on model/type; token_limit is the gateway caller limit.
 model_deployments = {
   gpt-mini = {
     model_name    = "gpt-4.1-mini"

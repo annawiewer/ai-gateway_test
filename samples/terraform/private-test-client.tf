@@ -3,7 +3,7 @@ resource "azapi_resource" "private_test_nic" {
   type      = "Microsoft.Network/networkInterfaces@2024-05-01"
   name      = "${local.names.gateway}-test-nic"
   parent_id = azapi_resource.resource_group["gateway"].id
-  location  = var.gateway_location
+  location  = local.private_client_location
   tags      = local.tags
   body = {
     properties = {
@@ -11,7 +11,7 @@ resource "azapi_resource" "private_test_nic" {
         name = "private"
         properties = {
           privateIPAllocationMethod = "Dynamic"
-          subnet                    = { id = azapi_resource.private_subnet["client"].id }
+          subnet                    = { id = local.private_client_subnet_id }
         }
       }]
     }
@@ -23,7 +23,7 @@ resource "azapi_resource" "private_test_vm" {
   type      = "Microsoft.Compute/virtualMachines@2024-07-01"
   name      = "${local.names.gateway}-test"
   parent_id = azapi_resource.resource_group["gateway"].id
-  location  = var.gateway_location
+  location  = local.private_client_location
   tags      = local.tags
   identity { type = "SystemAssigned" }
   body = {
@@ -101,6 +101,20 @@ resource "azapi_resource" "private_test_key_binding" {
       principalId      = azapi_resource.private_test_vm[0].identity[0].principal_id
       principalType    = "ServicePrincipal"
       roleDefinitionId = azapi_resource.private_test_key_role[0].id
+    }
+  }
+}
+
+resource "azapi_resource" "private_test_storage_binding" {
+  count     = var.enable_private_test_client && var.enable_storage_private_endpoint ? 1 : 0
+  type      = "Microsoft.Authorization/roleAssignments@2022-04-01"
+  name      = uuidv5("url", "${azapi_resource.storage.id}/${azapi_resource.private_test_vm[0].identity[0].principal_id}/private-test-blob-reader")
+  parent_id = azapi_resource.storage.id
+  body = {
+    properties = {
+      principalId      = azapi_resource.private_test_vm[0].identity[0].principal_id
+      principalType    = "ServicePrincipal"
+      roleDefinitionId = "${local.subscription_scope}/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"
     }
   }
 }

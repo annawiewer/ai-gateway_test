@@ -60,7 +60,7 @@ resource "azapi_resource" "private_agents" {
       }
       networkInjections = [{
         scenario                   = "agent"
-        subnetArmId                = azapi_resource.private_subnet["agents"].id
+        subnetArmId                = local.private_agent_subnet_id
         useMicrosoftManagedNetwork = false
       }]
     }
@@ -84,7 +84,7 @@ resource "azapi_resource" "private_project" {
       description = "Additional VNet-injected Basic project; use the existing private AI Gateway for models."
     }
   }
-  depends_on = [azapi_resource.private_agent_dns_zone_group["agents"]]
+  depends_on = [azapi_resource.private_agent_dns_zone_group]
 }
 
 # Separate collection keeps additions from deferring the legacy gateway approval read.
@@ -93,12 +93,12 @@ resource "azapi_resource" "private_agent_endpoint" {
   type                  = "Microsoft.Network/privateEndpoints@2024-05-01"
   name                  = "${local.names.gateway}-${each.key}-pe"
   parent_id             = azapi_resource.resource_group["gateway"].id
-  location              = var.gateway_location
+  location              = local.private_endpoint_locations[each.key]
   tags                  = local.tags
-  replace_triggers_refs = ["properties.privateLinkServiceConnections"]
+  replace_triggers_refs = ["properties.privateLinkServiceConnections", "properties.subnet"]
   body = {
     properties = {
-      subnet = { id = azapi_resource.private_subnet["endpoints"].id }
+      subnet = { id = local.private_endpoint_subnet_ids[each.key] }
       privateLinkServiceConnections = [{
         name = each.key
         properties = {
@@ -111,7 +111,7 @@ resource "azapi_resource" "private_agent_endpoint" {
 }
 
 resource "azapi_resource" "private_agent_dns_zone_group" {
-  for_each  = local.private_agent_endpoints
+  for_each  = var.private_dns_zone_group_management == "workload" ? local.private_agent_endpoints : {}
   type      = "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01"
   name      = "default"
   parent_id = azapi_resource.private_agent_endpoint[each.key].id
@@ -119,7 +119,7 @@ resource "azapi_resource" "private_agent_dns_zone_group" {
     properties = {
       privateDnsZoneConfigs = [for key in each.value.dns_keys : {
         name       = key
-        properties = { privateDnsZoneId = azapi_resource.private_dns_zone[key].id }
+        properties = { privateDnsZoneId = local.private_dns_zone_ids[key] }
       }]
     }
   }
@@ -171,7 +171,7 @@ resource "azapi_resource" "private_registry_connection" {
   }
   depends_on = [
     azapi_resource.private_agent_role_assignment["project-acr-pull"],
-    azapi_resource.private_agent_dns_zone_group["registry"]
+    azapi_resource.private_agent_dns_zone_group
   ]
 }
 

@@ -13,7 +13,7 @@ resource "azapi_resource" "gateway" {
       publicNetworkAccess = var.gateway_public_network_access
       virtualNetworkType  = var.enable_private_networking ? "External" : "None"
       virtualNetworkConfiguration = var.enable_private_networking ? {
-        subnetResourceId = azapi_resource.private_subnet["gateway"].id
+        subnetResourceId = local.private_gateway_subnet_id
       } : null
     }
   }
@@ -26,7 +26,7 @@ resource "azapi_resource" "gateway" {
     update = "60m"
     delete = "60m"
   }
-  depends_on = [azapi_resource.private_dns_link]
+  depends_on = [azapi_resource.private_dns_link, data.azapi_resource.existing_private_subnet]
 }
 
 resource "azapi_resource" "connector_gateway" {

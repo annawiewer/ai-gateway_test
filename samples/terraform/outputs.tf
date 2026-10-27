@@ -75,11 +75,25 @@ output "gateway_monitoring" {
 }
 
 output "private_endpoint_ids" {
-  description = "Gateway, model and optional private agent and registry private endpoint IDs."
+  description = "Gateway, model and optional Blob, private agent and registry private endpoint IDs."
   value = merge(
     { for key, endpoint in azapi_resource.private_endpoint : key => endpoint.id },
     { for key, endpoint in azapi_resource.private_agent_endpoint : key => endpoint.id }
   )
+}
+
+output "private_network_configuration" {
+  description = "Non-secret network ownership and actual subnet/DNS metadata. Existing foundations remain customer-owned; this output is not proof of resolver or firewall readiness."
+  value = var.enable_private_networking ? {
+    mode                      = var.private_network_mode
+    gateway_subnet_id         = local.private_gateway_subnet_id
+    endpoint_subnet_ids       = local.private_endpoint_subnet_ids
+    endpoint_subnet_prefixes  = local.private_endpoint_subnet_prefixes
+    private_dns_zone_ids      = local.private_dns_zone_ids
+    dns_zone_group_management = var.private_dns_zone_group_management
+    agent_subnet_id           = local.private_agent_subnet_id
+    client_subnet_id          = local.private_client_subnet_id
+  } : null
 }
 
 output "private_hosted_agent" {
@@ -89,7 +103,7 @@ output "private_hosted_agent" {
     project_id                     = azapi_resource.private_project[0].id
     project_endpoint               = "https://${local.private_agent_name}.services.ai.azure.com/api/projects/${local.private_project_name}"
     project_principal_id           = azapi_resource.private_project[0].identity[0].principal_id
-    subnet_id                      = azapi_resource.private_subnet["agents"].id
+    subnet_id                      = local.private_agent_subnet_id
     gateway_endpoint               = azapi_resource.gateway.output.properties.gatewayUrl
     registry_endpoint              = azapi_resource.registry.output.properties.loginServer
     key_reader_role_definition_id  = var.enable_private_test_client ? azapi_resource.private_test_key_role[0].id : azapi_resource.private_agent_key_role[0].id
@@ -103,11 +117,14 @@ output "private_test_vm_id" {
 
 output "private_probe_configuration" {
   description = "Non-secret inputs for scripts/private-path-probe.py on the optional test VM."
-  value = var.enable_private_test_client ? {
-    gateway_id              = azapi_resource.gateway.id
-    gateway_endpoint        = azapi_resource.gateway.output.properties.gatewayUrl
-    model_endpoint          = azapi_resource.models.output.properties.endpoint
-    model_names             = keys(var.model_deployments)
-    private_endpoint_subnet = local.private_subnets["endpoints"]
-  } : null
+  value = var.enable_private_test_client ? merge({
+    gateway_id               = azapi_resource.gateway.id
+    gateway_endpoint         = azapi_resource.gateway.output.properties.gatewayUrl
+    model_endpoint           = azapi_resource.models.output.properties.endpoint
+    model_names              = keys(var.model_deployments)
+    private_endpoint_subnet  = var.private_network_mode == "create" ? local.private_subnets["endpoints"] : null
+    private_endpoint_subnets = local.private_endpoint_subnet_prefixes
+    }, var.enable_storage_private_endpoint ? {
+    storage_endpoint = azapi_resource.storage.output.properties.primaryEndpoints.blob
+  } : {}) : null
 }

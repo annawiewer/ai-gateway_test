@@ -122,6 +122,7 @@ run "models_and_access_without_developer" {
     condition = (
       length(azapi_resource.role_assignment) == 7 &&
       length(azapi_resource.private_endpoint) == 0 &&
+      length(azapi_resource.private_test_storage_binding) == 0 &&
       length(azapi_resource.private_test_vm) == 0 &&
       length(azapi_resource.private_agents) == 0 &&
       length(azapi_resource.private_agent_endpoint) == 0 &&
@@ -239,6 +240,7 @@ run "reject_empty_models" {
 run "private_gateway_and_model_paths" {
   command = plan
   variables {
+    private_network_mode               = jsondecode(file("profiles/network-create.tfvars.json")).private_network_mode
     enable_private_networking          = true
     gateway_public_network_access      = "Disabled"
     models_public_network_access       = "Disabled"
@@ -265,7 +267,7 @@ run "private_gateway_and_model_paths" {
         [for nsg in azapi_resource.private_nsg : nsg.parent_id]
       ) : parent == azapi_resource.resource_group["gateway"].id]) &&
       jsonencode(azapi_resource.private_test_key_role[0].body.properties.assignableScopes) == jsonencode([azapi_resource.resource_group["gateway"].id]) &&
-      alltrue([for endpoint in azapi_resource.private_endpoint : jsonencode(endpoint.replace_triggers_refs) == jsonencode(["properties.privateLinkServiceConnections"])])
+      alltrue([for endpoint in azapi_resource.private_endpoint : jsonencode(endpoint.replace_triggers_refs) == jsonencode(["properties.privateLinkServiceConnections", "properties.subnet"])])
     )
     error_message = "Private networking, DNS and the test client must remain in the shared gateway group, replace endpoints when service targets change and preserve the custom role's assignable scope."
   }
@@ -273,6 +275,8 @@ run "private_gateway_and_model_paths" {
   assert {
     condition = (
       azapi_resource.gateway.body.properties.virtualNetworkType == "External" &&
+      output.private_network_configuration.mode == "create" &&
+      length(data.azapi_resource.existing_private_subnet) == 0 &&
       azapi_resource.gateway.body.properties.virtualNetworkConfiguration.subnetResourceId == azapi_resource.private_subnet["gateway"].id &&
       azapi_resource.gateway.body.properties.publicNetworkAccess == "Disabled" &&
       azapi_resource.models.body.properties.publicNetworkAccess == "Disabled" &&
@@ -372,7 +376,7 @@ run "private_connectivity_poc_profile" {
       !can(azapi_resource.private_endpoint["gateway"].body.properties.privateLinkServiceConnections) &&
       endswith(azapi_resource.private_endpoint["gateway"].name, "-gateway-manual-pe") &&
       azapi_resource.private_endpoint["gateway"].body.properties.manualPrivateLinkServiceConnections[0].name == "gateway-manual" &&
-      jsonencode(azapi_resource.private_endpoint["gateway"].replace_triggers_refs) == jsonencode(["properties.manualPrivateLinkServiceConnections"]) &&
+      jsonencode(azapi_resource.private_endpoint["gateway"].replace_triggers_refs) == jsonencode(["properties.manualPrivateLinkServiceConnections", "properties.subnet"]) &&
       length(azapi_resource_action.gateway_private_endpoint_approval) == 1 &&
       data.azapi_resource.gateway_private_endpoint_connection[0].parent_id == azapi_resource.gateway.id &&
       data.azapi_resource.gateway_private_endpoint_connection[0].name == "gateway-manual" &&
@@ -440,11 +444,41 @@ run "private_only_profile" {
       length(azapi_resource.private_dns_zone) == 4 &&
       length(azapi_resource.private_endpoint["gateway"].body.properties.manualPrivateLinkServiceConnections) == 1 &&
       length(azapi_resource_action.gateway_private_endpoint_approval) == 1 &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].body != null &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].body.properties.privateLinkServiceConnectionState.status == "Approved" &&
       length(azapi_resource.private_test_vm) == 0 &&
       azapi_resource.agents.body.properties.publicNetworkAccess == "Enabled" &&
       azapi_resource.registry.body.properties.publicNetworkAccess == "Enabled"
     )
-    error_message = "The private-only end-state profile must disable gateway/model public access, retain private networking, and not imply private agent execution or force a VM."
+    error_message = "The private-only profile must retain a non-null approval body even while the connection read is deferred, disable gateway/model public access, and not force private agents or a VM."
+  }
+}
+
+run "deferred_gateway_connection_keeps_stable_approval_body" {
+  command = plan
+  variables {
+    enable_private_networking                = true
+    gateway_private_endpoint_manual_approval = true
+  }
+
+  override_resource {
+    target          = azapi_resource.gateway
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/test/providers/Microsoft.ApiManagement/service/gateway"
+      output = {
+        properties = { gatewayUrl = "https://gateway.azure-api.net" }
+      }
+    }
+  }
+  assert {
+    condition = (
+      azapi_resource_action.gateway_private_endpoint_approval[0].body != null &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].body.id == azapi_resource_action.gateway_private_endpoint_approval[0].resource_id &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].body.properties.privateLinkServiceConnectionState.status == "Approved" &&
+      azapi_resource_action.gateway_private_endpoint_approval[0].when == "apply"
+    )
+    error_message = "A deferred connection read must not make the approval body null/unknown or change its target; GET/PUT selection and endpoint/status preconditions remain apply-time checks."
   }
 }
 
@@ -456,6 +490,75 @@ run "reject_private_client_without_network" {
   }
 
   expect_failures = [var.enable_private_test_client]
+}
+
+run "private_blob_storage_and_reader" {
+  command = plan
+  variables {
+    enable_private_networking          = true
+    enable_storage_private_endpoint    = true
+    storage_public_network_access      = "Disabled"
+    enable_private_test_client         = true
+    private_test_client_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleOnlyNotForDeployment"
+  }
+  override_resource {
+    target          = azapi_resource.storage
+    override_during = plan
+    values = {
+      id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/test/providers/Microsoft.Storage/storageAccounts/storage"
+      output = { properties = { primaryEndpoints = { blob = "https://storage.blob.core.windows.net/" } } }
+    }
+  }
+  override_resource {
+    target          = azapi_resource.private_test_vm[0]
+    override_during = plan
+    values = {
+      identity = {
+        type         = "SystemAssigned"
+        principal_id = "00000000-0000-0000-0000-000000000003"
+        tenant_id    = "00000000-0000-0000-0000-000000000004"
+      }
+    }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_endpoint) == 3 &&
+      length(azapi_resource.private_dns_zone) == 5 &&
+      azapi_resource.private_endpoint["storage"].body.properties.privateLinkServiceConnections[0].properties.privateLinkServiceId == azapi_resource.storage.id &&
+      azapi_resource.private_endpoint["storage"].body.properties.privateLinkServiceConnections[0].properties.groupIds[0] == "blob" &&
+      azapi_resource.private_dns_zone["storage"].name == "privatelink.blob.core.windows.net" &&
+      length(azapi_resource.private_dns_zone_group["storage"].body.properties.privateDnsZoneConfigs) == 1 &&
+      output.private_probe_configuration.storage_endpoint == "https://storage.blob.core.windows.net/"
+    )
+    error_message = "Opt-in private Blob storage must add only its endpoint/DNS and pass the actual service endpoint to the probe."
+  }
+  assert {
+    condition = (
+      length(azapi_resource.private_test_storage_binding) == 1 &&
+      azapi_resource.private_test_storage_binding[0].parent_id == azapi_resource.storage.id &&
+      azapi_resource.private_test_storage_binding[0].body.properties.principalId == azapi_resource.private_test_vm[0].identity[0].principal_id &&
+      endswith(azapi_resource.private_test_storage_binding[0].body.properties.roleDefinitionId, "/2a2b9908-6ea1-4ae2-8e65-a410df84e7d1")
+    )
+    error_message = "Only the private test VM gets Blob Data Reader, scoped to this account."
+  }
+}
+
+run "reject_private_storage_without_network" {
+  command = plan
+  variables {
+    enable_storage_private_endpoint = true
+    storage_public_network_access   = "Disabled"
+  }
+  expect_failures = [var.enable_storage_private_endpoint]
+}
+
+run "reject_private_storage_with_public_access" {
+  command = plan
+  variables {
+    enable_private_networking       = true
+    enable_storage_private_endpoint = true
+  }
+  expect_failures = [var.enable_storage_private_endpoint]
 }
 
 run "reject_manual_endpoint_without_network" {

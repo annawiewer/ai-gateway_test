@@ -35,14 +35,23 @@ $dcr = "$monitoringGroup/providers/Microsoft.Insights/dataCollectionRules/gatewa
 $dce = "$monitoringGroup/providers/Microsoft.Insights/dataCollectionEndpoints/gateway"
 $amw = "$monitoringGroup/providers/Microsoft.Monitor/accounts/gateway"
 $publisherRole = "/subscriptions/$subscription/providers/Microsoft.Authorization/roleDefinitions/3913510d-42f4-4e42-8a64-420c390055eb"
-$testDirectory = Join-Path ([IO.Path]::GetTempPath()) "gateway-acceptance-tests-$([guid]::NewGuid().ToString('N'))"
+$testDirectory = Join-Path $PSScriptRoot ".customer-acceptance-tests-$([guid]::NewGuid().ToString('N'))"
 $null = New-Item -ItemType Directory -Path $testDirectory
+$previousTemp = $env:TEMP
+$previousTmp = $env:TMP
+$env:TEMP = $testDirectory
+$env:TMP = $testDirectory
 
 function New-Fixture {
     $global:acceptanceTest = @{
         scenario = ''; calls = [Collections.Generic.List[string]]::new(); power = 'deallocated'
         profile = 'private-connectivity'
         resources = @{}; traces = @(('a' * 32), ('b' * 32))
+        probeDns = @{
+            gateway = @{ host = 'gateway.example'; expected_subnet = '10.247.1.0/24'; addresses = @('10.247.1.4') }
+            models = @{ host = 'models.example'; expected_subnet = '10.247.1.0/24'; addresses = @('10.247.1.5') }
+            storage = @{ host = 'storage.blob.core.windows.net'; expected_subnet = '10.247.1.0/24'; addresses = @('10.247.1.7') }
+        }
         outputs = @{
             resource_group_name = @{ value = 'test' }
             resource_groups = @{ value = @{ gateway = 'test'; models = 'test'; agents = 'test' } }
@@ -181,6 +190,115 @@ function git {
     if ($global:acceptanceTest.scenario -eq 'dirty') { ' M main.tf' }
 }
 
+function Enable-StorageFixture {
+    $f = $global:acceptanceTest
+    $endpoint = "$group/providers/Microsoft.Network/privateEndpoints/storage"
+    $zone = "$group/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net"
+    $f.outputs.private_endpoint_ids.value.storage = $endpoint
+    $f.outputs.private_probe_configuration.value.storage_endpoint = 'https://storage.blob.core.windows.net/'
+    $f.resources[$storage].properties += @{ publicNetworkAccess = 'Disabled'; allowSharedKeyAccess = $false; allowBlobPublicAccess = $false }
+    $f.resources[$vm] = @{ identity = @{ principalId = 'vm-principal'; tenantId = $tenant } }
+    $f.resources[$endpoint] = @{ properties = @{
+        provisioningState = 'Succeeded'; subnet = @{ id = "$vnet/subnets/endpoints" }
+        privateLinkServiceConnections = @(@{ properties = @{
+            privateLinkServiceId = $storage; groupIds = @('blob')
+            privateLinkServiceConnectionState = @{ status = 'Approved' }
+        } })
+    } }
+    $f.resources["$endpoint/privateDnsZoneGroups/default"] = @{ properties = @{
+        provisioningState = 'Succeeded'; privateDnsZoneConfigs = @(@{ properties = @{ privateDnsZoneId = $zone } })
+    } }
+    $f.resources["$zone/virtualNetworkLinks/gateway-vnet"] = @{ properties = @{
+        provisioningState = 'Succeeded'; virtualNetwork = @{ id = $vnet }
+    } }
+    $f.resources["$storage/providers/Microsoft.Authorization/roleAssignments"].value += @{ properties = @{
+        scope = $storage; principalId = 'vm-principal'; principalType = 'ServicePrincipal'
+        roleDefinitionId = "/subscriptions/$subscription/providers/Microsoft.Authorization/roleDefinitions/2a2b9908-6ea1-4ae2-8e65-a410df84e7d1"
+    } }
+}
+
+function Enable-ReusableNetworkFixture([string]$Mode = 'existing', [string]$DnsManagement = 'workload', [switch]$AdditionalEndpoints) {
+    Enable-StorageFixture
+    $f = $global:acceptanceTest
+    $externalGroup = "/subscriptions/$tenant/resourceGroups/customer-network"
+    $network = @{
+        mode = $Mode; dns_zone_group_management = $DnsManagement
+        gateway_subnet_id = if ($Mode -eq 'existing') { "$externalGroup/providers/Microsoft.Network/virtualNetworks/outbound/subnets/apim" } else { "$vnet/subnets/gateway" }
+        endpoint_subnet_ids = @{}; endpoint_subnet_prefixes = @{}; private_dns_zone_ids = @{}
+        agent_subnet_id = $null; client_subnet_id = $null
+    }
+    $f.outputs.private_network_configuration = @{ value = $network }
+    $f.resources[$gateway].properties.virtualNetworkConfiguration.subnetResourceId = $network.gateway_subnet_id
+    $configuration = $f.outputs.private_probe_configuration.value
+    $configuration.private_endpoint_subnets = @{ unused = 'ignored-unused-metadata' }
+    if ($Mode -eq 'existing') { $configuration.private_endpoint_subnet = $null }
+    $servicePrefixes = @{
+        gateway = @('10.51.1.0/24'); models = @('10.52.1.128/25', 'fd00:52::/64'); storage = @('10.53.1.0/24')
+        agents = @('10.54.1.0/24'); registry = @('10.55.1.0/24')
+    }
+    $zoneNames = @{
+        gateway = 'privatelink.azure-api.net'; cognitiveservices = 'privatelink.cognitiveservices.azure.com'
+        openai = 'privatelink.openai.azure.com'; services = 'privatelink.services.ai.azure.com'
+        storage = 'privatelink.blob.core.windows.net'; registry = 'privatelink.azurecr.io'
+    }
+    foreach ($zone in $zoneNames.Keys) {
+        $dnsGroup = if ($Mode -eq 'existing') { "/subscriptions/$tenant/resourceGroups/central-dns" } else { $group }
+        $network.private_dns_zone_ids[$zone] = "$dnsGroup/providers/Microsoft.Network/privateDnsZones/$($zoneNames[$zone])"
+        if ($Mode -eq 'existing') {
+            $f.resources.Remove("$group/providers/Microsoft.Network/privateDnsZones/$($zoneNames[$zone])/virtualNetworkLinks/gateway-vnet")
+        }
+    }
+    $services = @('gateway', 'models', 'storage')
+    if ($AdditionalEndpoints) { $services += @('agents', 'registry') }
+    foreach ($service in $services) {
+        $subnetId = if ($Mode -eq 'existing') {
+            "/subscriptions/$subscription/resourceGroups/network-$service/providers/Microsoft.Network/virtualNetworks/vnet-$service/subnets/pe-$service"
+        } else { "$vnet/subnets/endpoints" }
+        $prefixes = @(if ($Mode -eq 'existing') { $servicePrefixes[$service] } else { '10.247.1.0/24' })
+        $network.endpoint_subnet_ids[$service] = $subnetId
+        $network.endpoint_subnet_prefixes[$service] = @($prefixes)
+        $f.resources[$subnetId] = @{ properties = @{ addressPrefixes = @($prefixes) } }
+        if ($service -in @('agents', 'registry')) {
+            $endpoint = "$group/providers/Microsoft.Network/privateEndpoints/$service"
+            $f.outputs.private_endpoint_ids.value[$service] = $endpoint
+            $target = if ($service -eq 'agents') { $agents } else { $registry }
+            $groupIds = if ($service -eq 'agents') { @('account') } else { @('registry') }
+            $f.resources[$endpoint] = @{ properties = @{
+                provisioningState = 'Succeeded'; subnet = @{ id = $subnetId }
+                privateLinkServiceConnections = @(@{ properties = @{
+                    privateLinkServiceId = $target; groupIds = @($groupIds)
+                    privateLinkServiceConnectionState = @{ status = 'Approved' }
+                } })
+            } }
+        }
+        $endpoint = $f.outputs.private_endpoint_ids.value[$service]
+        $f.resources[$endpoint].properties.subnet.id = $subnetId
+        $zones = switch ($service) {
+            gateway { @('gateway') }
+            models { @('cognitiveservices', 'openai', 'services') }
+            storage { @('storage') }
+            agents { @('cognitiveservices', 'openai', 'services') }
+            registry { @('registry') }
+        }
+        $configs = @($zones | ForEach-Object { @{ properties = @{ privateDnsZoneId = $network.private_dns_zone_ids[$_] } } })
+        $groupName = if ($DnsManagement -eq 'platform') { 'central-policy' } else { 'workload-dns' }
+        $f.resources["$endpoint/privateDnsZoneGroups"] = @{ value = @(@{
+            id = "$endpoint/privateDnsZoneGroups/$groupName"; name = $groupName
+            properties = @{ provisioningState = 'Succeeded'; privateDnsZoneConfigs = $configs }
+        }) }
+        $f.resources.Remove("$endpoint/privateDnsZoneGroups/default")
+        if ($f.probeDns.ContainsKey($service)) {
+            $configuration.private_endpoint_subnets[$service] = @($prefixes)
+            $f.probeDns[$service].expected_subnets = @($prefixes)
+            $f.probeDns[$service].expected_subnet = if ($prefixes.Count -eq 1) { $prefixes[0] } else { $null }
+            $f.probeDns[$service].addresses = @(if ($Mode -eq 'existing' -and $service -eq 'models') {
+                '10.52.1.129', 'fd00:52::7'
+            } else { $prefixes[0].Replace('.0/24', '.7') })
+        }
+        else { $configuration.private_endpoint_subnets[$service] = 'ignored-unused-metadata' }
+    }
+}
+
 function terraform {
     $global:LASTEXITCODE = 0
     $f = $global:acceptanceTest
@@ -247,11 +365,18 @@ function az {
             $f.scriptPath = $path
             $probe = @{
                 run_id = $configuration.run_id; passed = ($f.scenario -ne 'runtime-error')
+                dns = @($f.probeDns.gateway, $f.probeDns.models)
                 inference = @(
                     @{ model = 'full'; status = 200; reply = 'OK'; trace_id = $f.traces[0] },
                     @{ model = 'mini'; status = 200; reply = 'OK'; trace_id = $f.traces[1] }
                 )
                 authentication = @(@{ case = 'missing-key'; status = 401 }, @{ case = 'invalid-key'; status = 401 })
+            }
+            if ($configuration.storage_endpoint -and $f.scenario -ne 'storage-missing-proof') {
+                $probe.storage = @{
+                    status = 200; operation = 'list-containers'; authentication = 'ManagedIdentity'
+                    dns = $f.probeDns.storage
+                }
             }
             $message = $probe | ConvertTo-Json -Depth 10 -Compress
             return (@{ value = @(@{ message = $message }) } | ConvertTo-Json -Depth 5)
@@ -298,9 +423,21 @@ function az {
 }
 
 $cases = [ordered]@{
+    'create-network-metadata-pass' = @('PASS', 'runtime')
+    'existing-workload-pass' = @('PASS', 'runtime'); 'existing-platform-pass' = @('PASS', 'runtime')
+    'existing-readonly' = @('BLOCKED', 'runtime'); 'existing-platform-missing-binding' = @('FAIL', 'private-network')
+    'existing-wrong-subnet' = @('FAIL', 'private-network'); 'existing-wrong-zone' = @('FAIL', 'private-network')
+    'existing-missing-subnet' = @('FAIL', 'private-network'); 'existing-invalid-prefix' = @('FAIL', 'private-network')
+    'existing-null-metadata' = @('FAIL', 'private-network'); 'existing-missing-probe-service' = @('FAIL', 'private-network')
+    'existing-wrong-live-prefix' = @('FAIL', 'private-network'); 'existing-unsafe-subnet' = @('FAIL', 'private-network')
+    'existing-storage-wrong-dns' = @('FAIL', 'runtime'); 'existing-model-wrong-dns' = @('FAIL', 'runtime')
+    'existing-storage-wrong-prefix' = @('FAIL', 'runtime')
     'private-only-pass' = @('PASS', 'runtime'); 'private-only-readonly' = @('BLOCKED', 'runtime')
     'private-only-public' = @('FAIL', 'private-network'); 'hybrid-disabled' = @('FAIL', 'private-network')
     'private-only-pending' = @('FAIL', 'private-network'); 'private-only-drift' = @('FAIL', 'drift')
+    'storage-pass' = @('PASS', 'runtime'); 'storage-public' = @('FAIL', 'private-network')
+    'storage-wrong-target' = @('FAIL', 'private-network'); 'storage-wrong-role' = @('FAIL', 'roles')
+    'storage-missing-metadata' = @('FAIL', 'private-network'); 'storage-missing-proof' = @('FAIL', 'runtime')
     pass = @('PASS', 'runtime'); readonly = @('BLOCKED', 'runtime')
     'omitted-api-format' = @('PASS', 'runtime'); 'lowercase-exporter-kind' = @('PASS', 'runtime')
     'arm-dcr-fallback' = @('PASS', 'runtime')
@@ -330,7 +467,9 @@ $cases = [ordered]@{
     'nonfinite-metrics' = @('FAIL', 'telemetry'); 'relinked-law' = @('FAIL', 'monitoring')
     'wrong-dce-endpoint' = @('FAIL', 'monitoring'); 'unsafe-query-endpoint' = @('FAIL', 'monitoring')
 }
-$runtimeCases = @('private-only-pass', 'pass', 'manual-approved', 'omitted-api-format', 'lowercase-exporter-kind', 'arm-dcr-fallback', 'runtime-error',
+$runtimeCases = @('create-network-metadata-pass', 'existing-workload-pass', 'existing-platform-pass',
+    'existing-storage-wrong-dns', 'existing-model-wrong-dns', 'existing-storage-wrong-prefix',
+    'private-only-pass', 'storage-pass', 'storage-missing-proof', 'pass', 'manual-approved', 'omitted-api-format', 'lowercase-exporter-kind', 'arm-dcr-fallback', 'runtime-error',
     'missing-telemetry', 'missing-logs', 'missing-metrics', 'metrics-error', 'telemetry-schema', 'uncorrelated-telemetry',
     'wrong-metric-scope', 'stale-metrics', 'nonfinite-metrics', 'cleanup-error')
 try {
@@ -347,6 +486,12 @@ try {
         $additionalFile = Join-Path $testDirectory 'opposite-ingress.tfvars.json'
         $oppositeAccess = if ($f.profile -eq 'private-only') { 'Enabled' } else { 'Disabled' }
         @{ gateway_public_network_access = $oppositeAccess } | ConvertTo-Json | Set-Content -LiteralPath $additionalFile
+        if ($case.StartsWith('storage-')) { Enable-StorageFixture }
+        if ($case.StartsWith('existing-')) {
+            $management = if ($case.StartsWith('existing-platform-')) { 'platform' } else { 'workload' }
+            Enable-ReusableNetworkFixture -DnsManagement $management -AdditionalEndpoints:($case -eq 'existing-workload-pass')
+        }
+        if ($case -eq 'create-network-metadata-pass') { Enable-ReusableNetworkFixture -Mode create }
         if ($case -in @('manual-approved', 'manual-pending', 'manual-wrong-target', 'mixed-connections')) {
             $properties = $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties
             $properties.manualPrivateLinkServiceConnections = $properties.privateLinkServiceConnections
@@ -359,9 +504,31 @@ try {
             }
         }
         switch ($case) {
+            'existing-platform-missing-binding' { $f.resources["$($f.outputs.private_endpoint_ids.value.models)/privateDnsZoneGroups"].value = @() }
+            'existing-wrong-subnet' { $f.resources[$f.outputs.private_endpoint_ids.value.models].properties.subnet.id = $f.outputs.private_network_configuration.value.endpoint_subnet_ids.gateway }
+            'existing-wrong-zone' {
+                $f.resources["$($f.outputs.private_endpoint_ids.value.models)/privateDnsZoneGroups"].value[0].properties.privateDnsZoneConfigs[0].properties.privateDnsZoneId =
+                    "$group/providers/Microsoft.Network/privateDnsZones/privatelink.cognitiveservices.azure.com"
+            }
+            'existing-missing-subnet' { $f.outputs.private_network_configuration.value.endpoint_subnet_ids.Remove('models') }
+            'existing-invalid-prefix' { $f.outputs.private_network_configuration.value.endpoint_subnet_prefixes.models = @('not-a-cidr') }
+            'existing-null-metadata' { $f.outputs.private_network_configuration.value = $null }
+            'existing-missing-probe-service' {
+                $f.outputs.private_probe_configuration.value.private_endpoint_subnets.Remove('models')
+                $f.outputs.private_probe_configuration.value.private_endpoint_subnet = '10.52.1.0/24'
+            }
+            'existing-wrong-live-prefix' { $f.resources[$f.outputs.private_network_configuration.value.endpoint_subnet_ids.models].properties.addressPrefixes = @('10.99.1.0/24') }
+            'existing-unsafe-subnet' { $f.outputs.private_network_configuration.value.endpoint_subnet_ids.models += '?unexpected=true' }
+            'existing-storage-wrong-dns' { $f.probeDns.storage.addresses = @('10.51.1.7') }
+            'existing-model-wrong-dns' { $f.probeDns.models.addresses = @('10.51.1.7') }
+            'existing-storage-wrong-prefix' { $f.probeDns.storage.expected_subnets = @('10.51.1.0/24') }
             'private-only-public' { $f.resources[$gateway].properties.publicNetworkAccess = 'Enabled' }
             'hybrid-disabled' { $f.resources[$gateway].properties.publicNetworkAccess = 'Disabled' }
             'private-only-pending' { $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status = 'Pending' }
+            'storage-public' { $f.resources[$storage].properties.publicNetworkAccess = 'Enabled' }
+            'storage-wrong-target' { $f.resources[$f.outputs.private_endpoint_ids.value.storage].properties.privateLinkServiceConnections[0].properties.privateLinkServiceId = $models }
+            'storage-wrong-role' { $f.resources["$storage/providers/Microsoft.Authorization/roleAssignments"].value[-1].properties.roleDefinitionId = 'wrong' }
+            'storage-missing-metadata' { $f.outputs.private_probe_configuration.value.Remove('storage_endpoint') }
             'wrong-scope' { $f.outputs.gateway_id.value = $gateway.Replace('/resourceGroups/test/', '/resourceGroups/other/') }
             'missing-output' { $f.outputs.Remove('resource_group_name') }
             'failed-endpoint' { $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties.provisioningState = 'Failed' }
@@ -406,7 +573,7 @@ try {
         try {
             $console = @(& $runner -SubscriptionId $subscription -TenantId $tenant -ResourceGroup test `
                 -ReportDirectory $destination -AdditionalVarFile $additionalFile @parameters `
-                -RunPrivateProbe:($case -notin @('readonly', 'private-only-readonly')) -TelemetryWaitSeconds 0 6>&1)
+                -RunPrivateProbe:($case -notin @('readonly', 'private-only-readonly', 'existing-readonly')) -TelemetryWaitSeconds 0 6>&1)
         }
         catch { $caught = $_.Exception.Message }
         $file = Get-ChildItem -LiteralPath $destination -Recurse -Filter acceptance.json
@@ -417,7 +584,7 @@ try {
             throw "Case $case returned $($result.backendStatus); error=$caught; checks=$($result.checks | ConvertTo-Json -Depth 5 -Compress)"
         }
         $expectedCheck = $cases[$case][1]
-        $expectedStatus = if ($cases[$case][0] -eq 'PASS') { 'PASS' } elseif ($case -in @('readonly', 'private-only-readonly')) { 'NOT RUN' } else { 'FAIL' }
+        $expectedStatus = if ($cases[$case][0] -eq 'PASS') { 'PASS' } elseif ($case -in @('readonly', 'private-only-readonly', 'existing-readonly')) { 'NOT RUN' } else { 'FAIL' }
         if ($result.checks.$expectedCheck.status -ne $expectedStatus) { throw "Wrong failure boundary in $case." }
         if ($result.profile -cne "profiles/$($f.profile).tfvars.json") { throw "Wrong reported profile in $case." }
         if ($result.checks.'private-network'.status -eq 'PASS') {
@@ -429,6 +596,20 @@ try {
             }
         }
         if ($f.planArguments -and "-var-file=$additionalFile" -notin $f.planArguments) { throw "Additional inputs omitted in $case." }
+        if ($case.StartsWith('existing-')) {
+            if (@($f.calls | Where-Object { $_ -match '/virtualNetworkLinks/' }).Count) {
+                throw "Existing-network acceptance must not require direct spoke DNS links in $case."
+            }
+            if ($result.checks.'private-network'.status -eq 'PASS' -and
+                ($result.checks.'private-network'.evidence.networkMode -ne 'existing' -or
+                    $result.checks.'private-network'.evidence.dnsZoneGroupManagement -ne $management)) {
+                throw "Missing reusable-network evidence in $case."
+            }
+            if ($result.checks.'private-network'.status -eq 'FAIL' -and
+                $result.checks.'private-network'.detail -like 'Unexpected check error*') {
+                throw "Reusable-network metadata must fail clearly in $case."
+            }
+        }
         if ($case -in @('missing-exporter-kind', 'null-exporter-kind') -and
             $result.checks.monitoring.detail -notmatch 'portal cannot recognize') { throw "Missing portal diagnostic in $case." }
         if ($case -notin $runtimeCases -and
@@ -439,4 +620,8 @@ try {
     }
     "Customer acceptance checks passed ($($cases.Count) scenarios; no Azure or model calls)."
 }
-finally { Remove-Item -LiteralPath $testDirectory -Recurse -Force }
+finally {
+    $env:TEMP = $previousTemp
+    $env:TMP = $previousTmp
+    Remove-Item -LiteralPath $testDirectory -Recurse -Force
+}

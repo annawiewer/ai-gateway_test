@@ -10,6 +10,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 
 
 def request_json(opener, url, headers=None, body=None):
@@ -19,11 +20,45 @@ def request_json(opener, url, headers=None, body=None):
         return response.status, json.load(response)
 
 
-def private_dns(host, subnet):
-    addresses = sorted({entry[4][0] for entry in socket.getaddrinfo(host, 443, socket.AF_INET)})
-    if not addresses or not all(ipaddress.ip_address(address) in subnet for address in addresses):
-        raise RuntimeError(f"{host} did not resolve exclusively inside {subnet}: {addresses}")
-    return {"host": host, "addresses": addresses, "expected_subnet": str(subnet)}
+def endpoint_subnets(configuration):
+    services = ["gateway", "models"]
+    if "storage_endpoint" in configuration:
+        services.append("storage")
+    if "private_endpoint_subnets" in configuration:
+        metadata = configuration["private_endpoint_subnets"]
+        if not isinstance(metadata, dict):
+            raise RuntimeError("private_endpoint_subnets must be a map of service CIDR lists.")
+    else:
+        metadata = {service: [configuration.get("private_endpoint_subnet")] for service in services}
+    result = {}
+    for service in services:
+        prefixes = metadata.get(service)
+        if not isinstance(prefixes, list) or not prefixes:
+            raise RuntimeError(f"Missing or invalid private endpoint CIDR list for {service}.")
+        try:
+            if any(not isinstance(prefix, str) or "/" not in prefix for prefix in prefixes):
+                raise ValueError
+            result[service] = tuple(ipaddress.ip_network(prefix) for prefix in prefixes)
+        except ValueError:
+            raise RuntimeError(f"Invalid private endpoint CIDR for {service}.") from None
+    return result
+
+
+def private_dns(host, subnets):
+    if isinstance(subnets, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
+        subnets = (subnets,)
+    addresses = sorted({entry[4][0] for entry in socket.getaddrinfo(host, 443, socket.AF_UNSPEC)})
+    if not addresses or not all(
+        any(ipaddress.ip_address(address) in subnet for subnet in subnets) for address in addresses
+    ):
+        raise RuntimeError(
+            f"{host} did not resolve exclusively inside {[str(subnet) for subnet in subnets]}: {addresses}"
+        )
+    return {
+        "host": host, "addresses": addresses,
+        "expected_subnets": [str(subnet) for subnet in subnets],
+        "expected_subnet": str(subnets[0]) if len(subnets) == 1 else None,
+    }
 
 
 def validate_model_apis(configuration):
@@ -66,19 +101,62 @@ def check_key_rejection(opener, url, body, headers):
     raise RuntimeError("Gateway accepted a missing or invalid runtime key")
 
 
+def check_storage(opener, endpoint, subnets):
+    parsed = urllib.parse.urlsplit(endpoint)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or not parsed.hostname.endswith(".blob.core.windows.net")
+        or parsed.username or parsed.password or parsed.port not in (None, 443)
+        or parsed.path not in ("", "/") or parsed.query or parsed.fragment
+    ):
+        raise RuntimeError("Invalid storage endpoint for the private Blob probe")
+    dns = private_dns(parsed.hostname, subnets)
+    _, identity = request_json(
+        opener,
+        "http://169.254.169.254/metadata/identity/oauth2/token"
+        "?api-version=2018-02-01&resource=https%3A%2F%2Fstorage.azure.com%2F",
+        {"Metadata": "true"},
+    )
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/?comp=list&maxresults=1",
+        headers={"Authorization": "Bearer " + identity["access_token"], "x-ms-version": "2023-11-03"},
+    )
+    for attempt in range(12):
+        try:
+            with opener.open(request, timeout=90) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"Private storage read failed: HTTP {response.status}")
+                try:
+                    root = ET.fromstring(response.read(1024 * 1024))
+                except ET.ParseError:
+                    raise RuntimeError("Private storage returned an invalid list-containers response") from None
+                if root.tag != "EnumerationResults" or root.find("Containers") is None:
+                    raise RuntimeError("Private storage returned an unexpected list-containers response")
+                return {"dns": dns, "status": 200, "operation": "list-containers", "authentication": "ManagedIdentity"}
+        except urllib.error.HTTPError as error:
+            if error.code != 403 or attempt == 11:
+                raise RuntimeError(f"Private storage read failed: HTTP {error.code}") from None
+            time.sleep(15)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configuration", required=True, help="JSON from private_probe_configuration output.")
     args = parser.parse_args()
     configuration = json.loads(args.configuration)
     validate_model_apis(configuration)
+    subnets = endpoint_subnets(configuration)
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    subnet = ipaddress.ip_network(configuration["private_endpoint_subnet"])
     gateway = configuration["gateway_endpoint"].rstrip("/")
     dns = [
-        private_dns(urllib.parse.urlsplit(endpoint).hostname, subnet)
-        for endpoint in (gateway, configuration["model_endpoint"])
+        private_dns(urllib.parse.urlsplit(endpoint).hostname, subnets[service])
+        for service, endpoint in (("gateway", gateway), ("models", configuration["model_endpoint"]))
     ]
+    storage = (
+        check_storage(opener, configuration["storage_endpoint"], subnets["storage"])
+        if "storage_endpoint" in configuration else None
+    )
     _, identity = request_json(
         opener,
         "http://169.254.169.254/metadata/identity/oauth2/token"
@@ -148,6 +226,7 @@ def main():
     print(json.dumps({
         "run_id": configuration.get("run_id"),
         "dns": dns, "inference": results, "authentication": authentication, "passed": True,
+        **({"storage": storage} if storage is not None else {}),
     }))
 
 

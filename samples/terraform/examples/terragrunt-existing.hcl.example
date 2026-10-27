@@ -1,0 +1,55 @@
+# Copy into your workload live unit as terragrunt.hcl, not into a second owner.
+# Adapt all paths and retain your approved include/backend/state process.
+# Follow deployment.md#optional-terragrunt-adapter for placement and output mapping.
+# Network/DNS units must already expose real outputs; do not deploy using mocks.
+include "customer" {
+  path = find_in_parent_folders("root.hcl")
+}
+
+locals {
+  # A clean local checkout of this repository, without deployment tfvars/state.
+  sample_root = "C:\\replace-with-your-checkout\\ai-gateway_test\\samples\\terraform"
+}
+
+terraform {
+  source = local.sample_root
+
+  extra_arguments "customer_inputs_and_private_posture" {
+    commands = get_terraform_commands_that_need_vars()
+    arguments = [
+      "-var-file=${get_terragrunt_dir()}\\customer.tfvars",
+      "-var-file=${local.sample_root}\\profiles\\private-only.tfvars.json",
+    ]
+  }
+}
+
+# Expected outputs: gateway_subnet_id (string), endpoint_subnet_ids (map).
+# For this minimal example the map contains gateway and models.
+dependency "network" {
+  config_path = "${get_terragrunt_dir()}\\..\\replace-with-your-network-unit"
+}
+
+# Expected output: private_dns_zone_ids (map), with gateway,
+# cognitiveservices, openai and services keys; see docs/reference.md.
+dependency "dns" {
+  config_path = "${get_terragrunt_dir()}\\..\\replace-with-your-dns-unit"
+}
+
+inputs = {
+  private_network_mode              = "existing"
+  private_dns_zone_group_management = "workload"
+  existing_private_network = {
+    gateway_subnet_id    = dependency.network.outputs.gateway_subnet_id
+    endpoint_subnet_ids  = dependency.network.outputs.endpoint_subnet_ids
+    private_dns_zone_ids = dependency.dns.outputs.private_dns_zone_ids
+  }
+}
+
+# customer.tfvars supplies the ordinary workload inputs, NOT these ownership inputs.
+# Inspect inherited var-files too: they can override Terragrunt inputs.
+# Keep extra runtime var-files before the private-only profile.
+# Optional agent, storage endpoint and test VM remain disabled by default.
+# Use "platform" only when central automation owns the endpoint DNS zone groups.
+# private-only is the final posture: follow the deployment guide's readiness gates;
+# this adapter is not proof of private-from-first-create support or DNS readiness.
+# Use the existing single-unit pipeline; helpers do not auto-discover this unit/cache.

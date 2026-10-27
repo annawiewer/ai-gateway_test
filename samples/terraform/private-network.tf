@@ -4,13 +4,14 @@ locals {
     cognitiveservices = "privatelink.cognitiveservices.azure.com"
     openai            = "privatelink.openai.azure.com"
     services          = "privatelink.services.ai.azure.com"
-  }, var.enable_private_hosted_agent ? { registry = "privatelink.azurecr.io" } : {}) : {}
-  private_subnets = var.enable_private_networking ? merge({
+    }, var.enable_storage_private_endpoint ? { storage = "privatelink.blob.core.windows.net" } : {},
+  var.enable_private_hosted_agent ? { registry = "privatelink.azurecr.io" } : {}) : {}
+  private_subnets = local.create_private_network ? merge({
     gateway   = cidrsubnet(var.private_network_address_prefix, 8, 0)
     endpoints = cidrsubnet(var.private_network_address_prefix, 8, 1)
     client    = cidrsubnet(var.private_network_address_prefix, 8, 2)
   }, var.enable_private_hosted_agent ? { agents = cidrsubnet(var.private_network_address_prefix, 8, 3) } : {}) : {}
-  private_endpoints = var.enable_private_networking ? {
+  private_endpoints = var.enable_private_networking ? merge({
     gateway = {
       resource_id         = azapi_resource.gateway.id
       group_id            = "Gateway"
@@ -25,11 +26,19 @@ locals {
       connection_name     = "models"
       connection_property = "privateLinkServiceConnections"
     }
-  } : {}
+    }, var.enable_storage_private_endpoint ? {
+    storage = {
+      resource_id         = azapi_resource.storage.id
+      group_id            = "blob"
+      dns_keys            = ["storage"]
+      connection_name     = "storage"
+      connection_property = "privateLinkServiceConnections"
+    }
+  } : {}) : {}
 }
 
 resource "azapi_resource" "private_vnet" {
-  count     = var.enable_private_networking ? 1 : 0
+  count     = local.create_private_network ? 1 : 0
   type      = "Microsoft.Network/virtualNetworks@2024-05-01"
   name      = "${local.names.gateway}-vnet"
   parent_id = azapi_resource.resource_group["gateway"].id
@@ -38,10 +47,13 @@ resource "azapi_resource" "private_vnet" {
   body = {
     properties = { addressSpace = { addressPrefixes = [var.private_network_address_prefix] } }
   }
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "azapi_resource" "private_nsg" {
-  for_each  = var.enable_private_networking ? toset(concat(["gateway", "client"], var.enable_private_hosted_agent ? ["agents"] : [])) : toset([])
+  for_each  = local.create_private_network ? toset(concat(["gateway", "client"], var.enable_private_hosted_agent ? ["agents"] : [])) : toset([])
   type      = "Microsoft.Network/networkSecurityGroups@2024-05-01"
   name      = "${local.names.gateway}-${each.key}-nsg"
   parent_id = azapi_resource.resource_group["gateway"].id
@@ -104,7 +116,7 @@ resource "azapi_resource" "private_subnet" {
 }
 
 resource "azapi_resource" "private_dns_zone" {
-  for_each  = local.private_dns_zones
+  for_each  = local.create_private_network ? local.private_dns_zones : {}
   type      = "Microsoft.Network/privateDnsZones@2020-06-01"
   name      = each.value
   parent_id = azapi_resource.resource_group["gateway"].id
@@ -114,7 +126,7 @@ resource "azapi_resource" "private_dns_zone" {
 }
 
 resource "azapi_resource" "private_dns_link" {
-  for_each  = local.private_dns_zones
+  for_each  = local.create_private_network ? local.private_dns_zones : {}
   type      = "Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01"
   name      = "gateway-vnet"
   parent_id = azapi_resource.private_dns_zone[each.key].id
@@ -132,13 +144,13 @@ resource "azapi_resource" "private_endpoint" {
   type      = "Microsoft.Network/privateEndpoints@2024-05-01"
   name      = "${local.names.gateway}-${each.value.connection_name}-pe"
   parent_id = azapi_resource.resource_group["gateway"].id
-  location  = var.gateway_location
+  location  = local.private_endpoint_locations[each.key]
   tags      = local.tags
   # Body-relative paths cover known targets; unknown IDs also need -replace (see reference).
-  replace_triggers_refs = ["properties.${each.value.connection_property}"]
+  replace_triggers_refs = ["properties.${each.value.connection_property}", "properties.subnet"]
   body = {
     properties = {
-      subnet = { id = azapi_resource.private_subnet["endpoints"].id }
+      subnet = { id = local.private_endpoint_subnet_ids[each.key] }
       (each.value.connection_property) = [{
         name = each.value.connection_name
         properties = {
@@ -167,9 +179,9 @@ resource "azapi_resource_action" "gateway_private_endpoint_approval" {
   method      = data.azapi_resource.gateway_private_endpoint_connection[0].output.properties.privateLinkServiceConnectionState.status == "Approved" ? "GET" : "PUT"
   when        = "apply"
   locks       = [azapi_resource.gateway.id]
-  # Legacy APIM rejects repeat approval; PUT also requires the read-only body.id.
-  body = data.azapi_resource.gateway_private_endpoint_connection[0].output.properties.privateLinkServiceConnectionState.status == "Approved" ? null : {
-    id = data.azapi_resource.gateway_private_endpoint_connection[0].id
+  # A non-null body avoids AzAPI's null/unknown plan bug; GET never sends this body.
+  body = {
+    id = "${azapi_resource.gateway.id}/privateEndpointConnections/${local.private_endpoints["gateway"].connection_name}"
     properties = {
       privateLinkServiceConnectionState = {
         status      = "Approved"
@@ -192,7 +204,7 @@ resource "azapi_resource_action" "gateway_private_endpoint_approval" {
 }
 
 resource "azapi_resource" "private_dns_zone_group" {
-  for_each  = local.private_endpoints
+  for_each  = var.private_dns_zone_group_management == "workload" ? local.private_endpoints : {}
   type      = "Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01"
   name      = "default"
   parent_id = azapi_resource.private_endpoint[each.key].id
@@ -200,7 +212,7 @@ resource "azapi_resource" "private_dns_zone_group" {
     properties = {
       privateDnsZoneConfigs = [for key in each.value.dns_keys : {
         name       = key
-        properties = { privateDnsZoneId = azapi_resource.private_dns_zone[key].id }
+        properties = { privateDnsZoneId = local.private_dns_zone_ids[key] }
       }]
     }
   }

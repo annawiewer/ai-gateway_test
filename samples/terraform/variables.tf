@@ -76,7 +76,7 @@ variable "gateway_location" {
 }
 
 variable "storage_public_network_access" {
-  description = "Storage public network access. Use Disabled when required by Azure Policy; private connectivity must then be provided separately for hosted agents."
+  description = "Storage public network access. Use Disabled when required by Azure Policy. The optional Blob private endpoint connects VNet clients, not hosted-agent runtimes."
   type        = string
   default     = "Enabled"
   validation {
@@ -86,23 +86,135 @@ variable "storage_public_network_access" {
 }
 
 variable "enable_private_networking" {
-  description = "Create gateway/model private endpoints, DNS, and gateway outbound VNet integration. Does not by itself enable private hosted-agent execution."
+  description = "Enable gateway/model private endpoints and gateway outbound VNet integration using the selected network ownership mode. Does not by itself enable private hosted-agent execution."
   type        = bool
   default     = false
 }
 
+variable "private_network_mode" {
+  description = "create manages the sample network/DNS foundation; existing consumes customer-owned subnets and DNS zones. Changing an already deployed mode requires a reviewed migration."
+  type        = string
+  default     = "create"
+  nullable    = false
+  validation {
+    condition     = contains(["create", "existing"], var.private_network_mode)
+    error_message = "private_network_mode must be create or existing."
+  }
+  validation {
+    condition     = var.private_network_mode != "existing" || var.enable_private_networking
+    error_message = "Existing network mode requires enable_private_networking; it is not a public-access fallback."
+  }
+}
+
+variable "existing_private_network" {
+  description = "Customer-owned subnet and central DNS zone IDs. Endpoint subnet keys are gateway/models and enabled storage/agents/registry extras. This input does not transfer resource ownership."
+  type = object({
+    gateway_subnet_id    = string
+    endpoint_subnet_ids  = map(string)
+    private_dns_zone_ids = map(string)
+    agent_subnet_id      = optional(string)
+    client_subnet_id     = optional(string)
+  })
+  default = null
+  validation {
+    condition     = (var.private_network_mode == "existing") == (var.existing_private_network != null)
+    error_message = "Supply existing_private_network only in existing mode; existing mode never creates missing network infrastructure."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(alltrue([
+      for id in concat(
+        [var.existing_private_network.gateway_subnet_id],
+        values(var.existing_private_network.endpoint_subnet_ids),
+        compact([var.existing_private_network.agent_subnet_id, var.existing_private_network.client_subnet_id])
+      ) : can(regex(local.private_subnet_id_pattern, id))
+    ]), false)
+    error_message = "Existing network inputs must be full Azure subnet resource IDs, including subscription, resource group, VNet and subnet."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(alltrue([
+      for key in local.private_endpoint_keys : contains(keys(var.existing_private_network.endpoint_subnet_ids), key)
+    ]), false)
+    error_message = "Supply an endpoint_subnet_ids entry for gateway/models and every enabled storage/agents/registry private endpoint."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(alltrue([
+      for key in local.private_endpoint_keys :
+      lower(split("/", var.existing_private_network.endpoint_subnet_ids[key])[2]) == lower(var.subscription_id)
+    ]), false)
+    error_message = "Endpoint subnets must belong to subscription_id: Azure requires private endpoints and their VNets in the same subscription, and this sample keeps endpoints in the workload resource group. Central DNS zones may be in another subscription."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(
+      (!var.enable_private_hosted_agent || can(regex(local.private_subnet_id_pattern, var.existing_private_network.agent_subnet_id))) &&
+      (!var.enable_private_test_client || can(regex(local.private_subnet_id_pattern, var.existing_private_network.client_subnet_id))),
+      false
+    )
+    error_message = "Existing mode requires agent_subnet_id for private hosted agents and client_subnet_id for the optional test VM."
+  }
+  validation {
+    condition = var.existing_private_network == null || !var.enable_private_test_client || try(
+      lower(split("/", var.existing_private_network.client_subnet_id)[2]) == lower(var.subscription_id),
+      false
+    )
+    error_message = "The optional test-client subnet must belong to subscription_id, because its VM and NIC remain in the workload resource group."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(
+      alltrue([for id in values(var.existing_private_network.endpoint_subnet_ids) :
+        lower(id) != lower(var.existing_private_network.gateway_subnet_id)
+      ]) &&
+      (var.enable_private_hosted_agent ? (
+        lower(var.existing_private_network.agent_subnet_id) != lower(var.existing_private_network.gateway_subnet_id) &&
+        alltrue([for id in values(var.existing_private_network.endpoint_subnet_ids) :
+          lower(id) != lower(var.existing_private_network.agent_subnet_id)
+        ])
+      ) : true),
+      false
+    )
+    error_message = "Gateway and agent integration require distinct delegated subnets, separate from all private endpoint subnets."
+  }
+  validation {
+    condition = var.existing_private_network == null || try(
+      alltrue([for id in values(var.existing_private_network.private_dns_zone_ids) :
+        can(regex(local.private_dns_zone_id_pattern, id))
+      ]) &&
+      alltrue([for key, name in local.private_dns_zones :
+        endswith(lower(var.existing_private_network.private_dns_zone_ids[key]), "/${name}")
+      ]),
+      false
+    )
+    error_message = "Supply full central DNS zone IDs for gateway/cognitiveservices/openai/services and enabled storage/registry zones, with their expected privatelink names."
+  }
+}
+
+variable "private_dns_zone_group_management" {
+  description = "workload creates private endpoint DNS zone groups; platform leaves them to customer policy/automation. Platform-managed DNS must be ready before private calls or agent use."
+  type        = string
+  default     = "workload"
+  nullable    = false
+  validation {
+    condition     = contains(["workload", "platform"], var.private_dns_zone_group_management)
+    error_message = "private_dns_zone_group_management must be workload or platform."
+  }
+  validation {
+    condition     = var.private_dns_zone_group_management != "platform" || (var.enable_private_networking && var.private_network_mode == "existing")
+    error_message = "Platform-managed DNS zone groups require existing private networking."
+  }
+}
+
 variable "enable_private_hosted_agent" {
-  description = "Add a separate private Foundry account/project with Basic VNet injection, delegated subnet and private registry access. Keeps the original agent account and outputs unchanged; does not deploy an agent."
+  description = "Add a separate private Foundry account/project with Basic VNet injection into the selected delegated subnet and private registry access. Keeps the original agent account and outputs unchanged; does not deploy an agent."
   type        = bool
   default     = false
   validation {
     condition = !var.enable_private_hosted_agent || (
-      var.enable_private_networking && lower(var.location) == lower(var.gateway_location)
+      var.enable_private_networking &&
+      (var.private_network_mode == "existing" || lower(var.location) == lower(var.gateway_location))
     )
-    error_message = "Private hosted agents require private networking and the same Foundry/VNet region (location must equal gateway_location)."
+    error_message = "Private hosted agents require private networking. The created shared VNet requires location to equal gateway_location; existing agent subnet region is checked separately."
   }
   validation {
-    condition = !var.enable_private_hosted_agent || can(regex(
+    condition = !var.enable_private_hosted_agent || var.private_network_mode == "existing" || can(regex(
       "^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)", var.private_network_address_prefix
     ))
     error_message = "The private hosted-agent VNet must use RFC1918 IPv4 address space."
@@ -122,13 +234,23 @@ variable "private_hosted_agent_runtime_principal_id" {
   }
 }
 
+variable "enable_storage_private_endpoint" {
+  description = "Add a Blob private endpoint in the selected network. Requires private networking and disabled storage public access. The optional test VM receives account-scoped Blob Data Reader for a read-only connectivity probe."
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.enable_storage_private_endpoint || (var.enable_private_networking && var.storage_public_network_access == "Disabled")
+    error_message = "The storage private endpoint requires enable_private_networking and storage_public_network_access = Disabled."
+  }
+}
+
 variable "private_network_address_prefix" {
   description = "Non-overlapping IPv4 /16 for the optional PoC VNet; three /24 subnets, plus subnet index 3 for optional private hosted agents, are derived from it."
   type        = string
   default     = "10.247.0.0/16"
   validation {
-    condition     = can(cidrnetmask(var.private_network_address_prefix)) && endswith(var.private_network_address_prefix, "/16")
-    error_message = "private_network_address_prefix must be a valid IPv4 /16."
+    condition     = var.private_network_mode == "existing" ? true : try(can(cidrnetmask(var.private_network_address_prefix)) && endswith(var.private_network_address_prefix, "/16"), false)
+    error_message = "In create mode, private_network_address_prefix must be a valid IPv4 /16."
   }
 }
 
@@ -169,7 +291,7 @@ variable "gateway_private_endpoint_manual_approval" {
 }
 
 variable "enable_private_test_client" {
-  description = "Create a billable private Ubuntu test VM with outbound-only internet, no public IP and narrowly scoped API-key retrieval access."
+  description = "Create a billable private Ubuntu test VM with no public IP and narrowly scoped API-key retrieval access. Existing mode uses the supplied client subnet and customer-owned NSG/egress policy."
   type        = bool
   default     = false
   validation {

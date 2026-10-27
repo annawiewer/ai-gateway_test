@@ -92,6 +92,77 @@ function Read-ArmItems([string]$Id, [string]$Version, [switch]$LinkedDcr) {
     }
 }
 
+function Assert-NetworkResourceId($Id, [ValidateSet('subnet', 'zone')][string]$Kind) {
+    $scope = '/subscriptions/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/resourceGroups/[a-z0-9_.()-]+/providers/Microsoft\.Network/'
+    $path = if ($Kind -eq 'subnet') { 'virtualNetworks/[a-z0-9_.-]+/subnets/[a-z0-9_.-]+' } else { 'privateDnsZones/[a-z0-9.-]+' }
+    if ($Id -isnot [string] -or $Id -notmatch ('\A' + $scope + $path + '\z')) {
+        Stop-Check "Invalid explicit private-network $Kind resource ID."
+    }
+}
+
+function Get-CidrPrefixes($Value, [string]$Label) {
+    if ($Value -isnot [array] -or -not $Value.Count) { Stop-Check "Missing or invalid CIDR list: $Label" }
+    $prefixes = [Collections.Generic.List[string]]::new()
+    foreach ($prefix in $Value) {
+        if ($prefix -isnot [string] -or $prefix -notmatch '\A([^/\s]+)/([0-9]{1,3})\z') {
+            Stop-Check "Invalid CIDR: $Label"
+        }
+        $addressText = $Matches[1]
+        $bits = [int]$Matches[2]
+        $address = $null
+        if (-not [Net.IPAddress]::TryParse($addressText, [ref]$address) -or
+            ($address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork -and
+                $addressText -cne $address.ToString())) { Stop-Check "Invalid CIDR: $Label" }
+        $bytes = $address.GetAddressBytes()
+        if ($bits -gt ($bytes.Length * 8)) { Stop-Check "Invalid CIDR: $Label" }
+        for ($i = 0; $i -lt $bytes.Length; $i++) {
+            $mask = (255 -shl (8 - [Math]::Clamp($bits - 8 * $i, 0, 8))) -band 255
+            if (($bytes[$i] -band $mask) -ne $bytes[$i]) { Stop-Check "CIDR has host bits set: $Label" }
+        }
+        $prefixes.Add("$($address.ToString())/$bits")
+    }
+    $prefixes | Sort-Object -Unique
+}
+
+function Read-EndpointSubnet([string]$Id) {
+    # Only the explicit, validated endpoint-subnet allowlist may cross the application boundary.
+    if ($Id -notin @($context.endpointSubnetIds.Values)) { Stop-Check 'Unexpected endpoint subnet read.' }
+    Assert-NetworkResourceId $Id 'subnet'
+    if ($context.networkMode -ne 'existing') { return (Read-Arm $Id '2024-05-01') }
+    Invoke-AzureJson @('rest', '--method', 'get', '--url', "https://management.azure.com${Id}?api-version=2024-05-01")
+}
+
+function Test-AddressInPrefix([string]$Address, [string]$Prefix) {
+    $ip = $null
+    if (-not [Net.IPAddress]::TryParse($Address, [ref]$ip)) { return $false }
+    $parts = $Prefix.Split('/')
+    $bytes = $ip.GetAddressBytes()
+    $network = [Net.IPAddress]::Parse($parts[0]).GetAddressBytes()
+    if ($bytes.Length -ne $network.Length) { return $false }
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        $mask = (255 -shl (8 - [Math]::Clamp([int]$parts[1] - 8 * $i, 0, 8))) -band 255
+        if (($bytes[$i] -band $mask) -ne ($network[$i] -band $mask)) { return $false }
+    }
+    return $true
+}
+
+function Assert-ProbeDns($Dns, [string]$ExpectedHost, [string[]]$ExpectedPrefixes, [string]$Service) {
+    if ($Dns -isnot [pscustomobject] -or $Dns.host -isnot [string] -or $Dns.host -ine $ExpectedHost -or
+        $Dns.addresses -isnot [array] -or -not $Dns.addresses.Count) {
+        Stop-Check "Private DNS evidence is incomplete: $Service"
+    }
+    $reported = if ($null -ne $Dns.PSObject.Properties['expected_subnets']) {
+        @(Get-CidrPrefixes $Dns.expected_subnets "probe DNS $Service")
+    } else { @(Get-CidrPrefixes @($Dns.expected_subnet) "probe DNS $Service") }
+    if (@(Compare-Object $ExpectedPrefixes $reported).Count) { Stop-Check "Private DNS CIDR evidence mismatch: $Service" }
+    foreach ($address in $Dns.addresses) {
+        if ($address -isnot [string] -or
+            -not @($ExpectedPrefixes | Where-Object { Test-AddressInPrefix $address $_ }).Count) {
+            Stop-Check "Private DNS address is outside the expected service subnets: $Service"
+        }
+    }
+}
+
 function Get-MonitoringTopology {
     if (-not $context.monitoring) {
         $context.monitoring = & (Join-Path $PSScriptRoot 'Get-GatewayMonitoring.ps1') `
@@ -272,7 +343,16 @@ Invoke-Check 'roles' @('resources') {
     foreach ($binding in $bindings) {
         Assert-RoleBinding $binding[0] $binding[1] $binding[2] $binding[3]
     }
-    @{ verifiedBindings = 6; additionalDeveloperRoles = 'Not certified by this check' }
+    $verified = 6
+    if ($context.outputs.private_endpoint_ids.value.storage) {
+        $vm = Read-Arm $context.outputs.private_test_vm_id.value '2024-07-01'
+        if (-not $vm.identity.principalId -or $vm.identity.tenantId -ne $tenant) {
+            Stop-Check 'Missing or wrong-tenant storage probe identity.'
+        }
+        Assert-RoleBinding 'private-test-blob-reader' $vm.identity.principalId $context.storageId '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+        $verified++
+    }
+    @{ verifiedBindings = $verified; additionalDeveloperRoles = 'Not certified by this check' }
 }
 
 Invoke-Check 'connections' @('resources') {
@@ -343,14 +423,111 @@ Invoke-Check 'private-network' @('resources') {
         $context.gateway.properties.publicNetworkAccess -ne $context.networkProfile.gateway_public_network_access -or
         $context.gateway.properties.virtualNetworkType -ne 'External') { Stop-Check 'Private profile posture mismatch.' }
     $subnetId = [string]$context.gateway.properties.virtualNetworkConfiguration.subnetResourceId
-    Assert-GroupId $subnetId
-    $endpointSubnetId = ($subnetId -replace '/subnets/[^/]+$', '/subnets/endpoints')
-    $endpointSubnet = Read-Arm $endpointSubnetId '2024-05-01'
-    if (-not $context.outputs.private_probe_configuration.value.private_endpoint_subnet -or
-        $endpointSubnet.properties.addressPrefix -ne $context.outputs.private_probe_configuration.value.private_endpoint_subnet) {
-        Stop-Check 'Probe subnet does not match the deployed endpoint subnet.'
+    $configuration = $context.outputs.private_probe_configuration.value
+    if ($configuration -isnot [pscustomobject]) { Stop-Check 'Private probe configuration is required for acceptance.' }
+    $networkOutput = $context.outputs.PSObject.Properties['private_network_configuration']
+    $network = if ($null -ne $networkOutput) { $networkOutput.Value.value } else { $null }
+    $context.networkMode = 'create'
+    $context.dnsZoneGroupManagement = 'workload'
+    if ($null -ne $networkOutput) {
+        if ($network -isnot [pscustomobject] -or $network.mode -isnot [string] -or $network.mode -notin @('create', 'existing') -or
+            $network.dns_zone_group_management -isnot [string] -or $network.dns_zone_group_management -notin @('workload', 'platform') -or
+            ($network.dns_zone_group_management -eq 'platform' -and $network.mode -ne 'existing')) {
+            Stop-Check 'Invalid private_network_configuration mode or DNS management metadata.'
+        }
+        foreach ($map in @('endpoint_subnet_ids', 'endpoint_subnet_prefixes', 'private_dns_zone_ids')) {
+            if ($network.$map -isnot [pscustomobject]) { Stop-Check "Missing or invalid private_network_configuration.$map map." }
+        }
+        Assert-NetworkResourceId $network.gateway_subnet_id 'subnet'
+        if ($subnetId -ine $network.gateway_subnet_id) { Stop-Check 'Gateway subnet differs from private_network_configuration.' }
+        foreach ($name in @('agent_subnet_id', 'client_subnet_id')) {
+            if ($null -ne $network.$name) {
+                Assert-NetworkResourceId $network.$name 'subnet'
+                if ($network.mode -eq 'create') { Assert-GroupId $network.$name }
+            }
+        }
+        $context.networkMode = $network.mode
+        $context.dnsZoneGroupManagement = $network.dns_zone_group_management
     }
-    foreach ($name in @('gateway', 'models')) {
+    if ($context.networkMode -eq 'create') { Assert-GroupId $subnetId }
+    $zoneNames = @{
+        gateway = 'privatelink.azure-api.net'; cognitiveservices = 'privatelink.cognitiveservices.azure.com'
+        openai = 'privatelink.openai.azure.com'; services = 'privatelink.services.ai.azure.com'
+        storage = 'privatelink.blob.core.windows.net'; registry = 'privatelink.azurecr.io'
+    }
+    $targets = [ordered]@{
+        gateway = @{ id = $context.gatewayId; group = 'Gateway'; zones = @('gateway') }
+        models = @{ id = $context.modelsId; group = 'account'; zones = @('cognitiveservices', 'openai', 'services') }
+    }
+    $storageEndpoint = $configuration.storage_endpoint
+    if ([bool]$context.outputs.private_endpoint_ids.value.storage -ne [bool]$storageEndpoint) {
+        Stop-Check 'Storage endpoint and private probe metadata must be configured together.'
+    }
+    if ($storageEndpoint) {
+        if ($context.storage.properties.publicNetworkAccess -ne 'Disabled' -or
+            $context.storage.properties.allowSharedKeyAccess -ne $false -or
+            $context.storage.properties.allowBlobPublicAccess -ne $false -or
+            $storageEndpoint -cne $context.storage.properties.primaryEndpoints.blob) {
+            Stop-Check 'Private storage posture or probe endpoint mismatch.'
+        }
+        $targets.storage = @{ id = $context.storageId; group = 'blob'; zones = @('storage') }
+    }
+    if ($null -ne $networkOutput) {
+        if ($context.outputs.private_endpoint_ids.value.agents) {
+            $targets.agents = @{ id = $context.agentsId; group = 'account'; zones = @('cognitiveservices', 'openai', 'services') }
+        }
+        if ($context.outputs.private_endpoint_ids.value.registry) {
+            $targets.registry = @{ id = $context.registryId; group = 'registry'; zones = @('registry') }
+        }
+    }
+    $hasProbeSubnets = $null -ne $configuration.PSObject.Properties['private_endpoint_subnets']
+    if ($hasProbeSubnets -and $configuration.private_endpoint_subnets -isnot [pscustomobject]) {
+        Stop-Check 'private_endpoint_subnets must be a map of service CIDR lists.'
+    }
+    $context.endpointSubnetIds = @{}
+    $context.probeSubnets = @{}
+    $prefixesByService = @{}
+    $zoneIdsByService = @{}
+    foreach ($name in $targets.Keys) {
+        $endpointSubnetId = if ($null -ne $networkOutput) { $network.endpoint_subnet_ids.$name } else {
+            $subnetId -replace '/subnets/[^/]+$', '/subnets/endpoints'
+        }
+        Assert-NetworkResourceId $endpointSubnetId 'subnet'
+        if ($context.networkMode -eq 'create') { Assert-GroupId $endpointSubnetId }
+        $context.endpointSubnetIds[$name] = $endpointSubnetId
+        $prefixesByService[$name] = if ($null -ne $networkOutput) {
+            @(Get-CidrPrefixes $network.endpoint_subnet_prefixes.$name "private_network_configuration.endpoint_subnet_prefixes.$name")
+        } else { @(Get-CidrPrefixes @($configuration.private_endpoint_subnet) "legacy private_endpoint_subnet") }
+        if ($name -in @('gateway', 'models', 'storage')) {
+            $context.probeSubnets[$name] = if ($hasProbeSubnets) {
+                @(Get-CidrPrefixes $configuration.private_endpoint_subnets.$name "private_endpoint_subnets.$name")
+            } else { @(Get-CidrPrefixes @($configuration.private_endpoint_subnet) 'legacy private_endpoint_subnet') }
+            if (@(Compare-Object $prefixesByService[$name] $context.probeSubnets[$name]).Count) {
+                Stop-Check "Probe subnet metadata differs from the expected service subnets: $name"
+            }
+        }
+        $zoneIdsByService[$name] = @(
+            foreach ($zone in $targets[$name].zones) {
+                $zoneId = if ($null -ne $networkOutput) { $network.private_dns_zone_ids.$zone } else {
+                    "$groupId/providers/Microsoft.Network/privateDnsZones/$($zoneNames[$zone])"
+                }
+                Assert-NetworkResourceId $zoneId 'zone'
+                if ($zoneId.Split('/')[-1] -ine $zoneNames[$zone]) { Stop-Check "Unexpected private DNS zone name: $zone" }
+                if ($context.networkMode -eq 'create') { Assert-GroupId $zoneId }
+                $zoneId
+            }
+        )
+    }
+    foreach ($name in $targets.Keys) {
+        $endpointSubnetId = $context.endpointSubnetIds[$name]
+        $endpointSubnet = Read-EndpointSubnet $endpointSubnetId
+        $deployedPrefixes = @(Get-CidrPrefixes @(
+            if ($endpointSubnet.properties.addressPrefix) { $endpointSubnet.properties.addressPrefix }
+            $endpointSubnet.properties.addressPrefixes | Where-Object { $null -ne $_ }
+        ) "deployed endpoint subnet $name")
+        if (@(Compare-Object $prefixesByService[$name] $deployedPrefixes).Count) {
+            Stop-Check "Expected CIDRs do not match the deployed endpoint subnet: $name"
+        }
         $endpointId = $context.outputs.private_endpoint_ids.value.$name
         $endpoint = Read-Arm $endpointId '2024-05-01'
         Assert-Ready $endpoint
@@ -359,28 +536,35 @@ Invoke-Check 'private-network' @('resources') {
             @($endpoint.properties.manualPrivateLinkServiceConnections) |
                 Where-Object { $null -ne $_ }
         )
-        $target = if ($name -eq 'gateway') { $context.gatewayId } else { $context.modelsId }
-        $group = if ($name -eq 'gateway') { 'Gateway' } else { 'account' }
+        $target = $targets[$name].id
+        $group = $targets[$name].group
         if ($connections.Count -ne 1 -or
             $connections[0].properties.privateLinkServiceConnectionState.status -ne 'Approved' -or
             $connections[0].properties.privateLinkServiceId -ine $target -or
             @($connections[0].properties.groupIds).Count -ne 1 -or $connections[0].properties.groupIds[0] -ne $group -or
             $endpoint.properties.subnet.id -ine $endpointSubnetId) { Stop-Check "Private endpoint mismatch: $name" }
-        $zoneGroup = Read-Arm "$endpointId/privateDnsZoneGroups/default" '2024-05-01'
-        Assert-Ready $zoneGroup
-        $zones = @($zoneGroup.properties.privateDnsZoneConfigs)
-        $expectedZones = if ($name -eq 'gateway') { @('privatelink.azure-api.net') } else {
-            @('privatelink.cognitiveservices.azure.com', 'privatelink.openai.azure.com', 'privatelink.services.ai.azure.com')
+        $zoneGroups = if ($null -ne $networkOutput) {
+            @(Read-ArmItems "$endpointId/privateDnsZoneGroups" '2024-05-01')
+        } else { @(Read-Arm "$endpointId/privateDnsZoneGroups/default" '2024-05-01') }
+        if (-not $zoneGroups.Count) {
+            Stop-Check "Missing delivered private DNS bindings ($($context.dnsZoneGroupManagement)): $name"
         }
-        $actualIds = @($zones | ForEach-Object { $_.properties.privateDnsZoneId })
+        $actualIds = @(
+            foreach ($zoneGroup in $zoneGroups) {
+                Assert-Ready $zoneGroup
+                $zoneGroup.properties.privateDnsZoneConfigs | ForEach-Object { $_.properties.privateDnsZoneId }
+            }
+        )
+        $expectedZones = $zoneIdsByService[$name]
         if ($actualIds.Count -ne $expectedZones.Count) { Stop-Check "DNS zone count mismatch: $name" }
-        foreach ($zone in $expectedZones) {
-            $zoneId = "$groupId/providers/Microsoft.Network/privateDnsZones/$zone"
-            if ($zoneId -notin $actualIds) { Stop-Check "Missing private DNS zone: $zone" }
-            $link = Read-Arm "$zoneId/virtualNetworkLinks/gateway-vnet" '2020-06-01'
-            Assert-Ready $link
-            if ($link.properties.virtualNetwork.id -ine ($subnetId -replace '/subnets/[^/]+$', '')) {
-                Stop-Check 'Private DNS link targets the wrong VNet.'
+        foreach ($zoneId in $expectedZones) {
+            if ($zoneId -notin $actualIds) { Stop-Check "Missing expected private DNS zone binding: $name" }
+            if ($context.networkMode -eq 'create') {
+                $link = Read-Arm "$zoneId/virtualNetworkLinks/gateway-vnet" '2020-06-01'
+                Assert-Ready $link
+                if ($link.properties.virtualNetwork.id -ine ($subnetId -replace '/subnets/[^/]+$', '')) {
+                    Stop-Check 'Private DNS link targets the wrong VNet.'
+                }
             }
         }
     }
@@ -388,6 +572,11 @@ Invoke-Check 'private-network' @('resources') {
         gatewayPublicAccess = $context.gateway.properties.publicNetworkAccess
         expectedGatewayPublicAccess = $context.networkProfile.gateway_public_network_access
         modelsPublicAccess = $context.models.properties.publicNetworkAccess
+        networkMode = $context.networkMode
+        dnsZoneGroupManagement = $context.dnsZoneGroupManagement
+        bindings = 'Verified PE targets, approvals, per-service subnets/CIDRs and delivered DNS zone-group bindings (any name); not Terraform ownership.'
+        dnsResolution = 'Requires runtime proof. Existing networks may use indirect resolvers without direct spoke DNS links.'
+        runtimeCoverage = 'Gateway/models and optional storage only; hosted-agent and registry runtime are NOT certified.'
         privateOnlyIngress = 'NOT certified'
         publicNetworkRejection = 'NOT RUN'
     }
@@ -435,6 +624,23 @@ if ($RunPrivateProbe) {
             if (@($probe.authentication).Count -ne 2 -or
                 @($probe.authentication | Where-Object { $_.status -notin @(401, 403) }).Count -or
                 @(Compare-Object @('missing-key', 'invalid-key') @($probe.authentication.case)).Count) { Stop-Check 'Negative authentication evidence is incomplete.' }
+            if (@($probe.dns).Count -ne 2) { Stop-Check 'Private gateway/model DNS evidence is incomplete.' }
+            foreach ($service in @('gateway', 'models')) {
+                $endpoint = if ($service -eq 'gateway') { $context.outputs.private_probe_configuration.value.gateway_endpoint } else {
+                    $context.outputs.private_probe_configuration.value.model_endpoint
+                }
+                $dns = @($probe.dns | Where-Object { $_.host -ieq ([uri]$endpoint).Host })
+                if ($dns.Count -ne 1) { Stop-Check "Private DNS host evidence is incomplete: $service" }
+                Assert-ProbeDns $dns[0] ([uri]$endpoint).Host $context.probeSubnets[$service] $service
+            }
+            if ($context.outputs.private_endpoint_ids.value.storage -and
+                ($probe.storage.status -ne 200 -or $probe.storage.operation -ne 'list-containers' -or
+                    $probe.storage.authentication -ne 'ManagedIdentity')) {
+                Stop-Check 'Private storage DNS and managed-identity read evidence is incomplete.'
+            }
+            if ($context.outputs.private_endpoint_ids.value.storage) {
+                Assert-ProbeDns $probe.storage.dns ([uri]$context.storage.properties.primaryEndpoints.blob).Host $context.probeSubnets.storage 'storage'
+            }
             $context.probe = $probe
             $probe
         }
