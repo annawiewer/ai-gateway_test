@@ -9,6 +9,41 @@ when a step stops. Historical migrations below are not routine setup steps.
 Details for both [networking paths](../README.md#choose-your-networking-path).
 Review the limitations before changing an existing deployment.
 
+## Customer handoff
+
+**Handoff name:** Existing-network integration - 2026-10-27.
+**Reviewed implementation baseline:**
+[`dfa84ba9004afc2f03f723432fc0b05e6bc531c8`](https://github.com/annawiewer/ai-gateway_test/commit/dfa84ba9004afc2f03f723432fc0b05e6bc531c8).
+This is a descriptive handoff name, not a Git tag or a production certification.
+
+The baseline identifies the reviewed implementation; the handoff documentation
+also includes the entry/ownership clarification below. The workload owner must
+supply and approve the **exact delivery commit or tag**, including its
+documentation, using the [checkout steps](../deployment.md#2-open-the-approved-source-revision).
+Do not treat the moving `main` branch as an approved release or switch an existing
+deployment to the baseline merely because it is linked here.
+
+**Short release notes**
+
+- Added paired `create`/`existing` network ownership, validated existing subnet
+  and central DNS-zone inputs, and a Terragrunt adapter for independently owned
+  platform units. New private endpoints stay workload-owned; DNS zone groups
+  have one explicitly selected owner.
+- Corrected optional private-agent acceptance to check the separate private
+  account, and clarified staged/final evidence, telemetry and public-network
+  rejection. The original `AIGateway` SKU is unchanged.
+- Documentation handoff: one [existing-network entry](../deployment.md#existing-network-integration-at-a-glance),
+  one [ownership/approval table](../deployment.md#platform-handoff-before-a-plan)
+  and the existing detailed steps. No additional Terraform behavior or Azure
+  deployment is introduced by this documentation clarification.
+
+| Evidence or boundary | What this handoff establishes |
+| --- | --- |
+| Offline checks | The implementation has Terraform/script regression checks. The corrected acceptance fixtures and documentation examples were checked offline; this is not proof of the customer's network or Azure Policy. |
+| Scoped live evidence | The [October 27 rehearsal](#private-only-gateway-ingress-status) created the original SKU with separately owned network/DNS, completed staged private closure, and checked private calls, network/authentication boundaries, telemetry, routing and no-change plans. This is historical evidence for that environment, not a new deployment of every subsequent documentation revision. |
+| Not established by that rehearsal | Private-from-first-create, another subscription/region, the customer's backend/CI/PIM/policies, or optional hosted-agent, Blob and registry runtime acceptance. The earlier agent proof has its own separate scope. |
+| Required for customer handover | Record the actual delivery revision and input/state owners, then complete [customer acceptance and the handover checklist](../deployment.md#handover-checklist). Keep keys, state and customer-specific evidence out of the public repository. |
+
 ## File guide
 
 | File | What it controls |

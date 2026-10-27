@@ -34,6 +34,31 @@ access is prohibited, **stop before deployment**: this guide does not establish
 a private-from-first-create procedure. An already-private deployment never
 repeats those stages.
 
+### Existing-network integration at a glance
+
+For a **new gateway workload using centrally managed network and DNS**, prepare
+the following handoff. This is a map to the detailed steps, not a second runbook
+or permission to skip their checks.
+
+| Prepare | Who supplies it | File or next step |
+| --- | --- | --- |
+| Approved source, workload subscription/tenant, naming, regions, model choices and workload state/backend | Workload owner, with the model/platform owners | Use the [approved checkout](#2-open-the-approved-source-revision). Keep base inputs in `terraform.tfvars` or the already-approved customer file; follow [Inputs and state](#inputs-and-state). |
+| Integration subnet, gateway/model endpoint subnets and the four core private DNS zones | Network/DNS team, through its existing provisioning process | Fill **`network-existing.customer.tfvars.json`**, copied from the shared [existing-network template](profiles/network-existing.tfvars.json), using the [field-by-field ID guide](#find-resource-ids-and-fill-in-your-customer-file). |
+| One owner for endpoint DNS associations, plus permissions, routing, access-policy and test-client approval | Platform and workload owners together | Complete the [ownership and approval table](#platform-handoff-before-a-plan), then follow the [runbook order](#runbook-order), including the approved access path. |
+
+Keep both customer files in the customer's protected configuration, not in Git
+or an email to the sample author. Do not edit the shared profiles or copy the
+network team's state. If required subnets or zones are missing, the platform
+team provides them through its normal process; do not select `create` as a
+workaround. Optional services need their additional inputs too.
+
+The existing-network file selects **ownership**, not Private-only access.
+Select the final access posture separately; a new private deployment still
+needs the approved staged procedure. For an **already deployed gateway**, retain
+its current source, complete inputs and authoritative state instead of creating
+these files again. An existing Terragrunt pipeline can use the
+[adapter](#optional-terragrunt-adapter) **instead of** the copied network file.
+
 ### How to read a step
 
 | Label or format | What you do |
@@ -647,16 +672,21 @@ spoke; the customer retains the approved links/forwarding design.
 **Who:** the workload operator gathers these confirmations from the named
 owners. A copied ID is not a permission grant or a connectivity test.
 
-| Owner | Confirmation needed before planning |
-| --- | --- |
-| Workload/platform owner | Approved source revision, subscription/tenant, workload state/backend, naming, current gateway deployment status and chosen access posture. |
-| Network owner | Approved integration/endpoint subnets, delegations, available addresses and service-region placement. For `create`, approve the new address range and check overlap. For `existing`, supply the complete IDs without importing network resources into this state. |
-| Network/firewall owner | Approved client-to-gateway and gateway-to-model routes, central DNS forwarding and required control-plane/identity egress. Optional VM and agent routes need their own approval. |
-| DNS owner | Exact zone IDs and **one** zone-group owner (`workload` or `platform`). Confirm who will finish associations/records after endpoint creation and who will verify resolver results. |
-| Identity/platform administrator | Effective deploy/read/join/endpoint/approval and scoped role-management permissions. If using workload-managed zone groups, include the specified central zones. Confirm PIM duration and any deny assignments. |
-| Model owner | Exact model names/versions, deployment geography, quota/capacity and a billable test allowance. |
-| Security/platform owner | Region/type/tag policy and the entire intended access sequence. Any temporary public access needs explicit approval; do not infer it from approval of the final private design. |
-| Test/operations owner | Existing private client or optional test VM, test permissions, evidence location, cleanup owner and operating/monitoring responsibility. |
+The ownership boundaries below describe **`existing` mode**. For `create`,
+the sample instead owns its new network/DNS foundation; approve the new address
+range and check overlap as described in [network foundation](#network-foundation-create-or-existing).
+
+| Area | Owner and Terraform boundary | Confirmation needed before planning |
+| --- | --- | --- |
+| Gateway workload and state | Workload team owns the new application resources and private endpoints in its approved workload state. Existing platform state stays separate. | Exact source revision, subscription/tenant, backend, naming, current gateway deployment status and final access posture. Existing networking does not import an existing gateway or application resource. |
+| VNets, subnets and network security groups | Network team retains the resources and their state; workload Terraform only reads approved subnet/VNet details. | Complete integration/endpoint subnet IDs, delegations, attached gateway NSG, available addresses and service-region placement. |
+| Routes, firewall and DNS resolver | Network/platform team retains routes, firewall, resolver and forwarding; this sample does not create or change them. | Client-to-gateway and gateway-to-model routes, DNS forwarding and control-plane/identity egress. Optional VM and agent routes need separate approval. |
+| Central private DNS zones and VNet links | DNS team retains zones, links and their state. The workload references zone IDs, not ownership of those resources. | Exact required zone IDs and the approved resolution design; a direct zone link to every spoke is not required when central resolution is used. |
+| Private endpoint DNS zone groups | **One owner:** workload Terraform with `workload`, or central Policy/automation with `platform`. This does not transfer ownership of the zones. | Agree who finishes associations/records after endpoint creation and verifies resolver results. Use the [DNS ownership choice](#choose-the-dns-zone-group-owner); never let both processes own the same group. |
+| Deployment permissions | Identity/platform administrator grants scoped access; knowing a resource ID does not grant access. | Effective deploy/read/join/endpoint/approval and role-management permissions, PIM duration and deny assignments. Workload-managed zone groups also need access to the specified central zones. |
+| Models | Model owner approves model selection and allocation; the sample creates its workload model deployments. | Exact model names/versions, deployment geography, quota/capacity and a billable test allowance. |
+| Policy and access sequence | Security/platform owner approves the deployment; this sample does not relax central policy. | Region/type/tag policy and the entire access sequence. Temporary public access needs explicit approval, not just approval of the final private design. |
+| Testing and operation | Test/operations owner selects the client and owns evidence, cleanup and ongoing operation. The sample VM is optional. | Existing private client or approved test VM, test permissions, evidence location and cleanup/monitoring responsibility. |
 
 Do not demand `Approved` endpoints before they have been created. Those are
 **post-apply gates**, explained in the
@@ -1205,6 +1235,10 @@ The [report interpretation](docs/end-to-end.md#read-the-result-before-proceeding
 explains the next action.
 
 ### Handover checklist
+
+Use the [named handoff and verification scope](docs/reference.md#customer-handoff)
+as a source summary, then complete this record for the **actual customer
+deployment**. A reviewed source revision is not customer acceptance.
 
 | Record internally | Required result or named remaining item |
 | --- | --- |

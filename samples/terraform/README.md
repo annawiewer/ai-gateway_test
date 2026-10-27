@@ -8,11 +8,16 @@ It explains which path to select, who supplies each input, which file to edit,
 where to run each command, what result to expect and when to stop.
 Use this README for orientation and diagrams, not as a second deployment script.
 
-An existing customer network does **not** mean the gateway has already been
-deployed. The walkthrough separates network ownership from workload/state
-ownership. Customers with central network/DNS select the existing-network path;
-customers without a gateway foundation select create. Neither choice changes
-the gateway SKU.
+**Already have central network and DNS?** Start with
+[existing-network integration at a glance](deployment.md#existing-network-integration-at-a-glance):
+the two customer input files, the platform handoff and where to continue.
+An existing network does **not** mean the gateway has already been deployed.
+The walkthrough separates network ownership from workload/state ownership;
+neither the `create` nor the `existing` choice changes the gateway SKU.
+
+**Handing this sample to a customer?** Use the
+[named handoff, release notes and verification scope](docs/reference.md#customer-handoff).
+Agree an exact source commit/tag, not the moving `main` branch.
 
 > [!NOTE]
 > **Legacy SKU and migration deadline:** This sample uses
