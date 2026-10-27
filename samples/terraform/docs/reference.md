@@ -322,7 +322,9 @@ managed-group owner, gateway principal and exact role; a managed-looking name
 alone is never an exemption. See [monitoring ownership and setup](monitoring.md).
 
 The legacy gateway has `prevent_destroy = true`: a replacement/destroy plan must
-fail rather than silently remove a resource whose SKU cannot be recreated.
+fail rather than silently remove a resource whose recreation is not guaranteed.
+The October 27 rehearsal created the original SKU in one eligible environment;
+it did not establish future recreation or availability in every subscription/region.
 Keep the existing environment, location inputs and authoritative state. Do not
 discard state or change the environment label to get a "fresh" gateway.
 

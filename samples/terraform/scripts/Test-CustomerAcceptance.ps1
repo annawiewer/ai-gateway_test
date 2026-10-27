@@ -474,7 +474,13 @@ Invoke-Check 'private-network' @('resources') {
     }
     if ($null -ne $networkOutput) {
         if ($context.outputs.private_endpoint_ids.value.agents) {
-            $targets.agents = @{ id = $context.agentsId; group = 'account'; zones = @('cognitiveservices', 'openai', 'services') }
+            $privateAgentsId = $context.outputs.private_hosted_agent.value.account_id
+            $accountPrefix = [regex]::Escape("$groupId/providers/Microsoft.CognitiveServices/accounts/")
+            if ($privateAgentsId -isnot [string] -or $privateAgentsId -notmatch ("\A${accountPrefix}[a-z0-9-]+\z") -or
+                $privateAgentsId -ieq $context.agentsId) {
+                Stop-Check 'Expected a separate private hosted-agent account in the application resource group.'
+            }
+            $targets.agents = @{ id = $privateAgentsId; group = 'account'; zones = @('cognitiveservices', 'openai', 'services') }
         }
         if ($context.outputs.private_endpoint_ids.value.registry) {
             $targets.registry = @{ id = $context.registryId; group = 'registry'; zones = @('registry') }

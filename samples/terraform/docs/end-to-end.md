@@ -216,6 +216,9 @@ rejection. This runner does not send a valid-credential request from outside
 the private network; `privateOnlyIngress` remains `NOT certified`, even on a
 backend pass. A separate approved public-boundary test and any required
 hosted-agent test are needed for private-only end-to-end acceptance.
+Use the [public-boundary mini-steps](acceptance.md#prove-public-network-denial-with-a-valid-gateway-key)
+for the separate host, identity, metadata and sanitized evidence. Do not use
+missing/invalid-key responses as a substitute.
 
 Each positive request sends a unique W3C `traceparent`. The verifier queries the
 linked Log Analytics workspace for those exact `TraceId` values in `OTelSpans`
@@ -231,6 +234,9 @@ It does **not** substitute historical traffic or exporter existence for delivery
 If this preview does not propagate W3C IDs into that schema, the check fails:
 investigate actual exporter correlation support before changing the assertion.
 Trace propagation and the telemetry schema still require real-environment proof.
+For manual execution, the [trace/log query](acceptance.md#inspect-the-traced-requests-and-correlated-logs)
+shows the success fields, and the [parameterized token-metric query](acceptance.md#query-the-token-metrics-for-the-same-destination-and-window)
+uses the verified destination and actual request UTC window.
 
 `acceptance.json` reports each check and non-secret evidence. CLI/HTTP operations
 can also have platform-level waits; this runner is not a hard wall-clock or cost

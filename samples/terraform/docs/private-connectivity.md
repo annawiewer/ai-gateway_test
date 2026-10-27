@@ -382,12 +382,24 @@ private_test_client_ssh_public_key = "ssh-ed25519 <your-public-key>"
 
 ## Step 2: Prepare private connectivity with models temporarily public
 
-Use this stage when adding private networking to an existing legacy gateway
-whose model backend is still public. It is not the final posture.
-Temporary public access must be explicitly permitted.
-**Do not run it on an already-disabled gateway or backend.** A new environment
-that prohibits even temporary public access needs a separately validated creation
-sequence; this staged guide is not that proof.
+Use this stage for either a **new gateway** using the original `service` /
+`AIGateway` contract, or an **existing gateway whose gateway and model public
+access are both still enabled**. The subscription/region must permit that
+contract, and temporary public access must be explicitly approved. This is
+an intermediate provisioning stage, not the final posture.
+
+Existing network/DNS infrastructure does **not** mean a gateway already exists:
+with `existing` ownership this stage can create a new workload using approved
+platform subnets/zones. It must not create parallel network foundations.
+The October 27 rehearsal demonstrated this staged Terraform creation path in
+one environment, not universal creation/recreation availability.
+
+**Do not run this stage on an already-disabled gateway or backend.** If models
+are already private and the gateway is still public, verify the existing private
+route in Step 3, then continue with Step 4's gateway closure; do not reopen models.
+If both are private, use [the existing-private entry](#existing-private-deployments).
+If policy prohibits even temporary public access, stop and validate a supported
+private-from-first-create sequence separately; this staged guide is not that proof.
 
 ```powershell
 $networkProfile = 'private-connectivity'
@@ -578,8 +590,14 @@ Get-FileHash -LiteralPath $handoffFile -Algorithm SHA256
    approved channel and communicate its SHA256 separately. Never send raw state,
    `.terraform`, a complete output dump, auth caches, keys, tokens or passwords.
 6. On **B**, open PowerShell 7. The platform owner must already have signed in
-   the approved client identity. Run this import and DNS check, not acceptance
-   Steps 1-3 or Terraform commands:
+   the approved client identity. Run the metadata import and then the separate
+   private DNS block below, not acceptance Steps 1-3 or Terraform commands.
+
+#### Load the approved client metadata
+
+This block only verifies the transferred metadata and the client's own Azure
+context; it does not make an inference request or read Terraform state. The
+separate public-boundary procedure also reuses **only this import block**.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -610,6 +628,14 @@ if (-not $gatewayId.StartsWith("/subscriptions/$subscription/", [StringCompariso
     $o.gateway_api_key_id.value -notmatch ('^' + [regex]::Escape($gatewayId) + '/apiKeys/[^/?#]+$')) {
     throw 'Gateway/key resource scope mismatch.'
 }
+```
+
+#### Check DNS on the private client
+
+Stay in the same **B** session and run this next block. It is for the private
+route only; the public-boundary client uses its own DNS check instead.
+
+```powershell
 $dnsEvidence = @()
 foreach ($target in $clientHandoff.dnsTargets) {
     $uri = [uri]$target.url
@@ -640,8 +666,17 @@ the same exact-IP evidence. Do not use hosts-file overrides.
    They use the allowlisted `$o` subset loaded above and retrieve the key using
    **B's own identity**, in memory. Do not grant roles or switch authentication
    automatically if this fails.
-8. Use the [sanitized evidence return](acceptance.md#return-existing-client-evidence-to-the-deployment-host)
-   to send results back to **A**. A continues roles/telemetry/drift verification.
+8. Use the [sanitized evidence export](acceptance.md#return-existing-client-evidence-to-the-deployment-host)
+   to send results back to **A**. For `bootstrap` or `models-private`, follow
+   only the [intermediate-stage review](acceptance.md#intermediate-stage-evidence)
+   and return to the next closure in Step 4. **Do not run the final-only import
+   on an intermediate report.** For `private-only`, **A first runs acceptance
+   [Steps 1-3](acceptance.md#1-confirm-the-target-and-read-live-resource-identities)
+   and [Step 4's control-plane block](acceptance.md#control-plane-checks-on-the-deployment-host)**
+   in A's original deployment session, keeping `$clientHandoff` and `$handoffFile`
+   from the latest export. Then use the
+   [final-stage import](acceptance.md#final-private-only-evidence) and complete
+   manual telemetry, public-boundary and drift verification.
 9. After **each** access closure, repeat the export, transfer and client checks
    with a new run ID and current stage. The previous file is not final-stage
    proof. After Step 5, require `private-only`, then complete manual acceptance.
@@ -757,9 +792,12 @@ terraform apply "private-only.tfplan"
 if ($LASTEXITCODE -ne 0) { throw 'Gateway-private apply failed; stop and inspect actual state.' }
 ```
 
-Terraform already maps the setting to ARM `publicNetworkAccess`. However,
-earlier Terraform/CLI updates failed; only the later portal operation is
-confirmed successful. Allow asynchronous completion, then verify ARM
+Terraform maps this setting to ARM `publicNetworkAccess`. Earlier
+Terraform/CLI attempts failed in the October 25 investigation, where a later
+portal operation succeeded. On October 27, staged **Terraform** creation and
+closure also succeeded in an isolated rehearsal with the corrected approval
+action. These are dated observations, not a portal-only requirement or a
+guarantee for another environment. Allow asynchronous completion, then verify ARM
 `Disabled` / `Succeeded` and the private connection `Approved` / `Succeeded`.
 Do not mistake an initial accepted response for completion, invent a fixed
 timeout, or automatically reopen public ingress after a failure. On timeout or

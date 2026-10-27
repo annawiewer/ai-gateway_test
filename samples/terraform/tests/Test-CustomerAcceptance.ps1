@@ -25,6 +25,7 @@ $group = "/subscriptions/$subscription/resourceGroups/test"
 $gateway = "$group/providers/Microsoft.ApiManagement/service/gateway"
 $models = "$group/providers/Microsoft.CognitiveServices/accounts/models"
 $agents = "$group/providers/Microsoft.CognitiveServices/accounts/agents"
+$privateAgents = "$group/providers/Microsoft.CognitiveServices/accounts/agents-private"
 $project = "$agents/projects/project"
 $storage = "$group/providers/Microsoft.Storage/storageAccounts/storage"
 $registry = "$group/providers/Microsoft.ContainerRegistry/registries/registry"
@@ -247,9 +248,17 @@ function Enable-ReusableNetworkFixture([string]$Mode = 'existing', [string]$DnsM
         if ($Mode -eq 'existing') {
             $f.resources.Remove("$group/providers/Microsoft.Network/privateDnsZones/$($zoneNames[$zone])/virtualNetworkLinks/gateway-vnet")
         }
+        else {
+            $f.resources["$($network.private_dns_zone_ids[$zone])/virtualNetworkLinks/gateway-vnet"] = @{
+                properties = @{ provisioningState = 'Succeeded'; virtualNetwork = @{ id = $vnet } }
+            }
+        }
     }
     $services = @('gateway', 'models', 'storage')
-    if ($AdditionalEndpoints) { $services += @('agents', 'registry') }
+    if ($AdditionalEndpoints) {
+        $services += @('agents', 'registry')
+        $f.outputs.private_hosted_agent = @{ value = @{ account_id = $privateAgents } }
+    }
     foreach ($service in $services) {
         $subnetId = if ($Mode -eq 'existing') {
             "/subscriptions/$subscription/resourceGroups/network-$service/providers/Microsoft.Network/virtualNetworks/vnet-$service/subnets/pe-$service"
@@ -261,7 +270,7 @@ function Enable-ReusableNetworkFixture([string]$Mode = 'existing', [string]$DnsM
         if ($service -in @('agents', 'registry')) {
             $endpoint = "$group/providers/Microsoft.Network/privateEndpoints/$service"
             $f.outputs.private_endpoint_ids.value[$service] = $endpoint
-            $target = if ($service -eq 'agents') { $agents } else { $registry }
+            $target = if ($service -eq 'agents') { $privateAgents } else { $registry }
             $groupIds = if ($service -eq 'agents') { @('account') } else { @('registry') }
             $f.resources[$endpoint] = @{ properties = @{
                 provisioningState = 'Succeeded'; subnet = @{ id = $subnetId }
@@ -425,6 +434,9 @@ function az {
 $cases = [ordered]@{
     'create-network-metadata-pass' = @('PASS', 'runtime')
     'existing-workload-pass' = @('PASS', 'runtime'); 'existing-platform-pass' = @('PASS', 'runtime')
+    'existing-agent-base-target' = @('FAIL', 'private-network'); 'existing-agent-base-output' = @('FAIL', 'private-network')
+    'existing-agent-missing-output' = @('FAIL', 'private-network'); 'existing-agent-foreign-scope' = @('FAIL', 'private-network')
+    'existing-agent-project-target' = @('FAIL', 'private-network')
     'existing-readonly' = @('BLOCKED', 'runtime'); 'existing-platform-missing-binding' = @('FAIL', 'private-network')
     'existing-wrong-subnet' = @('FAIL', 'private-network'); 'existing-wrong-zone' = @('FAIL', 'private-network')
     'existing-missing-subnet' = @('FAIL', 'private-network'); 'existing-invalid-prefix' = @('FAIL', 'private-network')
@@ -489,9 +501,10 @@ try {
         if ($case.StartsWith('storage-')) { Enable-StorageFixture }
         if ($case.StartsWith('existing-')) {
             $management = if ($case.StartsWith('existing-platform-')) { 'platform' } else { 'workload' }
-            Enable-ReusableNetworkFixture -DnsManagement $management -AdditionalEndpoints:($case -eq 'existing-workload-pass')
+            $additionalEndpoints = $case -in @('existing-workload-pass', 'existing-platform-pass') -or $case.StartsWith('existing-agent-')
+            Enable-ReusableNetworkFixture -DnsManagement $management -AdditionalEndpoints:$additionalEndpoints
         }
-        if ($case -eq 'create-network-metadata-pass') { Enable-ReusableNetworkFixture -Mode create }
+        if ($case -eq 'create-network-metadata-pass') { Enable-ReusableNetworkFixture -Mode create -AdditionalEndpoints }
         if ($case -in @('manual-approved', 'manual-pending', 'manual-wrong-target', 'mixed-connections')) {
             $properties = $f.resources[$f.outputs.private_endpoint_ids.value.gateway].properties
             $properties.manualPrivateLinkServiceConnections = $properties.privateLinkServiceConnections
@@ -504,6 +517,24 @@ try {
             }
         }
         switch ($case) {
+            'existing-agent-base-target' {
+                $f.resources[$f.outputs.private_endpoint_ids.value.agents].properties.privateLinkServiceConnections[0].properties.privateLinkServiceId = $agents
+            }
+            'existing-agent-base-output' {
+                $f.outputs.private_hosted_agent.value.account_id = $agents
+                $f.resources[$f.outputs.private_endpoint_ids.value.agents].properties.privateLinkServiceConnections[0].properties.privateLinkServiceId = $agents
+            }
+            'existing-agent-missing-output' { $f.outputs.Remove('private_hosted_agent') }
+            'existing-agent-foreign-scope' {
+                $foreignAccount = $privateAgents.Replace('/resourceGroups/test/', '/resourceGroups/other/')
+                $f.outputs.private_hosted_agent.value.account_id = $foreignAccount
+                $f.resources[$f.outputs.private_endpoint_ids.value.agents].properties.privateLinkServiceConnections[0].properties.privateLinkServiceId = $foreignAccount
+            }
+            'existing-agent-project-target' {
+                $privateProject = "$privateAgents/projects/private-project"
+                $f.outputs.private_hosted_agent.value.account_id = $privateProject
+                $f.resources[$f.outputs.private_endpoint_ids.value.agents].properties.privateLinkServiceConnections[0].properties.privateLinkServiceId = $privateProject
+            }
             'existing-platform-missing-binding' { $f.resources["$($f.outputs.private_endpoint_ids.value.models)/privateDnsZoneGroups"].value = @() }
             'existing-wrong-subnet' { $f.resources[$f.outputs.private_endpoint_ids.value.models].properties.subnet.id = $f.outputs.private_network_configuration.value.endpoint_subnet_ids.gateway }
             'existing-wrong-zone' {

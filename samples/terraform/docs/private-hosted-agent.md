@@ -332,12 +332,18 @@ let invocationEnd = datetime(2000-01-01T00:05:00Z);   // Replace with actual end
 OTelSpans
 | where TimeGenerated between (invocationStart .. invocationEnd)
 | where TraceId == "<actual-trace-id>"
-| project TimeGenerated, TraceId, Kind, HttpStatus, Route, Attributes
+| extend HttpStatus = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
+| extend Route = tostring(Attributes["http.route"])
+| project TimeGenerated, TraceId, Kind, Name, HttpStatus, Route, ResultCode, Attributes
 | order by TimeGenerated asc
 ```
 
-Inspect the backend host/path in `Attributes`; parse it as JSON if the query
-client returns a string. Do not rely on an unavailable `ParentId` column.
+`HttpStatus` and `Route` are explicitly derived above, not physical columns of
+[OTelSpans](https://learn.microsoft.com/azure/azure-monitor/reference/tables/otelspans).
+Inspect the backend host/path in `Attributes` locally; parse it as JSON if the
+query client returns a string. Missing status/route information needs
+investigation, not an assumed pass. Do not export the full attributes or rely
+on an unavailable `ParentId` column.
 These are **separate hosted-agent gates**: the existing
 [customer acceptance runner](end-to-end.md) does not perform them.
 Retain operational evidence outside the published repository.

@@ -220,6 +220,8 @@ Choose the client before making calls:
 | Private, existing client without the sample VM | First the [exact endpoint-IP DNS checks](private-connectivity.md#test-from-an-existing-private-client), then the trace-aware request block below **on that same private client**. |
 | Intentionally public | The trace-aware request block below on the approved public client. Skip only the private-posture/DNS checks, not roles, authentication or telemetry. |
 
+### Control-plane checks on the deployment host
+
 On **A**, for **either private client**, first verify the live model account still has
 `publicNetworkAccess = Disabled` and `networkAcls.defaultAction = Deny`; the
 gateway must match the explicitly selected profile. Both private endpoints must report
@@ -433,7 +435,47 @@ Get-FileHash -LiteralPath $clientResultFile -Algorithm SHA256
 
 Transfer only this report back to **A**, with its SHA256 confirmed separately.
 Keep A's original metadata file and `$clientHandoff`; do **not** replace A's full
-`$o` with B's subset. Final acceptance requires the latest `private-only` run:
+`$o` with B's subset. Choose the next subsection from the report's stage.
+
+#### Intermediate-stage evidence
+
+For `bootstrap` or `models-private`, this is a **staging gate only**, not final
+private-only acceptance. Do not run the final import below, which deliberately
+rejects intermediate reports.
+
+On **A**, save the report in the approved evidence folder. Use `Get-FileHash
+-LiteralPath <returned-file> -Algorithm SHA256` with the actual file path and
+compare the result with B's separately confirmed SHA256. A mismatch means stop.
+In VS Code, use **File > Open File** to open that returned report and A's
+original metadata file in separate tabs. Check every row before continuing:
+
+| What to compare | Required result |
+| --- | --- |
+| Handoff identity | Report `runId`, stage, subscription, tenant and gateway match A's latest metadata; `metadataSha256` matches the hash of A's original file. |
+| DNS | Each required service has the expected hostname and nonempty addresses belonging to its recorded endpoint IPs. |
+| Positive and negative requests | Every configured alias has HTTP `200`, `OK` and its own trace ID. Both `missing-key` and `invalid-key` have `401`/`403`, `authenticationSpecific: true`, `networkSpecific: false`. |
+| Timing | Requests belong to this staging run after the latest apply/export, not an earlier access posture. If the run is stale or ambiguous, obtain a fresh export and repeat the client checks. |
+
+If anything is missing or different, stop. Retain the report/hash as
+**intermediate evidence**; do not label it a final pass. After a successful
+`bootstrap` review, return to [Step 4](private-connectivity.md#step-4-disable-model-public-access)
+to close model public access. After a successful `models-private` review,
+continue with [gateway closure](private-connectivity.md#required-final-stage-disable-gateway-public-access).
+Re-export fresh metadata and repeat B's
+checks after each closure. Do not replay an earlier saved plan.
+
+#### Final private-only evidence
+
+Only after both public-access settings are disabled and B has repeated the
+checks with a fresh `private-only` handoff, run this block on **A**. It retains
+the strict final-stage guard; do not change it to accept an intermediate report.
+
+**Before importing on A:** in A's original deployment session, complete
+[Steps 1-3](#1-confirm-the-target-and-read-live-resource-identities), then
+[Step 4's control-plane block](#control-plane-checks-on-the-deployment-host).
+These initialize `$subscription`, `$tenant` and A's **full** `$o` and verify the
+live deployment. Keep `$clientHandoff` and `$handoffFile` from the latest approved
+export. Do not replace `$o` with B's subset or repeat B's billable request blocks.
 
 ```powershell
 $clientResultFile = Read-Host 'Full path to the returned sanitized client report'
@@ -525,37 +567,128 @@ $testStartUtc.ToString('o')
 $testEndUtc.ToString('o')
 ```
 
-Open **that gateway Log Analytics workspace > Logs** (not agent insights).
-Allow several minutes for ingestion; replace the time bounds and trace IDs below
-with the VM report's trace IDs or the existing client's `$requestEvidence`
-values. Copy the actual `$testStartUtc` and `$testEndUtc` values from the preceding
-block, not the example dates. The automated runner additionally enforces
-successful gateway server-span status and scoped Prometheus metrics.
+### Inspect the traced requests and correlated logs
+
+Stay on **A**. In Azure Portal, open the resource whose ID is
+`$destination.logAnalyticsId`, then select **Logs** (not agent insights).
+Allow several minutes for ingestion. In a new query tab, paste the KQL below.
+Replace **both** example dates with the actual `$testStartUtc` and
+`$testEndUtc` values printed above, and replace the trace placeholders with
+the positive requests' IDs. For B's report use `$requestEvidence`; for the VM
+use each successful `inference[].trace_id` in its sanitized report. Add/remove
+trace-list entries if your approved alias count differs from two.
+The query adds the same one-minute clock margin used by the automated runner.
+Set the portal time picker to cover that window, then select **Run**.
 
 ```kusto
-union withsource=TelemetryTable OTelSpans, OTelLogs
-| where TimeGenerated between (datetime(2026-01-01T12:00:00Z) .. datetime(2026-01-01T12:15:00Z))
-| where TraceId in ("<first-probe-trace-id>", "<second-probe-trace-id>")
-| project TimeGenerated, TelemetryTable, TraceId
+let testStart = datetime(2000-01-01T00:00:00Z) - 1m;
+let testEnd = datetime(2000-01-01T00:05:00Z) + 1m;
+let traces = dynamic(["<first-probe-trace-id>", "<second-probe-trace-id>"]);
+union
+(OTelSpans
+| where TimeGenerated between (testStart .. testEnd) and TraceId in (traces)
+| extend HttpStatus = coalesce(toint(Attributes["http.response.status_code"]), toint(Attributes["http.status_code"]), toint(ResultCode))
+| extend Route = tostring(Attributes["http.route"])
+| extend Workspace = coalesce(tostring(Attributes["azure.ai_gateway.workspace"]), extract(@"/([^/]+)/models/", 1, Route))
+| project TimeGenerated, TelemetryTable = "OTelSpans", TraceId, Kind, HttpStatus, Workspace, Route),
+(OTelLogs
+| where TimeGenerated between (testStart .. testEnd) and TraceId in (traces)
+| project TimeGenerated, TelemetryTable = "OTelLogs", TraceId, Kind = "", HttpStatus = int(null), Workspace = "", Route = "")
 | order by TimeGenerated asc
 ```
 
-**Expected:** new gateway request/related telemetry attributable to the test
-window and model requests. Require each positive trace's successful gateway
-Server span (HTTP 200, default workspace, models route) and correlated OTelLogs,
-not merely any row sharing a trace ID. Inspect trace IDs and
-available alias/path dimensions locally to distinguish unrelated concurrent
-traffic. Do not export full `customDimensions`, request/response bodies or
-credentials. If the preview emits a different schema, use the resource's actual
-tables and record that schema; a query error, empty result, or exporter existence
-alone is **not** proof of delivery. Do not enable payload capture to troubleshoot
-this acceptance check. Retest after ingestion delay; unresolved delivery is an
-open acceptance item, not a silent pass.
+**Pass only when both conditions are visible in the results:**
 
-Also verify fresh `azure.ai_gateway.client.token.usage` through the destination's
-Prometheus endpoint, with the same Insights/workspace/time filters as the portal.
-Use the query and interpretation in the [automated runbook](end-to-end.md):
-positive metric samples are not an exact token total for just your calls.
+- **Every positive trace ID** has an `OTelSpans` row with `Kind = Server`,
+  `HttpStatus = 200`, `Workspace = default` and `Route` containing `/models/`.
+  Match each ID back to its alias in the request report; a log or client span
+  with that ID is not a successful gateway Server span.
+- At least one `OTelLogs` row is correlated to one of those same positive trace
+  IDs within the window. Blank HTTP/route fields on that **log** row are expected;
+  they do not replace the required Server rows.
+
+The query derives `HttpStatus`, `Route` and `Workspace` from the documented
+[OTelSpans schema](https://learn.microsoft.com/azure/azure-monitor/reference/tables/otelspans);
+they are not assumed physical columns. Save only the displayed sanitized
+columns, the alias/trace mapping and UTC window in the restricted evidence folder.
+A query error, missing span/log, or empty required span field is **not verified**.
+Check the selected workspace, UTC bounds and ingestion delay before querying
+again; do not generate more model calls just to refresh this query. If the
+preview schema differs, investigate and record it rather than silently dropping
+the success conditions. Do not export raw attributes, bodies or credentials,
+and do not enable payload capture for this check.
+
+### Query the token metrics for the same destination and window
+
+On **A**, in the same PowerShell 7 session, run the block below after the
+destination/role checks above. It uses A's own Azure CLI identity and the
+**verified linked AMW query endpoint**, not a hostname guessed from a resource
+name. The operator needs query permission on that AMW; an access denial requires
+the monitoring owner, not a broader role granted by this snippet.
+It reads metrics once and does not invoke models.
+
+```powershell
+if (-not $destination -or -not $destination.prometheusQueryEndpoint -or
+    $testStartUtc -isnot [DateTimeOffset] -or $testEndUtc -isnot [DateTimeOffset] -or
+    $testEndUtc -lt $testStartUtc) {
+    throw 'Complete the destination check and restore the actual request UTC window first.'
+}
+$metricStart = $testStartUtc.AddMinutes(-1)
+$metricEnd = $testEndUtc.AddMinutes(1)
+$metricStartUnix = $metricStart.ToUnixTimeSeconds()
+$metricEndUnix = $metricEnd.ToUnixTimeSeconds()
+$insightsLabel = $destination.insightsId.ToLowerInvariant() | ConvertTo-Json -Compress
+$selector = '{__name__="azure.ai_gateway.client.token.usage","microsoft.appresourceid"=' + $insightsLabel + ',"azure.ai_gateway.workspace"="default"}'
+$metricQuery = "($selector > 0) and (timestamp($selector) >= $metricStartUnix)"
+$metricUrl = "$($destination.prometheusQueryEndpoint)/api/v1/query_range?query=$([uri]::EscapeDataString($metricQuery))&start=$($metricStartUnix)&end=$($metricEndUnix)&step=15s"
+$cliUrl = $metricUrl
+if ($IsWindows -and (Get-Command az -ErrorAction Stop).Source -match '\.(cmd|bat)$') {
+    $cliUrl = '"' + $metricUrl + '"'
+}
+$metricJson = az rest --subscription $subscription --method get `
+    --resource 'https://prometheus.monitor.azure.com' --url $cliUrl `
+    --output json --only-show-errors
+if ($LASTEXITCODE -ne 0) { throw 'Metric query failed; delivery is not verified.' }
+$metrics = $metricJson | ConvertFrom-Json
+$metricJson = $null
+if ($metrics.status -cne 'success' -or $metrics.error -or $metrics.warnings -or
+    $metrics.data.resultType -cne 'matrix') {
+    throw 'Prometheus returned incomplete or unsupported results.'
+}
+$series = @($metrics.data.result | Where-Object {
+    $_.metric.__name__ -ceq 'azure.ai_gateway.client.token.usage' -and
+    $_.metric.'microsoft.appresourceid' -ceq $destination.insightsId.ToLowerInvariant() -and
+    $_.metric.'azure.ai_gateway.workspace' -ceq 'default'
+})
+$samples = @($series | ForEach-Object { $_.values } | Where-Object {
+    $value = 0.0
+    $timestamp = 0.0
+    @($_).Count -eq 2 -and [double]::TryParse([string]$_[0], [Globalization.NumberStyles]::Float,
+        [Globalization.CultureInfo]::InvariantCulture, [ref]$timestamp) -and
+    $timestamp -ge $metricStartUnix -and $timestamp -le $metricEndUnix -and
+    [double]::TryParse([string]$_[1], [Globalization.NumberStyles]::Float,
+        [Globalization.CultureInfo]::InvariantCulture, [ref]$value) -and
+    [double]::IsFinite($value) -and $value -gt 0
+})
+if ($samples.Count -eq 0) { throw 'No fresh positive token samples in the approved scope/window.' }
+[pscustomobject]@{
+    insightsId = $destination.insightsId
+    monitorWorkspaceId = $destination.azureMonitorWorkspaceId
+    windowStartUtc = $metricStart.ToString('o')
+    windowEndUtc = $metricEnd.ToString('o')
+    positiveMetricSamples = $samples.Count
+    attribution = 'Insights/workspace/window scoped; not an exact per-call token total.'
+}
+```
+
+**Expected:** a summary with the selected Insights/AMW IDs, the request window
+with a one-minute margin, and `positiveMetricSamples` greater than zero.
+The timestamp predicate excludes older samples carried forward by Prometheus
+lookback. If ingestion is delayed, rerun **only this query** after waiting; retain
+the original request window. Missing data, warnings, access errors and nonfinite
+values do not pass. Save the summary and `$metricQuery` in the protected run
+record. Do not sum returned points as your test's token bill: concurrent traffic
+and repeated range-query samples prevent exact per-call attribution.
 
 ## 7. Finish with a drift check and explicit acceptance record
 
@@ -587,6 +720,160 @@ For an intentionally public deployment, omit **only** the private `-var-file`
 argument, retaining all its usual approved inputs/backend. Never omit it for a
 private deployment. Keep plan output protected because it can contain secrets.
 
+### Prove public-network denial with a valid gateway key
+
+This is required for **final private-only** acceptance, including after a
+successful VM runner. It is not the missing/invalid-key test from Step 5.
+Do not run it as a pass criterion for an intentionally public deployment.
+
+1. **A first confirms** both live public-access settings are `Disabled` and
+   the latest private call succeeded for every alias after that closure.
+   Keep that private evidence. Do not open access to create a public control.
+2. Ask the network owner for **C: an approved Windows client with PowerShell 7
+   and Azure CLI, outside the private route**. A can serve as C only if its
+   actual route qualifies. A VPN, private DNS override or proxy that forwards
+   into the private network disqualifies that route. Do not disable mandatory
+   corporate security controls; use an approved external test host instead.
+3. The owner signs C in with **C's own approved identity**, in the same tenant/
+   subscription, with the gateway-scoped
+   `Microsoft.ApiManagement/service/apiKeys/listSecrets/action` grant.
+   C needs ARM/sign-in and public gateway HTTPS reachability, **not**
+   Terraform, backend access, copied tokens or a transported runtime key.
+   Confirm the actual public egress with the network owner; DNS alone cannot
+   prove how a VPN/proxy routes HTTPS.
+4. Transfer A's final `private-only` metadata file/hash using the approved
+   channel. For the existing-client path use the **same run** just accepted
+   from B. For a VM run, A uses the
+   [same metadata export](private-connectivity.md#test-from-an-existing-private-client)
+   after confirming the successful final VM evidence. Finish within the
+   metadata's 30-minute freshness window. If it expires or anything is
+   redeployed, obtain fresh metadata and repeat the private controls first.
+5. On C, open a **separate** PowerShell 7 session. Run only
+   [Load the approved client metadata](private-connectivity.md#load-the-approved-client-metadata).
+   Enter `private-only` at its stage prompt. **Do not run B's private DNS
+   block, positive calls, or Steps 1-3 from this guide on C.**
+6. Still on C, run the following block. It makes **one** bounded request to an
+   alias that already passed privately. A misconfigured open gateway can make
+   that request billable; no load test or automatic retry is performed.
+
+```powershell
+$publicBoundaryEvidence = $null
+if (-not $clientHandoff -or $clientHandoff.stage -cne 'private-only' -or
+    ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($clientHandoff.capturedAtUtc)).TotalMinutes -gt 30) {
+    throw 'A fresh final-stage metadata import and successful private controls are required.'
+}
+$gatewayUrl = ([string]$o.gateway_endpoint.value).TrimEnd('/')
+$gatewayUri = [uri]$gatewayUrl
+$gatewayTarget = @($clientHandoff.dnsTargets | Where-Object name -eq 'gateway')
+if ($gatewayUri.Scheme -cne 'https' -or $gatewayUri.Port -ne 443 -or
+    $gatewayUri.UserInfo -or $gatewayUri.Query -or $gatewayUri.Fragment -or
+    $gatewayUri.AbsolutePath -ne '/' -or $gatewayTarget.Count -ne 1 -or
+    ([string]$gatewayTarget[0].url).TrimEnd('/') -cne $gatewayUrl -or
+    @($gatewayTarget[0].expectedIps).Count -eq 0) {
+    throw 'Gateway URL or selected endpoint metadata does not match the approved handoff.'
+}
+$publicIps = @(Resolve-DnsName -Name $gatewayUri.DnsSafeHost -Type A -DnsOnly -NoHostsFile -ErrorAction Stop |
+    Where-Object Type -eq 'A' | Select-Object -ExpandProperty IPAddress -Unique)
+if ($publicIps.Count -eq 0) { throw 'No public-route DNS result; network rejection is not verified.' }
+foreach ($ip in $publicIps) {
+    $address = [Net.IPAddress]::Parse($ip)
+    $bytes = $address.GetAddressBytes()
+    if ($bytes.Length -ne 4 -or $ip -in @($gatewayTarget[0].expectedIps) -or
+        $bytes[0] -in @(0, 10, 127) -or $bytes[0] -ge 224 -or
+        ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+        ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or
+        ($bytes[0] -eq 169 -and $bytes[1] -eq 254) -or
+        ($bytes[0] -eq 100 -and $bytes[1] -ge 64 -and $bytes[1] -le 127)) {
+        throw 'DNS indicates a private/nonpublic route; choose an approved external client.'
+    }
+}
+$publicContext = (Read-Host 'Record the approved public client/egress context, without credentials').Trim()
+if (-not $publicContext) { throw 'Record the network-owner-confirmed public route first.' }
+$alias = @($o.model_deployment_ids.value.PSObject.Properties.Name)[0]
+$api = $o.model_api_configuration.value.PSObject.Properties[$alias].Value
+if (-not $alias -or $api.api_format -cne 'OpenAIChatCompletions' -or
+    @($api.endpoints) -cnotcontains '/openai/v1/chat/completions') {
+    throw 'Choose the approved chat-completions alias that passed privately.'
+}
+$apiKey = $null
+$headers = $null
+$response = $null
+try {
+    $keyId = [string]$o.gateway_api_key_id.value
+    $apiKey = az rest --subscription $subscription --method post `
+        --url "https://management.azure.com${keyId}/listSecrets?api-version=2025-09-01-preview" `
+        --query primaryKey --output tsv --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiKey)) {
+        throw 'Cannot retrieve the current gateway key; public rejection is not verified.'
+    }
+    $publicTraceId = [guid]::NewGuid().ToString('N')
+    $spanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
+    $headers = @{ 'Api-Key' = $apiKey; traceparent = "00-$publicTraceId-$spanId-01" }
+    $body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_tokens = 8; temperature = 0 } |
+        ConvertTo-Json -Depth 5
+    $response = Invoke-WebRequest -Method Post `
+        -Uri "$gatewayUrl/default/models/openai/v1/chat/completions" `
+        -Headers $headers -ContentType 'application/json' -Body $body `
+        -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 90
+    $status = [int]$response.StatusCode
+    $networkSpecific = [string]$response.Content -match 'public[\s_-]*network[\s_-]*access(?:\s+is)?[\s_:=.-]*(?:disabled|denied|blocked)'
+    $authenticationSpecific = [string]$response.Content -match 'api[- _]?key|subscription.?key|unauthori[sz]ed|authentication|credentials'
+    if ($status -ne 403 -or -not $networkSpecific -or $authenticationSpecific) {
+        throw "Explicit public-network rejection not verified, HTTP $status. Do not classify an authentication error as a pass."
+    }
+    $publicBoundaryEvidence = [ordered]@{
+        runId = $clientHandoff.runId
+        stage = $clientHandoff.stage
+        gatewayId = $o.gateway_id.value
+        metadataSha256 = (Get-FileHash -LiteralPath $handoffFile -Algorithm SHA256).Hash
+        testedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        networkContext = $publicContext
+        hostname = $gatewayUri.DnsSafeHost
+        dnsAddresses = $publicIps
+        alias = $alias
+        traceId = $publicTraceId
+        httpStatus = $status
+        networkSpecific = $networkSpecific
+        authenticationSpecific = $authenticationSpecific
+    }
+}
+finally {
+    $apiKey = $null
+    $headers = $null
+    $response = $null
+}
+$evidenceDirectory = Read-Host 'Absolute path to C''s existing restricted evidence folder outside the checkout'
+if (-not [IO.Path]::IsPathFullyQualified($evidenceDirectory) -or
+    -not (Test-Path -LiteralPath $evidenceDirectory -PathType Container)) {
+    throw 'Use an existing, approved restricted folder.'
+}
+$publicResultFile = Join-Path $evidenceDirectory "public-boundary-$publicTraceId.json"
+$publicBoundaryEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $publicResultFile -Encoding utf8NoBOM
+Get-FileHash -LiteralPath $publicResultFile -Algorithm SHA256
+```
+
+7. **Expected:** a sanitized report with HTTP `403`, `networkSpecific: true`,
+   `authenticationSpecific: false`, the public DNS addresses and the current
+   metadata/run identity. Return **only that report and its separately confirmed
+   hash** to A. Do not save raw response bodies, headers, keys or tokens.
+8. **A compares** the file hash, gateway ID, metadata hash/run ID, timestamp and
+   alias with the accepted final private evidence, and retains both records.
+   For a VM run, also retain its report/run ID and UTC window beside the metadata
+   export; it is not the same report schema as B's handoff.
+   Confirm the recorded network context with the network owner.
+   A DNS failure, TLS error, timeout, redirect, `401`, authentication-specific
+   `403`, generic/proxy-firewall `403` or ambiguous response is **not verified**,
+   not a pass. The block requires an explicit public-network-access denial;
+   investigate different service wording without weakening it to any `403`.
+   Never reopen the gateway to bypass this check.
+
+This proves only the tested gateway ingress boundary. It does not certify
+direct model, Foundry-agent or storage ingress with unrelated credentials.
+Those separately required tests need their own approved identity and evidence;
+never reuse a gateway key against a backend service.
+
+### Complete the acceptance record
+
 Record subscription/tenant, resource IDs, timestamp, Git revision, selected
 profile, aliases tested, six service bindings plus the DCR publishing role, connection metadata, authentication
 statuses, telemetry evidence, drift exit code and VM power state. Mark every item
@@ -597,8 +884,8 @@ record the expected/observed gateway public access, not a hardcoded public
 assumption. For private-only ingress, require a new positive private call per
 alias and a valid-credential public request rejected specifically by the network
 boundary. Use an approved client outside the private network, record its DNS/
-network context and the actual response without credentials. A 401,
-authentication-specific 403, DNS error or timeout alone is insufficient.
+network context and the sanitized classification above without credentials.
+A 401, authentication-specific 403, DNS error or timeout alone is insufficient.
 
 The automated runner does not perform this public-boundary test. Nor does
 disabled gateway ingress imply a private Foundry hosted-agent network or change
