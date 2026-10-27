@@ -71,7 +71,7 @@ for the Pending/Approve sequence.
 > in an isolated Sweden Central rehearsal with independently owned network/DNS.
 > Both private aliases, auth/public-network boundaries, telemetry, firewall
 > traffic and four no-change plans passed. This does not prove private-from-
-> first-create or another customer's environment. The October 25 portal/private-
+> first-create or verify your environment. The October 25 portal/private-
 > agent proof is separate; no hosted-agent application ran in the new rehearsal.
 > See [evidence and verification boundaries](reference.md#private-only-gateway-ingress-status).
 >
@@ -114,7 +114,7 @@ foreach ($name in @('customerVarFile', 'networkOwnershipFile', 'additionalInputA
 
 For a new terminal, follow the main guide's
 [resume instructions](../deployment.md#if-something-fails-or-you-open-a-new-terminal).
-Do not replace saved customer files with templates.
+Do not replace approved input files with templates.
 
 `create` is the default and preserves the sample's names, Terraform addresses and
 network ranges. It creates only the sample gateway network/DNS foundation, not a
@@ -214,7 +214,7 @@ The sample keeps VM/NIC ownership in the workload subscription, so enabled
 actual location. Changing an existing client subnet is a separate migration,
 not an automatic VM/NIC relocation.
 
-The customer keeps ownership of subnets, VNet settings, NSGs, UDRs, firewall,
+Your organization retains ownership of subnets, VNet settings, NSGs, UDRs, firewall,
 resolver, private DNS zones and links. Existing mode never modifies central
 subnet policies or assumes each spoke has a direct DNS-zone link. Validate the
 actual central resolver/forwarding path from every intended client.
@@ -496,7 +496,7 @@ both jobs. Keep them open; do not mix their variables.
    Keep ARM/sign-in egress available; do not transfer the deployment identity.
 3. Agree a restricted evidence folder **outside the checkout** on each host
    and an approved transfer channel. These IDs/IPs are not credentials, but
-   still belong in a restricted customer run record.
+   still belong in a restricted run record.
 4. On **A**, restore the approved context and run the export below. For
    Terragrunt, replace only `terraform output -json` with
    `terragrunt run --log-level error --tf-forward-stdout -- output -json`
@@ -849,13 +849,13 @@ required hosted-agent reachability and fresh telemetry separately.
 The VM probe also rejects missing/invalid keys on the same route after positive
 controls and emits per-call trace IDs. It does not itself verify all role
 bindings, connections or telemetry ingestion.
-Complete the [customer acceptance guide](acceptance.md) before handing over the
-deployment, not the public-path plan/apply. A DNS/inference pass is only the
-private-route part of acceptance. The VM-based [end-to-end runner](end-to-end.md) adds
+Complete the [deployment acceptance guide](acceptance.md) for this private
+deployment; do not switch to the public-path plan/apply. A DNS/inference pass is
+only the private-route part of acceptance. The VM-based [end-to-end runner](end-to-end.md) adds
 VM lifecycle handling, backend checks, correlated telemetry and portal evidence.
 Pass `-NetworkProfile private-only` to that runner for a disabled gateway; it
 uses the same selected profile for both the live posture check and drift plan.
-Also pass the complete customer and ownership files through `-AdditionalVarFile`;
+Also pass the complete workload and ownership files through `-AdditionalVarFile`;
 do not lose existing-network inputs during acceptance. Its private runtime pass
 does not certify public network rejection.
 

@@ -1,13 +1,16 @@
-# Customer acceptance for an existing deployment
+# Deployment acceptance
+
+<a id="customer-acceptance-for-an-existing-deployment"></a>
 
 Use this after the chosen [networking path](../README.md#choose-your-networking-path)
-has been applied successfully. It is **not** a new-deployment or recovery guide.
+has been applied successfully. This guide verifies the deployed resources;
+it does **not** create or repair them.
 The [legacy-resource limitation](reference.md#resource-type-and-lifecycle) remains.
 An isolated Sweden Central rehearsal on October 27, 2026 created the original
 `service` / `AIGateway` through Terraform and closed public access in stages.
 Private model calls, authentication controls, public network rejections,
 telemetry, central firewall routing and four independent no-change plans passed.
-This does not prove private-from-first-create or another customer's policies,
+This does not prove private-from-first-create or verify your policies,
 CI/backend or region. The October 25
 [private-agent proof](private-hosted-agent.md#observed-deployment-and-proof)
 is separate; no hosted-agent application ran in the October 27 rehearsal.
@@ -204,7 +207,7 @@ if ($foundry.authentication.kind -ne 'ManagedIdentity' -or
 **Expected:** three connection confirmations and the provider confirmation.
 This verifies configuration metadata, **not** credential contents, Storage
 object access, an ACR image pull or running hosted agents. The sample deploys no
-agent/image. If agent execution is a customer requirement, require a separate
+agent/image. If agent execution is required for your workload, require a separate
 approved image-pull, artifact-access and agent-execution test before signing off;
 do not label these checks as an agent-runtime pass.
 
@@ -538,7 +541,7 @@ if ($testStartUtc -lt $handoffTime.AddMinutes(-1) -or
 
 The report is **not** a substitute for Azure telemetry or a public-boundary
 test. The live rehearsal used an independent Windows PowerShell 5.1/managed-
-identity client. These customer blocks use PowerShell 7/Azure CLI; the exact
+identity client. These documented blocks use PowerShell 7/Azure CLI; the exact
 snippets were not live-executed in that rehearsal.
 
 ## 6. Verify telemetry delivery, not just exporter existence
@@ -900,7 +903,7 @@ A 401, authentication-specific 403, DNS error or timeout alone is insufficient.
 The automated runner does not perform this public-boundary test. Nor does
 disabled gateway ingress imply a private Foundry hosted-agent network or change
 API-key clients to Entra. Record any required hosted-agent/image/artifact tests
-separately. Undemonstrated customer requirements remain **unmet**, even when
+separately. Unverified workload requirements remain **unmet**, even when
 the selected configuration and private backend checks pass.
 
 ## 8. Record the manual portal review
@@ -953,7 +956,7 @@ as `referenceValue` or sum repeated range-query samples to invent a total.
    record. Label the outcome **manual / operator-attested**, not an automated
    runner PASS. Sign off only when all six UI checks and all required backend,
    route, authentication, telemetry and drift checks passed; retain all remaining
-   failures or unverified customer requirements as open items.
+   failures or unverified workload requirements as open items.
 
 Do **not** create an `acceptance.json` with `backendStatus = PASS`, relabel an
 incomplete VM report, or run `Complete-PortalAcceptance.ps1` against this manual

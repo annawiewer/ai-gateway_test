@@ -1,7 +1,7 @@
 # Reference
 
 This is a technical lookup, not the execution order. Start with the
-[guided customer walkthrough](../deployment.md#start-here); use its
+[step-by-step deployment guide](../deployment.md#start-here); use its
 [input catalogue](../deployment.md#inputs-and-state) to find values and its
 [failure/resume guide](../deployment.md#if-something-fails-or-you-open-a-new-terminal)
 when a step stops. Historical migrations below are not routine setup steps.
@@ -9,21 +9,22 @@ when a step stops. Historical migrations below are not routine setup steps.
 Details for both [networking paths](../README.md#choose-your-networking-path).
 Review the limitations before changing an existing deployment.
 
-## Customer handoff
+<a id="customer-handoff"></a>
 
-**Handoff name:** Existing-network integration - 2026-10-27.
+## Version and verification scope
+
 **Reviewed implementation baseline:**
 [`dfa84ba9004afc2f03f723432fc0b05e6bc531c8`](https://github.com/annawiewer/ai-gateway_test/commit/dfa84ba9004afc2f03f723432fc0b05e6bc531c8).
-This is a descriptive handoff name, not a Git tag or a production certification.
+This identifies the reviewed Terraform configuration and runtime scripts, not a
+version that you must switch to or a production certification.
 
-The baseline identifies the reviewed implementation; the handoff documentation
-also includes the entry/ownership clarification below. The workload owner must
-supply and approve the **exact delivery commit or tag**, including its
-documentation, using the [checkout steps](../deployment.md#2-open-the-approved-source-revision).
-Do not treat the moving `main` branch as an approved release or switch an existing
-deployment to the baseline merely because it is linked here.
+Use the **exact source revision approved for your deployment**, including its
+documentation, as described in the [checkout steps](../deployment.md#2-open-the-approved-source-revision).
+The `main` branch can change; record the commit or tag you actually use so the
+deployment is reproducible. Keep an existing deployment's approved revision
+unless its owner has approved an update.
 
-**Short release notes**
+**Change summary**
 
 - Added paired `create`/`existing` network ownership, validated existing subnet
   and central DNS-zone inputs, and a Terragrunt adapter for independently owned
@@ -32,17 +33,19 @@ deployment to the baseline merely because it is linked here.
 - Corrected optional private-agent acceptance to check the separate private
   account, and clarified staged/final evidence, telemetry and public-network
   rejection. The original `AIGateway` SKU is unchanged.
-- Documentation handoff: one [existing-network entry](../deployment.md#existing-network-integration-at-a-glance),
-  one [ownership/approval table](../deployment.md#platform-handoff-before-a-plan)
-  and the existing detailed steps. No additional Terraform behavior or Azure
-  deployment is introduced by this documentation clarification.
+- The [step-by-step guide](../deployment.md#start-here) includes an
+  [existing-network entry](../deployment.md#existing-network-integration-at-a-glance),
+  an [ownership/approval table](../deployment.md#platform-handoff-before-a-plan),
+  state-preservation guidance, manual portal evidence and recovery without
+  reopening an already-private gateway. These documentation updates do not change
+  the Terraform resource definitions or SKU.
 
-| Evidence or boundary | What this handoff establishes |
+| Evidence or boundary | What has been verified and what remains |
 | --- | --- |
-| Offline checks | The implementation has Terraform/script regression checks. The corrected acceptance fixtures and documentation examples were checked offline; this is not proof of the customer's network or Azure Policy. |
+| Offline checks | The implementation has Terraform/script regression checks. The corrected acceptance fixtures and documentation examples were checked offline; this does not verify your network or Azure Policy. |
 | Scoped live evidence | The [October 27 rehearsal](#private-only-gateway-ingress-status) created the original SKU with separately owned network/DNS, completed staged private closure, and checked private calls, network/authentication boundaries, telemetry, routing and no-change plans. This is historical evidence for that environment, not a new deployment of every subsequent documentation revision. |
-| Not established by that rehearsal | Private-from-first-create, another subscription/region, the customer's backend/CI/PIM/policies, or optional hosted-agent, Blob and registry runtime acceptance. The earlier agent proof has its own separate scope. |
-| Required for customer handover | Record the actual delivery revision and input/state owners, then complete [customer acceptance and the handover checklist](../deployment.md#handover-checklist). Keep keys, state and customer-specific evidence out of the public repository. |
+| Not established by that rehearsal | Private-from-first-create, another subscription/region, your backend/CI/PIM/policies, or optional hosted-agent, Blob and registry runtime acceptance. The earlier agent proof has its own separate scope. |
+| Required for your deployment | Record the source revision you use and the input/state owners, then complete the [deployment acceptance checklist](../deployment.md#deployment-acceptance-checklist). Keep keys, state and environment-specific evidence out of the public repository. |
 
 ## File guide
 
@@ -53,7 +56,7 @@ deployment to the baseline merely because it is linked here.
 | [profiles/private-only.tfvars.json](../profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
 | [profiles/network-create.tfvars.json](../profiles/network-create.tfvars.json) | Sample-managed network/DNS ownership; independent of public/private access |
 | [profiles/network-existing.tfvars.json](../profiles/network-existing.tfvars.json) | Minimal existing-network/DNS ownership example; replace every fictional ID in an untracked copy |
-| [examples/terragrunt-existing.hcl.example](../examples/terragrunt-existing.hcl.example) | Local-root adapter for customer network and DNS dependency outputs; adapt existing include/backend paths |
+| [examples/terragrunt-existing.hcl.example](../examples/terragrunt-existing.hcl.example) | Local-root adapter for your network and DNS dependency outputs; adapt existing include/backend paths |
 | [variables.tf](../variables.tf) / [outputs.tf](../outputs.tf) | Inputs, validation, outputs |
 | [ai-gateway.tf](../ai-gateway.tf) | Gateway, provider, catalog, aliases, runtime key, telemetry exporter |
 | [foundry-models.tf](../foundry-models.tf) | Model account and versioned deployments |
@@ -65,7 +68,7 @@ deployment to the baseline merely because it is linked here.
 | [scripts/Test-ModelAliases.ps1](../scripts/Test-ModelAliases.ps1) | Test every alias from a connected client using an API key or Entra token |
 | [scripts/Get-GatewayMonitoring.ps1](../scripts/Get-GatewayMonitoring.ps1) / [monitoring.md](monitoring.md) | Read-only bounded OTLP readiness, linked managed groups, two-stage setup |
 | [tests](../tests) | Offline Terraform and Python tests |
-| [acceptance.md](acceptance.md) | Customer runtime checks, expected results and evidence boundaries |
+| [acceptance.md](acceptance.md) | Deployment runtime checks, expected results and evidence boundaries |
 | [versions.tf](../versions.tf) / [.terraform.lock.hcl](../.terraform.lock.hcl) | Provider versions and checksums (commit the lock file) |
 
 ## Inputs
@@ -305,7 +308,7 @@ the gateway key. In create mode its NSG denies inbound traffic and its subnet
 allows outbound internet for VM agent/ARM operations, so it is not air-gapped.
 Existing mode requires an explicit approved `client_subnet_id` in workload
 `subscription_id`: the VM, NIC and VNet must share subscription/location.
-Customer NSG/UDR/egress controls are retained; the sample does not open them for the VM.
+Your existing NSG/UDR/egress controls are retained; the sample does not open them for the VM.
 An approved existing private client can be used instead.
 
 **Not configured:** corporate DNS forwarding, peering, VPN, forced tunneling
@@ -429,7 +432,7 @@ check shared-group placement, preserved monitoring/output contracts, model/API m
 backends, opt-in developer roles, invalid inputs, the private profile, and rejection
 of unsupported probe APIs. Python 3 and PowerShell 7 are required for the script
 tests. These are **not** runtime tests. For actual acceptance, use the
-[customer acceptance guide](acceptance.md).
+[deployment acceptance guide](acceptance.md).
 
 ## Implementation notes
 
@@ -496,10 +499,10 @@ The final closure made two updates and no creates/deletes; an earlier failed
 model endpoint was replaced only after explicit approval.
 
 This proves the tested original-SKU deployment and staged update, **not**
-private-from-first-create, universal region/subscription support, the customer's
+private-from-first-create, universal region/subscription support, your
 remote backend/CI/PIM/policy implementation, Blob/registry operations or hosted-
 agent execution. It used a separate private client without workload state or
-transported keys. The customer's PowerShell 7/Azure CLI handoff examples are
+transported keys. The documented PowerShell 7/Azure CLI handoff examples are
 not the exact PowerShell 5.1/managed-identity commands used in that live test.
 The original October 25 agent proof and its portal review remain separate.
 
@@ -518,7 +521,7 @@ legacy-resource lifecycle restrictions remain unchanged. The later October 27
 Terraform evidence above has its own explicit scope; it does not establish the
 cause of the earlier service failure.
 
-**Observed in our tests, not a universal SKU limit.** Microsoft [documents disabling public access after private connectivity is verified](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking#inbound-private-link). In our **October 18, 2026, Sweden Central** tests:
+**Observed in tests, not a universal SKU limit.** Microsoft [documents disabling public access after private connectivity is verified](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking#inbound-private-link). In the **October 18, 2026, Sweden Central** tests:
 
 - Both aliases passed private DNS and inference checks with model public access disabled (ACL Deny).
 - Disabling gateway public access failed with `UpdateApiServiceFailed`, through both Terraform and the CLI's public-access PATCH. Private access kept working, but public access stayed on.

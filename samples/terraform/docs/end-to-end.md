@@ -1,4 +1,6 @@
-# Customer-like rehearsal and portal acceptance
+# End-to-end verification and portal acceptance
+
+<a id="customer-like-rehearsal-and-portal-acceptance"></a>
 
 The offline suite, live backend verifier and authenticated portal review are
 separate gates. **None is a substitute for the other two.** The verifier never
@@ -32,12 +34,13 @@ cleanup. The strict final runner deliberately does not waive its placement gate.
 
 | Rehearsal | What it proves | Prerequisite |
 | --- | --- | --- |
-| Clean checkout, offline | Reproducible configuration and regression checks | No Azure credentials, state or customer input files |
+| Clean checkout, offline | Reproducible configuration and regression checks | No Azure credentials, state or deployment input files |
 | Existing legacy integration | Configuration and runtime of an existing gateway | Exclusive ownership of its authoritative state, approved inputs and scope |
-| New customer / greenfield | Creation from scratch | Confirm the exact resource type/SKU is available in the approved subscription/region, plus quota, policy and deployment permissions |
+| New gateway deployment | Resource creation from the selected inputs | Confirm the exact resource type/SKU is available in the approved subscription/region, plus quota, policy and deployment permissions |
 
-Do not call an integration pass a greenfield pass. A container sandbox can isolate
-tools but cannot emulate Azure provisioning, quotas, Private Link, DNS, managed
+A check of an existing gateway does not prove that a new gateway can be created.
+A container sandbox can isolate tools but cannot emulate Azure provisioning,
+quotas, Private Link, DNS, managed
 identities, ingestion or the real portal. No hosted agent/image is deployed by
 this sample, so image pull, artifact access and agent execution need a separate
 approved test. Private routing alone is **not** private-only gateway ingress.
@@ -46,7 +49,7 @@ The October 27 isolated Sweden Central rehearsal created the original AIGateway
 through Terraform, reused independent network/DNS states and closed public
 access in stages. Both aliases, auth/network controls, telemetry, firewall
 traffic and four no-change plans passed. This is not private-from-first-create
-or certification of another customer's CI/backend/policy environment.
+or verification of your CI/backend/policy environment.
 The separate October 25
 [private-agent deployment](private-hosted-agent.md#observed-deployment-and-proof)
 proved agent OK, correlated gateway/backend HTTP 200 and authenticated public
@@ -132,7 +135,7 @@ $parameters = @{
 Replace `ReportDirectory` with the approved restricted evidence folder before
 running. `AdditionalVarFile` is the full ordered list, **including** the
 network-ownership file; omitting it can lose `existing` mode. It is not enough
-that a nonautomatic customer file happens to be present in the directory.
+that an input file with a nonautomatic name happens to be present in the directory.
 
 Reports go into a unique run-ID subdirectory. Store them outside the checkout or
 in the ignored `acceptance-results` directory with access restricted to the test
@@ -333,15 +336,19 @@ browser or independently verify the observations**: UI acceptance is explicitly
 operator-attested. Failed backend checks cannot be overridden, and the original
 backend report is preserved. No complete end-to-end PASS is emitted without both.
 
-## 5. Repeatability, handover and cleanup
+<a id="5-repeatability-handover-and-cleanup"></a>
+
+## 5. Repeatability, evidence and cleanup
 
 Rerun the same approved commit/inputs against the same exclusively owned state.
 Require another zero-drift result and new runtime/telemetry/UI evidence; do not
-reuse an old portal pass. An independent greenfield test remains a separate gate.
+reuse an old portal pass. Testing creation of a new gateway remains a separate gate.
 Keep failed reports and non-secret correlation IDs for support; never repeatedly
 recreate a failing gateway endpoint without a diagnosed fix.
 
-Hand over the approved commit, input/state ownership instructions, source CI
-result, deployment evidence, both acceptance reports, known limitations and cleanup
-owner. For teardown follow [protected cleanup](reference.md#cost-and-cleanup);
+Keep the approved commit, input/state ownership instructions, source CI result,
+deployment evidence, acceptance reports, known limitations and cleanup owner
+in your protected operational record. For the VM-runner route, retain both the
+original backend report and the portal-completed report.
+For teardown follow [protected cleanup](reference.md#cost-and-cleanup);
 the runner does not disable gateway protection or automatically delete a group.

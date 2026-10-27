@@ -1,7 +1,7 @@
 # Private hosted-agent deployment reference
 
 **Optional, not a prerequisite for the gateway.** Follow the
-[main customer walkthrough](../deployment.md#start-here) first. Use this guide
+[step-by-step deployment guide](../deployment.md#start-here) first. Use this guide
 only when an application owner has approved a new private agent account and its
 separate application deployment. HCL/JSON blocks are file contents; PowerShell
 commands run in the approved workload directory.
@@ -37,8 +37,8 @@ then sends that key to the gateway. Gateway-to-model authentication remains
 managed identity. This is **not** proof of caller-to-gateway Entra token
 authentication or universally private control-plane/telemetry traffic.
 This single deployment is not a guarantee for other regions or policy settings.
-The count is historical, not the expected count for every ownership mode or
-customer plan.
+This count is historical; use your reviewed plan to determine the resources
+for your selected ownership mode and inputs.
 
 ## Configure new agent accounts from the start
 
@@ -49,7 +49,7 @@ added to the existing account.
 
 The optional `enable_private_hosted_agent = true` extension creates an additional
 Basic Foundry account/project using either a sample-created agent subnet
-(`create`) or a supplied customer subnet (`existing`). It follows Microsoft's
+(`create`) or an approved existing subnet (`existing`). It follows Microsoft's
 [Basic VNet sample](https://github.com/microsoft-foundry/foundry-samples/tree/main/infrastructure/infrastructure-setup-terraform/11-private-network-basic-vnet)
 and [networking options](https://learn.microsoft.com/azure/foundry/agents/concepts/networking-options).
 Basic uses **platform-managed, multitenant data resources**, not customer-owned
@@ -87,7 +87,7 @@ proof of private-only hosted-agent ingress.
 | --- | --- | --- |
 | Account/project ending in `-private`, Basic capability host | New workload resources | Same new workload resources; original account/project/models remain |
 | Dedicated agent integration subnet | New `agents` subnet, index 3 of the sample /16, delegated to `Microsoft.App/environments` | Supply `existing_private_network.agent_subnet_id`; no subnet change |
-| Agent network controls | Sample NSG with HTTPS allows for Entra ID, ARM, ACR and Monitor | Customer retains NSG/UDR/firewall ownership and supplies the required routes |
+| Agent network controls | Sample NSG with HTTPS allows for Entra ID, ARM, ACR and Monitor | Your platform team retains NSG/UDR/firewall ownership and supplies the required routes |
 | Foundry private endpoint | New endpoint and workload zone group using sample zones | New endpoint in `endpoint_subnet_ids.agents`; supplied Cognitive Services/OpenAI/services zones, chosen zone-group owner |
 | ACR private endpoint | New endpoint plus `privatelink.azurecr.io` zone/link/group | New endpoint in `endpoint_subnet_ids.registry`; supply `private_dns_zone_ids.registry`, keep central zone/link ownership |
 | Roles and connections | New project AcrPull, optional developer roles, existing registry/Insights connections | Same workload roles/connections; original identities/roles remain untouched |
@@ -122,9 +122,9 @@ deployment gate; offline checks do not establish support for the omitted field.
 
 ## Prepare an additive plan
 
-Use the **existing authoritative Terraform state/backend and customer inputs**.
+Use the **existing authoritative Terraform state/backend and workload inputs**.
 Do not initialize a second state against the same resources or use an unrelated
-repository-local state. For source-only preparation use a clean snapshot without customer state.
+repository-local state. For source-only preparation use a clean snapshot without deployment state.
 Any plan against a deployed workload uses its approved backend and identity;
 do not make a second active state copy.
 
@@ -143,7 +143,7 @@ Supply the extra agent/registry IDs listed above. The agent integration subnet
 must be at least `/27`, dedicated, delegated and RFC1918-only for this sample;
 endpoint subnets must not use that delegated subnet.
 
-Keep all customer files, the selected ownership file and the final private
+Keep all input files, the selected ownership file and the final private
 profile. For an already-private gateway:
 
 ```powershell
@@ -216,7 +216,7 @@ subnet, registry and gateway metadata. It contains no key values.
    Retrieve keys only in runtime memory, never Terraform, files or outputs.
 6. Prove a fresh agent response with a matching gateway success trace, private
    DNS/route evidence, continued authenticated public network rejection and
-   fresh telemetry. The existing customer acceptance runner covers gateway/model
+   fresh telemetry. The deployment acceptance runner covers gateway/model
    and optional Blob probes, **not this hosted-agent acceptance**.
 
    After binding the runtime identity, retain that input in subsequent plans.
@@ -235,7 +235,7 @@ the same account on a potentially occupied subnet.
 Continue using the authoritative backend and the **current configuration
 revision**. Do not apply a pre-extension checkout against the updated state,
 copy state into another active environment, or drop the private extension flag.
-Retain stable naming, monitoring and customer inputs as well as the selected
+Retain stable naming, monitoring and workload inputs as well as the selected
 private profile.
 
 Store the verified runtime object ID in a protected local input file, for
@@ -345,7 +345,7 @@ query client returns a string. Missing status/route information needs
 investigation, not an assumed pass. Do not export the full attributes or rely
 on an unavailable `ParentId` column.
 These are **separate hosted-agent gates**: the existing
-[customer acceptance runner](end-to-end.md) does not perform them.
+[deployment acceptance runner](end-to-end.md) does not perform them.
 Retain operational evidence outside the published repository.
 
 ## Cost boundary

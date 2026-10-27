@@ -12,7 +12,7 @@ staged setup**. The two deployment paths are **Public** and **Private-only**;
 restrictions in the [README](../README.md) still apply; current product icons
 do not imply that this sample has migrated to a new resource type.
 
-For the execution order, use the [guided customer walkthrough](../deployment.md#start-here).
+For the execution order, use the [step-by-step deployment guide](../deployment.md#start-here).
 These diagrams explain connections, not instructions to recreate every box.
 
 ### A few terms before reading the diagrams
@@ -82,8 +82,8 @@ telemetry field is free of operational information.
 ![A private client reaches the gateway private endpoint; the gateway reaches the model through outbound VNet integration and the model private endpoint](images/architecture-network.svg)
 
 **Ownership overlay:** in `create` mode the sample manages the shown network/DNS
-foundation. In `existing` mode those boxes represent customer-owned resources;
-the customer also retains its central resolver, routes, firewall and zone links.
+foundation. In `existing` mode those boxes represent resources owned by your
+organization, which also retains its central resolver, routes, firewall and zone links.
 The drawing is not a requirement for one VNet or a direct DNS-zone link to every
 spoke. Approved existing endpoint subnets may differ by service. In both modes
 the workload creates the private endpoints, while their DNS zone groups have

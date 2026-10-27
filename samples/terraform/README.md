@@ -14,14 +14,11 @@ Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Sa
 
 **Already have central network and DNS?** The same guide includes
 [existing-network integration at a glance](deployment.md#existing-network-integration-at-a-glance):
-the two customer input files, the platform handoff and where to continue.
+the two environment-specific input files, the platform handoff and where to
+continue.
 An existing network does **not** mean the gateway has already been deployed.
-The walkthrough separates network ownership from workload/state ownership;
+The guide separates network ownership from workload/state ownership;
 neither the `create` nor the `existing` choice changes the gateway SKU.
-
-**Handing this sample to a customer?** Use the
-[named handoff, release notes and verification scope](docs/reference.md#customer-handoff).
-Agree an exact source commit/tag, not the moving `main` branch.
 
 > [!NOTE]
 > **Legacy SKU and migration deadline:** This sample uses
@@ -71,10 +68,10 @@ Replace every fictional ID in the existing-network example before use; missing
 inputs fail rather than silently creating a parallel network.
 
 **Where do I find those IDs, and can I fill them in myself?** Follow
-[Find resource IDs and fill in your customer file](deployment.md#find-resource-ids-and-fill-in-your-customer-file)
+[Find resource IDs and fill in your network input file](deployment.md#find-resource-ids-and-fill-in-your-network-input-file)
 for Azure Portal steps, the field-by-field mapping and the Terragrunt alternative.
-Your network/DNS team can keep the values in your own configuration; there is no
-need to send resource IDs, credentials or Terraform state to the sample author.
+Keep the values in your organization's approved configuration. Do not share
+credentials, Terraform state or environment-specific inputs through unapproved channels.
 
 Network and DNS are separate concepts, but this implementation pairs them:
 create both foundations, or reuse both. It does not offer a create-network /
@@ -89,9 +86,9 @@ current mode, resource names/addresses and authoritative state until a separate
 state/migration plan is reviewed. Do not copy state or import the same resources
 into a second owner. Switching workload/platform DNS zone-group ownership also
 requires a separately reviewed state handoff, not a routine flag flip.
-This change does not change the `AIGateway` SKU.
+The selected network mode does not change the `AIGateway` SKU.
 Recorded live evidence includes the isolated existing-network rehearsal below;
-repeat acceptance for each customer's actual network and central DNS topology.
+repeat acceptance for your actual network and central DNS topology.
 
 ## Choose your networking path
 
@@ -122,15 +119,15 @@ the original `AIGateway` through Terraform using independently owned network/DNS
 then disabled gateway and model public access through staged Terraform updates.
 Both private model aliases, authentication/network boundaries, telemetry,
 central firewall routing and four independent no-change plans passed.
-This does not prove private-from-first-create, another customer's environment
-or hosted-agent execution in that rehearsal.
+This does not prove private-from-first-create or verify your environment.
+Hosted-agent execution was not tested in that rehearsal.
 
 **Already using the private profile?** Follow [existing private deployments](docs/private-connectivity.md#existing-private-deployments).
 Keep the **selected** profile on every plan, including drift and monitoring
-changes, together with all customer inputs and the selected network-ownership
+changes, together with all your workload inputs and the selected network-ownership
 file. Put the private-access profile after those files; retain any explicitly
 approved endpoint-compatibility exception from the
-[input walkthrough](deployment.md#compose-the-inputs). Do not repeat
+[input selection](deployment.md#compose-the-inputs). Do not repeat
 temporary-public staging for an already-private gateway or backend.
 
 ## Access
@@ -278,17 +275,17 @@ A **model alias** (for example, `gpt-mini`) is the name clients send. It does no
 
 ## Shared setup
 
-Use the [main walkthrough's numbered sequence](deployment.md#runbook-order).
+Use the [deployment guide's numbered sequence](deployment.md#runbook-order).
 It includes [tool and checkout checks](deployment.md#prerequisites),
 [input values and their sources](deployment.md#inputs-and-state),
-[network-ID lookup](deployment.md#find-resource-ids-and-fill-in-your-customer-file),
+[network-ID lookup](deployment.md#find-resource-ids-and-fill-in-your-network-input-file),
 [platform handoffs](deployment.md#platform-handoff-before-a-plan),
 [plan review](deployment.md#review-every-plan-before-apply) and monitoring.
 
-For a **new workload**, copy the example only when no approved customer file
+For a **new workload**, copy the example only when no approved input file
 exists and the workload backend is agreed. For an **existing workload**, retain
 its input files and authoritative state; do not overwrite them with examples.
-The customer's existing network keeps its own state in both cases.
+Your existing network keeps its own state in both cases.
 Optional agent deployment, Terragrunt and repair procedures are separate branches,
 not extra steps everyone must execute.
 
@@ -298,7 +295,7 @@ not extra steps everyone must execute.
 
 Use [profiles/private-only.tfvars.json](profiles/private-only.tfvars.json)
 for the final configuration: gateway and model public access are both disabled.
-Use it with your selected network-ownership profile and complete customer inputs,
+Use it with your selected network-ownership profile and complete workload inputs,
 not instead of them.
 
 ```text
@@ -321,7 +318,7 @@ profile sets gateway ingress to `Enabled`; never reuse it for an already-disable
 Use this path only for a deployment intentionally configured without private
 networking. It is not a prerequisite for the private path.
 
-Follow [Public in the main walkthrough](deployment.md#public) for complete
+Follow [Public in the step-by-step guide](deployment.md#public) for complete
 input arguments, saved-plan review, the separately approved apply and the
 per-alias probe. A reply such as `gpt-mini: Hello!` is a public-path smoke check,
 not private-route proof or full acceptance. The final full plan must have no
@@ -335,12 +332,13 @@ For a reproducible private-path rehearsal, use the
 verifier and a separate authenticated portal review including fresh metrics.
 The portal evidence validator checks completeness; it does not automate the UI.
 
-Complete the [customer acceptance guide](docs/acceptance.md) for either path.
+Complete the [deployment acceptance guide](docs/acceptance.md) for either path.
 It includes commands, expected results, and failure boundaries for missing and
 invalid keys, the six service RBAC assignments plus the DCR publishing role, Foundry connections, telemetry,
 and the final drift check. A successful model call alone is not full acceptance.
 
 ## Going further
 
+- [Version and verification scope](docs/reference.md#version-and-verification-scope)
 - [Reference](docs/reference.md): file guide, all inputs, outputs, networking, state and security, offline tests, limitations
 - [Cost and cleanup](docs/reference.md#cost-and-cleanup)
