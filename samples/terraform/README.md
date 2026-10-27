@@ -3,12 +3,16 @@
 Manage an Azure AI Gateway that routes calls to Foundry models. This is standalone
 Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway), not an `azd` app.
 
-**First time using this sample? Start with the [guided customer walkthrough](deployment.md#start-here).**
-It explains which path to select, who supplies each input, which file to edit,
-where to run each command, what result to expect and when to stop.
-Use this README for orientation and diagrams, not as a second deployment script.
+## Start here: step-by-step deployment
 
-**Already have central network and DNS?** Start with
+> [!IMPORTANT]
+> **[Open the step-by-step deployment guide (`deployment.md`)](deployment.md#start-here).**
+>
+> Follow that guide to deploy this sample: prerequisites, path selection, required
+> inputs, files to edit, commands to run, expected results and stop conditions.
+> **This README is the overview and architecture reference, not the deployment procedure.**
+
+**Already have central network and DNS?** The same guide includes
 [existing-network integration at a glance](deployment.md#existing-network-integration-at-a-glance):
 the two customer input files, the platform handoff and where to continue.
 An existing network does **not** mean the gateway has already been deployed.

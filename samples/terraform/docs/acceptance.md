@@ -27,10 +27,12 @@ Do not run them as a second billable test by default after a successful VM run.
 
 For an **existing private client**, use the
 [two-terminal handoff](private-connectivity.md#test-from-an-existing-private-client):
-**A** runs Steps 1-3, Step 4's control-plane checks and Steps 6-7; **B** runs only
+**A** runs Steps 1-3, Step 4's control-plane checks and Steps 6-8; **B** runs only
 the trace-aware requests, Step 5 and the sanitized evidence export. Keep A's full
 `$o` outputs in A. B receives a small metadata subset, never Terraform/backend
 access. Staging calls alone do not complete final private-only acceptance.
+The [manual portal review in Step 8](#8-record-the-manual-portal-review) is
+required too; omitting the sample VM does not waive portal evidence.
 
 Otherwise run the appropriate blocks in order in one PowerShell **7** session.
 A starts in `samples\terraform`, or in the authoritative Terragrunt workload unit.
@@ -439,7 +441,7 @@ Keep A's original metadata file and `$clientHandoff`; do **not** replace A's ful
 
 #### Intermediate-stage evidence
 
-For `bootstrap` or `models-private`, this is a **staging gate only**, not final
+For `bootstrap`, `models-private` or `gateway-private-models-public`, this is a **staging gate only**, not final
 private-only acceptance. Do not run the final import below, which deliberately
 rejects intermediate reports.
 
@@ -461,6 +463,10 @@ If anything is missing or different, stop. Retain the report/hash as
 `bootstrap` review, return to [Step 4](private-connectivity.md#step-4-disable-model-public-access)
 to close model public access. After a successful `models-private` review,
 continue with [gateway closure](private-connectivity.md#required-final-stage-disable-gateway-public-access).
+For `gateway-private-models-public`, use
+[existing private deployments](private-connectivity.md#existing-private-deployments)
+to review model closure with the `private-only` profile. The gateway must remain
+disabled; do not return to a profile that enables it.
 Re-export fresh metadata and repeat B's
 checks after each closure. Do not replay an earlier saved plan.
 
@@ -874,9 +880,13 @@ never reuse a gateway key against a backend service.
 
 ### Complete the acceptance record
 
+Prepare this record now, then attach the required [Step 8 portal review](#8-record-the-manual-portal-review)
+before final sign-off. Backend checks alone do not complete manual acceptance.
+
 Record subscription/tenant, resource IDs, timestamp, Git revision, selected
 profile, aliases tested, six service bindings plus the DCR publishing role, connection metadata, authentication
-statuses, telemetry evidence, drift exit code and VM power state. Mark every item
+statuses, telemetry evidence, drift exit code and VM power state if a sample VM
+was deployed (otherwise record `not deployed`). Mark every required check
 **passed**, **failed** or **not verified**; do not include keys or raw state.
 
 Acceptance remains limited to the demonstrated gateway/model route. Explicitly
@@ -892,3 +902,60 @@ disabled gateway ingress imply a private Foundry hosted-agent network or change
 API-key clients to Entra. Record any required hosted-agent/image/artifact tests
 separately. Undemonstrated customer requirements remain **unmet**, even when
 the selected configuration and private backend checks pass.
+
+## 8. Record the manual portal review
+
+This completes the **manual** route, including an existing private client without
+the sample VM and an intentionally public deployment. A successful VM-based
+runner uses its own generated portal manifest instead; do not repeat billable
+tests or invent a VM report to satisfy this step.
+
+**Who/where:** A or the designated reviewer, using an approved authenticated
+browser and the intended corporate account. Confirm the tenant and resource
+against this run's protected acceptance record, not another browser session.
+
+1. Finish Steps 1-7 for this deployment. Resolve every required failed or
+   unverified check first. For Private-only, retain the final private controls
+   and authenticated public-network denial; recovery/staging evidence is not
+   sufficient. Earlier portal browsing is diagnostic, not final sign-off.
+2. Perform **all six checks** in the shared
+   [AI Gateway portal checklist](end-to-end.md#4-ai-gateway-portal-review):
+   `resource-context`, `configuration`, `playground`, `metrics`, `error-states`
+   and `browser-health`. Follow that checklist's route, bounded-call and
+   redaction rules. Skip its **sample-VM manifest validator**, not the UI checks.
+3. In the approved evidence folder outside the checkout, create
+   `manual-portal-evidence-<run-id>.md` using this run's identifier. For the
+   two-terminal route, use the final handoff's `runId` and reference its metadata
+   and returned-report hashes. For a public manual run, assign a unique record
+   ID and link its actual UTC request window and per-call trace IDs.
+4. Record the exact source revision, tenant/subscription/gateway, selected
+   profile, browser version, reviewer and review UTC time. For **each of the six
+   check names**, record `PASS`, `FAIL` or `BLOCKED`, the actual observation and a
+   relative filename for its redacted screenshot or observation text. Keep the
+   evidence beside the record. A missing/unsupported control is not a pass.
+5. For `metrics`, select a visible **positive numeric request or token count**
+   and record the comparison below. A chart loading, old traffic or a screenshot
+   alone is insufficient.
+
+| Comparison field | Required evidence |
+| --- | --- |
+| Resource and definition | Exact gateway/workspace and monitoring destination; metric/query definition, filters and aggregation used by the selected portal view. |
+| UTC window | The same explicit start/end in the portal and reference query, at most 24 hours and covering this run's test traffic. Record the playground call times and actual route too. |
+| Reference query | Capture and run the underlying query with those same settings using the approved read-only monitoring identity; retain its text and sanitized numeric result. If the definition cannot be established or queried, mark `BLOCKED` and involve the monitoring owner. |
+| Numeric comparison | Record finite positive `portalValue` and `referenceValue`. They must agree under the documented display rounding; explain any rounding. A mismatch remains `FAIL` or `BLOCKED`, not a guessed tolerance or an edited result. |
+| Attribution and evidence | Explain identical filters/aggregation and retain redacted evidence filenames. Shared traffic can contribute to the total; do not equate it with only this run's calls. |
+
+Step 6's `positiveMetricSamples` proves fresh token samples, **not** the token
+total or request count displayed in the portal. Do not use that sample count
+as `referenceValue` or sum repeated range-query samples to invent a total.
+
+6. Attach this portal record and its evidence to Step 7's manual acceptance
+   record. Label the outcome **manual / operator-attested**, not an automated
+   runner PASS. Sign off only when all six UI checks and all required backend,
+   route, authentication, telemetry and drift checks passed; retain all remaining
+   failures or unverified customer requirements as open items.
+
+Do **not** create an `acceptance.json` with `backendStatus = PASS`, relabel an
+incomplete VM report, or run `Complete-PortalAcceptance.ps1` against this manual
+record. That validator accepts the VM runner's report contract only; it neither
+creates nor independently verifies manual UI evidence.

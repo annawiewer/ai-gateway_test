@@ -1195,9 +1195,9 @@ Choose **one** acceptance execution path:
 
 | Test client | Procedure | Important limit |
 | --- | --- | --- |
-| Approved existing private client, no sample VM | [Existing-client private checks](docs/private-connectivity.md#test-from-an-existing-private-client), then [manual acceptance](docs/acceptance.md). | The VM-based runner cannot certify this client. Keep manual evidence and explicitly mark checks that were not performed. |
+| Approved existing private client, no sample VM | [Existing-client private checks](docs/private-connectivity.md#test-from-an-existing-private-client), then [manual acceptance](docs/acceptance.md), including the [six-check manual portal review](docs/acceptance.md#8-record-the-manual-portal-review). | The VM-based runner cannot certify this client. Keep operator-attested evidence and mark unperformed checks; do not fabricate a runner PASS. |
 | Optional sample VM | [Guarded end-to-end runner](docs/end-to-end.md), after smoke-test deallocation. | Requires the VM initially deallocated, explicit model/compute approval and a separate portal review. Public rejection and agent runtime are still separate. |
-| Intentionally public deployment | [Manual acceptance](docs/acceptance.md) on that approved public route. | It is not private-route evidence. |
+| Intentionally public deployment | [Manual acceptance](docs/acceptance.md), including its [manual portal review](docs/acceptance.md#8-record-the-manual-portal-review), on that approved public route. | It is not private-route evidence. |
 
 For the optional guarded **sample-VM** report, use the already verified context
 and read the actual workload group rather than guessing its generated name:
@@ -1245,10 +1245,10 @@ deployment**. A reviewed source revision is not customer acceptance.
 | Approved commit and workload owner | Exact revision, authoritative backend and operating contact are known. Do not copy raw state into the handover. |
 | Input file locations and choices | Base/additional files, create/existing ownership, DNS owner, access profile and any runtime-identity inputs are recorded without keys. |
 | Networking and authentication | Endpoint approval, actual private DNS, per-alias calls, same-route invalid/missing-key checks and required public-network rejection are evidenced. |
-| Monitoring | Fresh requests correlate with gateway/backend telemetry; required logs, metrics and portal evidence are reviewed. |
+| Monitoring | Fresh requests correlate with gateway/backend telemetry. All six portal checks and a matched numeric metrics comparison are evidenced through the VM manifest or the explicitly manual portal record. |
 | Optional services | Agent/image/registry or Blob tests have their own results; unrelated successful model calls do not certify them. |
 | Final drift and open issues | Full plan uses every original input and exits `0`; otherwise the exact difference/failure remains open. `NOT RUN`, `BLOCKED` and `not verified` are not relabeled as passed. |
-| Cleanup and costs | The sample VM is confirmed **deallocated**, temporary job-created roles are removed, retained roles are preserved, and continuing service/storage costs have an owner. |
+| Cleanup and costs | Any deployed sample VM is confirmed **deallocated** (otherwise record `not deployed`), temporary job-created roles are removed, retained roles are preserved, and continuing service/storage costs have an owner. |
 
 Maintainers can run `.\scripts\Test-Offline.ps1` in a **separate clean checkout
 without customer tfvars or state**, as described in the

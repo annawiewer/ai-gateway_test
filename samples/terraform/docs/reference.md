@@ -334,8 +334,18 @@ automatic VM/NIC relocation.
 
 ## State and security
 
-- **Local state** is used here. State and plans can contain sensitive data, including telemetry connection strings. Restrict access and never commit them. `.gitignore` covers state, plans, provider downloads and user `.tfvars`.
-- For shared or production use, move to a remote backend with encryption and locking (for example, Azure Blob Storage with Entra auth). Migrate with `terraform init -migrate-state`.
+- **Backend choice:** this root does not configure a shared remote backend.
+  Initialization without backend configuration uses local state; allow that only
+  for an explicitly approved local PoC. For a new shared workload, obtain the
+  platform's approved encrypted, access-controlled backend and locking procedure
+  before initialization. Follow [state ownership and initialization](../deployment.md#1-confirm-which-state-belongs-to-this-workload).
+- **Existing workloads:** retain the authoritative backend, state and approved
+  initialization procedure. `terraform init -migrate-state` is **not** a routine
+  setup step; any migration or reconfiguration needs a separate reviewed plan.
+  Do not initialize a second state or copy/import platform resources into this one.
+- State and plans can contain sensitive data, including telemetry connection
+  strings. Restrict access and never commit them. `.gitignore` covers state,
+  plans, provider downloads and user `.tfvars`.
 - Storage blocks anonymous blobs and shared keys. ACR admin users and Foundry local auth are disabled. Gateway payload capture is disabled.
 - Keep policy-required storage restrictions. Private hosted-agent storage access is **not** verified here.
 - Project roles mirror the upstream Bicep, including Cognitive Services Contributor. Developer access also grants Storage Blob Data Contributor. Enable it on purpose and review least privilege.

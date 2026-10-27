@@ -5,6 +5,12 @@
 Management. It gives developers one familiar way to call model APIs and MCP tools, while
 platform teams enforce security, policy, networking, and observability.
 
+> [!IMPORTANT]
+> **Deploy with Terraform: [start the step-by-step deployment guide (`deployment.md`)](samples/terraform/deployment.md#start-here).**
+> The [Terraform README](samples/terraform/README.md) explains the architecture and
+> available options. **`deployment.md` is the procedure to follow**, including
+> integration with an existing network and central DNS.
+
 - **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
 - **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
 - **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.

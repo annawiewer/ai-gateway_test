@@ -8,7 +8,7 @@ deploys, repairs, grants roles, switches SKUs or deletes Azure resources.
 
 | Your situation | Use |
 | --- | --- |
-| No sample test VM; an existing private client is available | The [private-client checks](private-connectivity.md#test-from-an-existing-private-client) and [manual acceptance](acceptance.md). This runner has no existing-client runtime mode. |
+| No sample test VM; an existing private client is available | The [private-client checks](private-connectivity.md#test-from-an-existing-private-client) and [manual acceptance](acceptance.md), including its [manual portal record](acceptance.md#8-record-the-manual-portal-review). This runner has no existing-client runtime mode. |
 | Sample VM is configured; you only want read-only diagnostics | Step 2. Expect incomplete acceptance, because no model calls/telemetry proof are performed. |
 | Sample VM is configured and initially deallocated; costs are approved | Step 2's complete parameter selection, then Step 3's explicit runtime command. |
 | Deployment needs a post-profile compatibility override | Manual acceptance, retaining that override. This runner supports extra var-files before the access profile, not extra `-var` arguments afterward. |
@@ -258,9 +258,17 @@ Never edit a backend status to make the report pass.
 
 ## 4. AI Gateway portal review
 
+**The six UI checks below apply to both acceptance routes.** For the sample-VM
+runner, require `backendStatus = PASS` for the current run. For manual acceptance,
+complete [Steps 1-7](acceptance.md), perform the same checklist below and follow
+[Step 8's manual evidence procedure](acceptance.md#8-record-the-manual-portal-review).
+Manual reviewers skip only the VM-specific manifest/validator subsection, not
+the portal checks or numeric metrics comparison. Do not create a VM report or
+enable a test VM merely to use this checklist.
+
 Open **https://ai.gateway.azure.com** in an authenticated browser with the intended
 corporate account, not a lab/admin account. Verify the actual tenant and selected
-subscription/resource against the report. Use a client with VNet connectivity
+subscription/resource against this run's report or manual acceptance record. Use a client with VNet connectivity
 when exercising the private route. A portal playground might call the enabled
 public gateway endpoint; record its actual route and do not label it private proof.
 
@@ -269,15 +277,15 @@ while the corresponding `Microsoft.Network/privateEndpoints` resource is failed.
 Check both resource states and private DNS/routing; the portal row alone is not
 proof of a working private endpoint.
 
-The runner creates `portal-evidence.json`. Only begin final functional acceptance
-after `backendStatus` is PASS. Earlier browsing is a **diagnostic baseline**, not
-a full UI pass. Use actual current UI labels and controls; no unverified selectors
+Only begin final functional acceptance after the selected route's backend checks
+pass. Earlier browsing is a **diagnostic baseline**, not a full UI pass.
+Use actual current UI labels and controls; no unverified selectors
 or assumptions about preview navigation are baked into the scripts.
 
 | Check name | Required observation |
 | --- | --- |
 | `resource-context` | Correct tenant, subscription, shared group and gateway; no accidental resource/account switch after refresh |
-| `configuration` | Provider/backend and every alias agree with the report/configuration; inspect details without saving changes |
+| `configuration` | Provider/backend and every alias agree with this run's report or manual record/configuration; inspect details without saving changes |
 | `playground` | One bounded benign call per alias, successful visible response, reported usage/errors sensible; record actual route and UTC times |
 | `metrics` | Requests and available token/error/latency views load, use the selected resource/time filter, and show fresh test traffic; compare one positive numeric count with its underlying query using identical filters/aggregation |
 | `error-states` | Clear empty state for a window with no traffic and understandable error for a safe unsupported alias/invalid key where the UI supports it; never delete resources or change policies to manufacture errors |
@@ -297,8 +305,16 @@ underlying `source` query/metric definition, UTC window (at most 24 hours and
 covering the probe), numeric `portalValue` and `referenceValue`, and an
 `explanation` of identical filters/aggregation. Never capture keys, sign-in screens,
 authorization headers, connection strings or customer prompts; do not save HAR
-files/raw network traces. The non-secret trace IDs in the backend report connect
-the reference telemetry to this run.
+files/raw network traces. The non-secret trace IDs in the backend report or
+manual request evidence connect the reference telemetry to this run.
+
+### Validate the sample-VM portal manifest
+
+**VM-runner route only.** The runner creates `portal-evidence.json`; require
+`backendStatus = PASS` in its actual current `acceptance.json` before using this
+validator. For manual acceptance, return to the
+[manual evidence procedure](acceptance.md#8-record-the-manual-portal-review)
+instead; do not manufacture either generated report.
 
 **File steps:** open the generated `portal-evidence.json` beside this run's
 backend report, fill each item from actual observations, save the redacted

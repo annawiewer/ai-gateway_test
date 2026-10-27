@@ -505,6 +505,13 @@ both jobs. Keep them open; do not mix their variables.
 This uses `private_endpoint_ids`, not the VM-only `private_probe_configuration`.
 It reads full outputs into local memory, but writes **only the named subset**:
 
+**Already-disabled gateway, models still public:** the export labels this
+observed recovery state `gateway-private-models-public`. B must select that
+same stage before the pre-closure private checks. It is not a new Terraform
+profile or final acceptance. Follow [existing private deployments](#existing-private-deployments)
+to close only the remaining model access without reopening the gateway, then
+export fresh `private-only` metadata and repeat the checks.
+
 ```powershell
 $privateOutputJson = terraform output -json
 if ($LASTEXITCODE -ne 0) { throw 'Cannot read the workload outputs.' }
@@ -526,6 +533,8 @@ $stage = if ($gatewayAccess -eq 'Enabled' -and $modelMetadata.access -eq 'Enable
     'bootstrap'
 } elseif ($gatewayAccess -eq 'Enabled' -and $modelMetadata.access -eq 'Disabled') {
     'models-private'
+} elseif ($gatewayAccess -eq 'Disabled' -and $modelMetadata.access -eq 'Enabled') {
+    'gateway-private-models-public'
 } elseif ($gatewayAccess -eq 'Disabled' -and $modelMetadata.access -eq 'Disabled') {
     'private-only'
 } else { throw 'Unexpected public-access combination; review before testing.' }
@@ -607,10 +616,10 @@ if ((Get-FileHash -LiteralPath $handoffFile -Algorithm SHA256).Hash -ine $expect
     throw 'Metadata hash mismatch. Obtain the correct file; do not bypass the check.'
 }
 $clientHandoff = Get-Content -LiteralPath $handoffFile -Raw | ConvertFrom-Json
-$expectedStage = Read-Host 'Expected stage: bootstrap, models-private, or private-only'
+$expectedStage = Read-Host 'Expected stage: bootstrap, models-private, gateway-private-models-public, or private-only'
 $age = [DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($clientHandoff.capturedAtUtc)
 if ($clientHandoff.schemaVersion -ne 1 -or
-    $expectedStage -notin @('bootstrap', 'models-private', 'private-only') -or
+    $expectedStage -notin @('bootstrap', 'models-private', 'gateway-private-models-public', 'private-only') -or
     $clientHandoff.stage -cne $expectedStage -or $age.TotalMinutes -gt 30 -or $age.TotalMinutes -lt -1) {
     throw 'Wrong-stage or stale metadata. Ask A for a fresh export after the latest apply.'
 }
@@ -667,16 +676,18 @@ the same exact-IP evidence. Do not use hosts-file overrides.
    **B's own identity**, in memory. Do not grant roles or switch authentication
    automatically if this fails.
 8. Use the [sanitized evidence export](acceptance.md#return-existing-client-evidence-to-the-deployment-host)
-   to send results back to **A**. For `bootstrap` or `models-private`, follow
+   to send results back to **A**. For `bootstrap`, `models-private` or
+   `gateway-private-models-public`, follow
    only the [intermediate-stage review](acceptance.md#intermediate-stage-evidence)
-   and return to the next closure in Step 4. **Do not run the final-only import
+   and continue with the closure indicated for that state. **Do not run the final-only import
    on an intermediate report.** For `private-only`, **A first runs acceptance
    [Steps 1-3](acceptance.md#1-confirm-the-target-and-read-live-resource-identities)
    and [Step 4's control-plane block](acceptance.md#control-plane-checks-on-the-deployment-host)**
    in A's original deployment session, keeping `$clientHandoff` and `$handoffFile`
    from the latest export. Then use the
    [final-stage import](acceptance.md#final-private-only-evidence) and complete
-   manual telemetry, public-boundary and drift verification.
+   manual telemetry, public-boundary, drift and
+   [portal verification](acceptance.md#8-record-the-manual-portal-review).
 9. After **each** access closure, repeat the export, transfer and client checks
    with a new run ID and current stage. The previous file is not final-stage
    proof. After Step 5, require `private-only`, then complete manual acceptance.
@@ -886,6 +897,10 @@ Complete or preserve the Private-only end state:
   then run Step 5. Do not repeat staging. If models still need closure, first
   perform Step 3's readiness/client checks and keep `private-only` for that plan;
   never select an intermediate profile that reopens the gateway.
+  For an existing private client, use the observed metadata stage
+  `gateway-private-models-public` before model closure, not `private-only`.
+  After the approved closure, repeat the export and client checks with fresh
+  `private-only` metadata; the recovery-stage evidence is not final acceptance.
 - Gateway still `Enabled`: verify the existing private path, then follow the
   required gateway-disable stage above. This intermediate state is not
   Private-only acceptance.
