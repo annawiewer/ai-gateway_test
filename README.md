@@ -1,125 +1,57 @@
-# AI Gateway tier in Azure API Management
+# AI Gateway and Foundry with Terraform
 
-**One gateway for every model and tool.**
-[AI Gateway tier in Azure API Management](https://aka.ms/aigateway/docs) is the AI-focused tier of Azure API
-Management. It gives developers one familiar way to call model APIs and MCP tools, while
-platform teams enforce security, policy, networking, and observability.
+Terraform reference for an Azure AI Gateway, Foundry models and supporting
+infrastructure. Private deployments can reuse platform-managed networking and
+central Private DNS without transferring ownership of those resources.
+
+## Start here
 
 > [!IMPORTANT]
-> **Deploy with Terraform: [start the step-by-step deployment guide (`deployment.md`)](samples/terraform/deployment.md#start-here).**
-> The [Terraform README](samples/terraform/README.md) explains the architecture and
-> available options. **`deployment.md` is the procedure to follow**, including
-> integration with an existing network and central DNS.
+> **[Open the step-by-step deployment guide](samples/terraform/deployment.md#start-here).**
+> It covers prerequisites, configuration, approvals, deployment and verification.
+> The [Terraform README](samples/terraform/README.md) explains the architecture
+> and options; it is not a second deployment procedure.
 
-- **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
-- **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
-- **Enforce AI policies** — access, content safety, token, and rate controls, globally or per model and tool.
-- **Observe AI traffic** — token usage, latency, errors, and policy outcomes in dashboards and logs.
-- **Run on a trusted platform** — the Azure API Management platform, with Private Link, virtual network integration, and managed identity.
+**Existing network and central DNS?** Start with
+[existing-network integration at a glance](samples/terraform/deployment.md#existing-network-integration-at-a-glance),
+then continue through the same guide. Select `existing` network ownership and
+retain the platform's network/DNS process and state.
 
-> AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
+The working directory remains **`samples\terraform`**. Follow the guide's
+approved-source and input-file steps; do not move an existing workload's backend,
+state or environment configuration to match a repository layout.
 
----
+## Repository guide
 
-## Azure CLI
+| Location | Purpose |
+| --- | --- |
+| [`samples/terraform`](samples/terraform) | Terraform resource definitions, variable schema, outputs, provider lock file and input template. |
+| [`profiles`](samples/terraform/profiles) | Network-ownership and access examples, selected and combined by the deployment guide. |
+| [`examples`](samples/terraform/examples) | Optional adapter for an existing Terragrunt network/DNS workflow. |
+| [`scripts`](samples/terraform/scripts) | Deployment verification, model probes and monitoring checks used by the guides. |
+| [`docs`](samples/terraform/docs) | Architecture, request flow, private connectivity, acceptance and operating references. |
+| [`tests`](samples/terraform/tests) and [offline CI](.github/workflows/terraform-offline.yml) | Repeatable maintenance checks. Keep these with the source; they do not create Azure resources. |
 
-Create and manage gateways, model registrations, MCP servers, and policies with
-`az aigateway`. See the **[CLI installation and quickstart](cli/README.md)** for
-one-line Bash and PowerShell installers, or browse the
-[command reference](cli/command-reference.md).
+Start with the deployment guide rather than reading every folder. It identifies
+which inputs to edit, which scripts to run and which optional sections apply.
+Terraform, PowerShell and Azure CLI prerequisites are listed there.
 
-## Coding-agent plugin
+## Scope and limitations
 
-This repository hosts the official **plugin** for coding agents. It helps
-developers **build applications on top of an existing AI Gateway tier in Azure API Management resources**: it discovers the
-models and MCP tool servers registered in a gateway and integrates them into whatever
-you're building — call a model over the OpenAI-compatible passthrough, connect MCP
-tools, or scaffold a runnable agent — all from your coding agent.
+The sample supports **Public** and **Private-only** configurations and optional
+private hosted-agent infrastructure. Terraform prepares agent infrastructure;
+deploying agent application code is a separate activity. The original
+`Microsoft.ApiManagement/service` resource and `AIGateway` SKU are retained.
 
-The plugin follows the [Claude Code plugin spec](https://code.claude.com/docs/en/plugins),
-the [GitHub Copilot / awesome-copilot plugin convention](https://github.com/github/awesome-copilot/blob/main/CONTRIBUTING.md#adding-plugins),
-the [Cursor plugin format](https://cursor.com/docs/plugins), and the
-[Gemini CLI extension format](https://geminicli.com/docs/extensions/), so it installs
-in any of those coding agents (and other agents that support the plugin standard).
+**Preview reference, not a production guarantee.** Read the
+[resource lifecycle](samples/terraform/docs/reference.md#resource-type-and-lifecycle)
+and [limitations](samples/terraform/docs/reference.md#limitations) before deployment.
+Private-only is a target reached through approved staged setup, not a guarantee
+of private access from the first create operation. Resources and model calls
+can incur charges.
 
-> **Consumption only.** The plugin is read-only against the gateway — it never
-> provisions, updates, or deletes resources. Creating gateways, models, or tools
-> is an administrator task done in the [AI Gateway Portal](https://ai.gateway.azure.com).
-
-### What's inside
-
-| Component | Invoked as | Purpose |
-| --------- | ---------- | ------- |
-| Skill `use-ai-gateway` | `/ai-gateway:use-ai-gateway` | Full discover → select → credential → integrate workflow (call a model, connect MCP tools, or scaffold an agent). |
-| Command `discover` | `/ai-gateway:discover` | Read-only: list a gateway's models and MCP tool servers and pick the ones that fit your use case. |
-| Command `build` | `/ai-gateway:build` | End-to-end: discover, retrieve a credential, and integrate the models/tools into your app. |
-
-### Install
-
-The plugin is hosted in this repository, so your coding agent can install it
-directly from Git — no manual file downloads. Pick the tab for your agent:
-
-**Claude Code / GitHub Copilot CLI** (plugin marketplace protocol):
-
-```
-/plugin marketplace add Azure/ai-gateway
-/plugin install ai-gateway@azure
-```
-
-**Cursor** — add this repository as a team marketplace from **Dashboard → Plugins →
-Add Marketplace → Import from Repo** (`https://github.com/Azure/ai-gateway`), then
-install **ai-gateway** from **Customize**. For local testing, symlink the repo into
-`~/.cursor/plugins/local/ai-gateway` and reload the window.
-
-**Gemini CLI**:
-
-```
-gemini extensions install https://github.com/Azure/ai-gateway
-```
-
-### Usage
-
-Point the plugin at your gateway's **ARM resource id** (required to list its models and
-tools) and describe what you want to build:
-
-```
-/ai-gateway:build /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/service/<gateway> a service that summarizes support tickets
-```
-
-Or explore first, then integrate:
-
-```
-/ai-gateway:discover /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.ApiManagement/service/<gateway>
-```
-
-### Security
-
-The generated code authenticates the model passthrough and the MCP tool servers
-with a gateway **API key**, read from an environment variable
-(`AI_GATEWAY_API_KEY`) and never hardcoded. Scaffolded projects keep `.env` out of
-source control. If a key is ever exposed, rotate it in the [AI Gateway Portal](https://ai.gateway.azure.com).
-
-Standalone agent scaffolds use least-privilege tool configuration: only explicitly
-selected MCP tools are made available, and permission-requiring operations require
-an explicit user decision. Generated applications do not automatically approve
-tool requests. Review each requested operation and grant the application and its
-gateway credentials only the permissions it needs.
-
-To report a security issue, see [SECURITY.md](SECURITY.md).
-
-## Samples
-
-Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
-samples and infrastructure that build on the AI Gateway tier in Azure API Management.
-
-The [Terraform sample](samples/terraform/README.md) provides **Public** and
-**Private-only** configurations for AI Gateway and Foundry, with optional private
-hosted-agent infrastructure. Both paths support application access with
-**Microsoft Entra ID or API keys**. For network reuse, the
-[existing-network reference architecture](samples/terraform/README.md#existing-network-reference-architecture)
-links to the detailed network/DNS, ownership and request-flow views.
-Deployment instructions remain in the
-[step-by-step guide](samples/terraform/deployment.md#start-here).
+See [LICENSE](LICENSE), [support](SUPPORT.md) and
+[security reporting](SECURITY.md) for project information.
 
 ## Contributing
 

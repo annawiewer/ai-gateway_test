@@ -1,6 +1,6 @@
 # Deployment guide
 
-[Overview and diagrams](README.md)
+[Overview and architecture](README.md)
 
 ## Start here
 
@@ -462,21 +462,21 @@ inputs fail; there is no silent creation fallback or mixed-ownership mode.
 
 ### Existing-network connectivity reference
 
-This view shows **`existing` networking** with the gateway/model
+This reference uses **`existing` networking** with the gateway/model
 **`private-only` target after approved staged setup**. Private endpoint subnet
 roles may share an approved subnet; the delegated gateway integration subnet
-remains separate. The drawing does not prescribe a VNet count or hub/spoke design.
+remains separate. No VNet count or hub/spoke design is prescribed.
 
-![Two private paths with platform-owned subnet roles, resolver-mediated DNS lookups and the four required central private DNS zones](docs/images/02-network-and-dns.svg)
+| Path | Network role |
+| --- | --- |
+| Private client to gateway | Client DNS resolves the gateway hostname to its private endpoint. The client sends an authenticated HTTPS request over the approved private route. |
+| Gateway to model | Gateway outbound VNet integration reaches the model's private endpoint. The gateway authenticates with its own managed identity. |
+| Name resolution | The existing resolver and central zones resolve the gateway and model names. DNS queries are separate from model requests. |
 
-[Open full-size SVG](docs/images/02-network-and-dns.svg) |
-[4K PNG](docs/images/02-network-and-dns.png) |
-[Editable Excalidraw source](docs/images/02-network-and-dns.excalidraw)
-
-Blue arrows show HTTPS model traffic; purple dashed arrows show DNS queries and
-replies through the existing resolver. Central zones and forwarding remain
-platform-managed. Workload private endpoints still need a completed DNS
-association and working resolution before private calls.
+Central zones and forwarding remain platform-managed. Workload private endpoints
+still need a completed DNS association and working resolution before private
+calls. The [request flow](docs/architecture.md#end-to-end-private-request-flow)
+explains the runtime sequence.
 
 <a id="find-resource-ids-and-fill-in-your-customer-file"></a>
 <a id="find-resource-ids-and-fill-in-your-network-input-file"></a>
@@ -703,12 +703,6 @@ owners. A copied ID is not a permission grant or a connectivity test.
 The ownership boundaries below describe **`existing` mode**. For `create`,
 the sample instead owns its new network/DNS foundation; approve the new address
 range and check overlap as described in [network foundation](#network-foundation-create-or-existing).
-
-![Platform networking and DNS retain their ownership and state; workload Terraform consumes resource IDs and creates separate application resources and private endpoints](docs/images/03-resource-ownership.svg)
-
-[Open full-size SVG](docs/images/03-resource-ownership.svg) |
-[4K PNG](docs/images/03-resource-ownership.png) |
-[Editable Excalidraw source](docs/images/03-resource-ownership.excalidraw)
 
 These are management boundaries, not network boundaries. Passing resource IDs
 does not import platform resources or merge Terraform states. Each endpoint has

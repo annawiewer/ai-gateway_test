@@ -94,20 +94,19 @@ repeat acceptance for the target network and central DNS topology.
 
 ### Existing-network reference architecture
 
-This view combines **`existing` network ownership** with the gateway/model
-**`private-only` target after approved staged setup**. It shows logical subnet
-roles, not a prescribed VNet or hub/spoke topology.
+This reference combines **`existing` network ownership** with the gateway/model
+**`private-only` target after approved staged setup**. Subnet roles do not
+prescribe a VNet count or hub/spoke topology.
 
-![Existing platform networking and central DNS reused by new gateway and model private endpoints, with separate gateway outbound integration](docs/images/01-overall-architecture.svg)
+```text
+Private client -> gateway private endpoint -> AI Gateway
+AI Gateway -> outbound VNet integration -> model private endpoint -> Foundry model
+```
 
-[Open full-size SVG](docs/images/01-overall-architecture.svg) |
-[4K PNG](docs/images/01-overall-architecture.png) |
-[Editable Excalidraw source](docs/images/01-overall-architecture.excalidraw)
-
-Blue arrows show the model request path; purple dashed arrows show **DNS, not
-model traffic or telemetry**. Supporting agent, storage and monitoring resources
-are outside the synchronous request path. Terraform prepares agent infrastructure,
-not a running agent application.
+The existing resolver and central private DNS zones provide name resolution;
+they do not carry model traffic. Supporting agent, storage and monitoring
+resources are outside the synchronous request path. Terraform prepares agent
+infrastructure, not a running agent application.
 
 Continue with [network and DNS](deployment.md#existing-network-connectivity-reference),
 [resource ownership](deployment.md#platform-handoff-before-a-plan) or the
@@ -233,8 +232,6 @@ gateway checks access and policy; the selected Foundry model generates the
 answer.** The supporting resources below prepare a later agent application
 and make requests observable.
 
-![Public application authenticates with Entra ID or an API key; AI Gateway uses its separate managed identity for Foundry Models](docs/images/architecture-public.svg)
-
 | Component | Purpose in this sample |
 | --- | --- |
 | **AI Gateway** | One model API endpoint for clients. It checks the runtime API key or Entra token and invocation role, applies a token limit per caller, resolves the model alias and forwards the request. It does not run the model or agent code. |
@@ -246,23 +243,19 @@ and make requests observable.
 | **Optional private test VM** | Tests DNS, routing and inference from an approved private client subnet. It is opt-in and not the agent runtime; an existing suitable private client can replace it. |
 
 See the [service-by-service architecture guide](docs/architecture.md) for
-the **base private-network diagram**, **private-agent reference** and separate
-**API-key versus optional Entra authentication sequences**. The Public and
-private-agent overview diagrams in this README
-show an **Application** authenticating with **Entra ID or an API key**; the gateway
-uses its separate managed identity for the backend. The caller's hosting location
-is an application deployment decision; Private-only also requires private DNS and network connectivity.
-The optional hosted agent is not a required hop for direct application model calls.
-In those two overview diagrams, blue arrows are requests, purple
-dashed arrows are telemetry, and gray dashed arrows are configuration or a later
-deployment. A configured connection is not proof of runtime traffic.
+**base private connectivity**, the **private-agent reference** and separate
+**API-key versus optional Entra authentication flows**. Applications authenticate
+with **Entra ID or an API key**; the gateway uses its separate managed identity
+for the backend. The caller's hosting location is an application deployment
+decision; Private-only also requires private DNS and network connectivity.
+The optional hosted agent is not a required hop for direct application model
+calls. Telemetry is separate from the synchronous response, and a configured
+connection is not proof of runtime traffic.
 
 Both paths manage all three core components. Hosted-agent infrastructure is
 included even if you only test model calls.
 
 ### Private agent reference for new deployments
-
-![Private application authenticates with Entra ID or an API key through the gateway private endpoint; gateway managed identity reaches the private model backend](docs/images/architecture-private-only.svg)
 
 Use `enable_private_networking = true`, `enable_private_hosted_agent = true`
 and the selected private-only ingress profile. These inputs create the agent

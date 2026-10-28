@@ -2,26 +2,28 @@
 
 This guide separates the **base Terraform sample**, the **verified private-agent
 reference**, and the **optional Entra caller configuration**, without publishing
-subscription-specific identifiers. Read the overview from left to right: the application asks a
+subscription-specific identifiers. For a model call, the application asks a
 question, the gateway checks and routes the request, and the model generates
 the answer. The gateway is neither the model host nor the agent runtime.
 
-The private-network view describes the `private-only` end-state profile **after
+The private-network reference describes the `private-only` end-state profile **after
 staged setup**. The two deployment paths are **Public** and **Private-only**;
 `private-connectivity` is only an intermediate provisioning profile. The resource and preview
-restrictions in the [README](../README.md) still apply; current product icons
-do not imply that this sample has migrated to a new resource type.
+restrictions in the [README](../README.md) still apply; this guide does not
+change the sample's resource type.
 
 For the execution order, use the [step-by-step deployment guide](../deployment.md#start-here).
-These diagrams explain connections, not instructions to recreate every box.
+This guide explains connections, not instructions to recreate existing resources.
 
-**Existing-network reference views:**
+**Existing-network references:**
 [Overall architecture](../README.md#existing-network-reference-architecture) |
 [Network and DNS](../deployment.md#existing-network-connectivity-reference) |
 [Resource ownership](../deployment.md#platform-handoff-before-a-plan) |
 [Request sequence](#end-to-end-private-request-flow).
 
-### A few terms before reading the diagrams
+<a id="a-few-terms-before-reading-the-diagrams"></a>
+
+### A few useful terms
 
 | Term | Meaning in this sample |
 | --- | --- |
@@ -35,17 +37,18 @@ These diagrams explain connections, not instructions to recreate every box.
 
 ## 1. Base sample architecture
 
-This is the **Public** configuration. The following network view shows
-**Private-only**; the agent view adds the optional private hosted-agent runtime.
+This is the **Public** configuration. The following network section describes
+**Private-only**; the agent section adds the optional private hosted-agent runtime.
 
-![Application-to-gateway-to-model request path, supporting agent infrastructure and separate monitoring destinations](images/architecture-overview.svg)
+```text
+Application -> AI Gateway -> Foundry model
+```
 
-Blue arrows show model requests; the response comes back along the same path.
-Purple dashed arrows show telemetry, which is not part of the synchronous
-model response. Gray dashed arrows show configuration, permissions or a later
-deployment, **not proof of data flowing**.
+The response comes back along the same path. Telemetry is exported separately;
+it is not part of the synchronous model response. Configured connections and
+permissions are **not proof of data flowing**.
 
-The dashed hosted-agent box is deliberately separate: Terraform prepares its
+Hosted-agent execution is a separate activity: Terraform prepares its
 infrastructure but does not build an image, deploy agent code or start a
 container. A simple application or the gateway Playground can call a model
 without running an agent.
@@ -85,12 +88,10 @@ telemetry field is free of operational information.
 
 ## 2. Base private connectivity
 
-![A private client reaches the gateway private endpoint; the gateway reaches the model through outbound VNet integration and the model private endpoint](images/architecture-network.svg)
-
-**Ownership overlay:** in `create` mode the sample manages the shown network/DNS
-foundation. In `existing` mode those boxes represent platform-owned resources.
+**Ownership:** in `create` mode the sample manages the network/DNS
+foundation. In `existing` mode those resources remain platform-owned.
 The platform also retains its central resolver, routes, firewall and zone links.
-The drawing is not a requirement for one VNet or a direct DNS-zone link to every
+There is no requirement for one VNet or a direct DNS-zone link to every
 spoke. Approved existing endpoint subnets may differ by service. In both modes
 the workload creates the private endpoints, while their DNS zone groups have
 one explicitly chosen workload or platform owner.
@@ -109,7 +110,7 @@ These are network routes, not replacements for authentication.
 | --- | --- | --- |
 | **Virtual network and subnets** | Separate the optional test client, private endpoints and the gateway's outbound integration. | The PaaS gateway and model account are not deployed inside these subnets. |
 | **Gateway private endpoint** | Gives private clients a private IP through which to reach the gateway. | The `private-only` profile separately disables public ingress. An approved endpoint alone does not disable it; provisioning is incomplete until public access is disabled. |
-| **Outbound VNet integration and connector gateway** | Give the gateway an outbound route into the VNet so it can reach private backends. `Microsoft.Web/connectorGateways` is supporting gateway infrastructure. | This is not another model proxy or an Azure Application Gateway. The diagram uses a VNet icon for the network function, not an invented connector product icon. |
+| **Outbound VNet integration and connector gateway** | Give the gateway an outbound route into the VNet so it can reach private backends. `Microsoft.Web/connectorGateways` is supporting gateway infrastructure. | This is not another model proxy or an Azure Application Gateway. |
 | **Model private endpoint** | Connects the VNet to the model account while model public access is disabled. | A working gateway private endpoint alone does not establish this backend route. |
 | **Private DNS zones and VNet links** | Resolve gateway and model hostnames to the private endpoint addresses for VNet-connected clients. | Clients using custom DNS need an appropriate forwarding path. A `services.ai` DNS zone does not create private hosted-agent execution. |
 | **Optional test VM** | Provides a controlled private client for DNS, network and inference checks, with no public IP. | It is a probe, not production application compute. Use an existing suitable client instead; stop the VM when it is not needed. |
@@ -119,8 +120,8 @@ The `private-only` profile disables gateway and model public access; the
 intermediate `private-connectivity` profile disables only model public access
 and is not an accepted final deployment.
 These base ingress profiles do not configure agent network injection or a
-private Blob endpoint. The optional agent arrow in the base diagram is not a
-verified private path. For new private agent deployments, explicitly enable
+private Blob endpoint. Base agent infrastructure alone is not a verified
+private runtime path. For new private agent deployments, explicitly enable
 the configuration below from the start; unrelated existing agents need no
 migration for this reference scenario.
 See [private connectivity](private-connectivity.md) and
@@ -132,18 +133,29 @@ This logical successful-request sequence uses **existing central DNS** and the
 gateway/model **`private-only` target after approved staged setup**. It is a runtime
 reference, not a deployment sequence or evidence of acceptance in a particular environment.
 
-![Thirteen-step private request sequence separating client authentication, gateway and model DNS resolution, gateway policy processing, backend managed identity and the returned response](images/04-request-sequence.svg)
-
-[Open full-size SVG](images/04-request-sequence.svg) |
-[4K PNG](images/04-request-sequence.png) |
-[Editable Excalidraw source](images/04-request-sequence.excalidraw)
+| Step | Exchange | Purpose |
+| --- | --- | --- |
+| 1 | Application to Microsoft Entra ID | Request a token for the gateway audience when using Entra client authentication. |
+| 2 | Microsoft Entra ID to application | Return the caller's gateway access token. |
+| 3 | Application to central DNS resolver | Resolve the gateway hostname. |
+| 4 | Central DNS resolver to application | Return the gateway private endpoint address through the configured DNS path. |
+| 5 | Application to AI Gateway | Send the model request over HTTPS through the gateway private endpoint, with the caller's token or API key. |
+| 6 | Within AI Gateway | Validate access and, for Entra callers, the invocation role; evaluate policies and resolve the model alias. A rejected request does not proceed to inference. |
+| 7 | AI Gateway to central DNS resolver | Resolve the selected model backend hostname through the configured DNS path. |
+| 8 | Central DNS resolver to AI Gateway | Return the model private endpoint address. |
+| 9 | Gateway identity to identity service | Acquire a backend token using the gateway's separate managed identity. |
+| 10 | Identity service to gateway | Return the backend access token, distinct from the caller's token. |
+| 11 | AI Gateway to Foundry model | Send the authenticated inference request through outbound VNet integration and the model private endpoint. |
+| 12 | Foundry model to AI Gateway | Return the model response or stream after backend authorization. |
+| 13 | AI Gateway to application | Return the response or stream over the established client connection. |
 
 With **API-key client authentication**, skip the initial client token exchange
 (steps 1 and 2). The gateway still uses its **separate managed identity** for the
 model call; the model validates that backend identity's authorization. Private
-endpoints and VNet integration are transport annotations, not application lifelines.
+endpoints and VNet integration provide transport; they are not additional
+application services processing the prompt.
 
-DNS results and tokens may be cached, and acquisition order can vary. The drawing
+DNS results and tokens may be cached, and acquisition order can vary. This sequence
 does not prescribe a managed-identity broker endpoint or imply that Entra,
 control-plane or telemetry connections are private. Error, policy-denial,
 throttling and retry branches are omitted. For the specialized agent key flow
@@ -153,10 +165,8 @@ for token audiences and invocation roles see the
 
 ## 3. Private agent reference
 
-![Verified private-agent request path, with inbound Foundry Private Link, separate outbound agent injection, gateway and model connectivity](images/architecture-private-agent.svg)
-
-Read the request path from left to right, with separate image and monitoring
-dependencies. This is the configuration used by the
+The request path is **private client to hosted agent to gateway to model**;
+container-image and monitoring dependencies are separate. This configuration was used by the
 [successful October 25 deployment](private-hosted-agent.md#observed-deployment-and-proof):
 a private client invoked a hosted agent, which called the private gateway and
 model backend. The response was **OK**, both gateway and backend spans had
@@ -173,8 +183,8 @@ a network-denial **HTTP 403**. Actual subnet ranges come from the approved VNet 
 | Existing private gateway, model route and monitoring | Reused | No extra model, direct-model fallback, or new monitoring stack. |
 
 The PaaS services are **not resources physically placed in the endpoint
-subnet**. The diagram labels endpoint, client, gateway and delegated agent
-subnets separately. Basic agent data remains Azure-managed and multitenant,
+subnet**. Endpoint, client, gateway-integration and delegated agent
+subnets have separate roles. Basic agent data remains Azure-managed and multitenant,
 not in separately provisioned Cosmos DB, Search or Storage resources. A private Blob endpoint is
 not a dependency of the demonstrated agent model call.
 
@@ -185,7 +195,9 @@ gateway resource compatibility and region/policy acceptance requirements remain.
 
 ## 4. Current private-agent authentication
 
-![Current runtime identity retrieves the gateway key from ARM; the agent uses that key over the private route and the gateway uses its own managed identity for the model](images/architecture-private-agent-sequence.svg)
+The runtime identity retrieves a gateway key from ARM into runtime memory. The
+agent uses that key over the private route; the gateway uses its own managed
+identity for the model.
 
 | Hop | Credential | Required permission |
 | --- | --- | --- |
@@ -208,10 +220,10 @@ preview invocation endpoint's ingress boundary for each new deployment.
 ## 5. Target request sequence with Microsoft Entra ID
 
 **Optional caller configuration, live-tested with managed identity.** The
-specialized private-agent diagrams retain the tested API-key reference; the
+specialized private-agent reference retains the tested API-key flow; the
 general private request flow also supports Entra callers. Terraform supports
 additive Entra caller roles through `gateway_access_principals`; the client probe
-selects Entra with `-Authentication EntraId`. The following sequence shows that
+selects Entra with `-Authentication EntraId`. This section details that
 caller's token flow. A separate private-VM probe returned 403 without the invocation
 role and 200 for both aliases after Terraform granted it, with matching gateway
 and backend traces. API-key calls remained successful. The temporary role was
@@ -219,12 +231,10 @@ removed and the VM deallocated; existing keys and the deployed agent are unchang
 This proof does not cover custom delegated-user clients.
 
 **Network prerequisite:** with `private-only`, the application must resolve and
-reach the gateway private endpoint before the depicted authenticated model call
+reach the gateway private endpoint before an authenticated model call
 can succeed. Entra tokens do not bypass network restrictions. Token acquisition
 uses the caller's separate connectivity to Entra; Entra is not behind the
 gateway's private endpoint.
-
-![Entra ID request sequence: acquire caller token, authorize model invocation, evaluate policies, call the model with the gateway's separate managed identity, and export telemetry](images/architecture-request-sequence.svg)
 
 This follows the request-lifecycle structure in
 [Govern, secure, and operate AI Gateway tier](https://learn.microsoft.com/en-us/azure/api-management/ai-gateway-govern-secure-assets#governance-policies),
@@ -244,7 +254,7 @@ source for the newer inbound Entra settings.
 
 The caller token is **not** forwarded to the model; no on-behalf-of token
 exchange is shown. Client, gateway and project identities remain distinct.
-Token acquisition and refresh can use caches, so the diagram's token exchanges
+Token acquisition and refresh can use caches, so the token exchanges
 are not necessarily new network round trips for every prompt.
 
 ### What must change before using the Entra target flow
@@ -275,7 +285,7 @@ migration step; this documentation does not do it.
 
 **Policies is a logical lane inside AI Gateway, not a separate Azure service.**
 The sample configures a per-caller model token limit. The product also supports
-other policies, but this diagram does not claim that they are all provisioned:
+other policies, but this reference does not claim that they are all provisioned:
 
 | Rejection | Response documented by the service |
 | --- | --- |
@@ -286,8 +296,8 @@ other policies, but this diagram does not claim that they are all provisioned:
 Authentication and invocation authorization are checked before backend
 inference. A policy denial stops the model call. A backend can return its own
 errors, including quota limits; not every 429 is a gateway policy rejection.
-Telemetry export is asynchronous: the arrow shows an emission, not a wait for
-successful ingestion before responding. Payload capture remains disabled.
+Telemetry export is asynchronous; the response does not wait for successful
+ingestion. Payload capture remains disabled.
 
 These branches describe intended behavior, not evidence of new negative,
 load or Entra-runtime tests. Verify the migrated caller with the
@@ -305,41 +315,13 @@ alone is not complete acceptance.
 | Runtime identity binding | Platform and application teams | Discovered runtime principal has gateway key-read and registry pull access; retain the binding inputs for future Terraform plans. |
 | Runtime and portal verification | Platform and application teams | Evidence for inference, authentication, intended network paths and fresh telemetry. |
 
-## Diagram sources and icon provenance
+<a id="diagram-sources-and-icon-provenance"></a>
 
-The SVGs use the official **Azure Public Service Icons V24**, downloaded from
-the [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/icons/).
-This release adds the dedicated **AI Gateway** icon and updated **Foundry Models,
-Foundry Project and Foundry Agent Service** icons. The earlier diagram renderer's
-selected artwork is retained in [images/azure-icons](images/azure-icons).
-The four numbered existing-network reference views embed their artwork in the
-SVG and Excalidraw files; the sequence also uses the official
-[Microsoft Entra architecture icons](https://learn.microsoft.com/en-us/entra/architecture/architecture-icons).
-Service artwork is not recolored, rotated or replaced with a similar-looking service.
+## Documentation scope
 
-Architecture structure was also rendered through the local Azure Diagram Builder
-MCP. The architecture SVGs use a deterministic local layout so explanations are visible
-without hover, and node labels and connections remain reviewable.
-
-The four numbered reference views each include an **editable `.excalidraw`
-source**, an **SVG** and a **4K PNG**, linked beneath the corresponding figure.
-Open the source in [Microsoft Excalidraw](https://aka.ms/excalidraw) and refresh
-both image exports after edits. Keep the scope captions with reused images.
-The commands below regenerate the earlier, unnumbered diagrams, **not** these
-four reference views.
-
-To regenerate the earlier diagrams from the `samples/terraform` directory:
-
-```powershell
-node .\scripts\Render-Architecture.mjs
-mmdc -i .\docs\images\architecture-request-sequence.mmd -o .\docs\images\architecture-request-sequence.svg -b "#0d1117"
-mmdc -i .\docs\images\architecture-private-agent-sequence.mmd -o .\docs\images\architecture-private-agent-sequence.svg -b "#f5f8fc"
-```
-
-The Node.js command renders the earlier architecture views using checked-in
-icons. The remaining commands use Mermaid CLI for the specialized authentication sequences.
-Editable [current](images/architecture-private-agent-sequence.mmd) and
-[target](images/architecture-request-sequence.mmd) sequence sources are kept next
-to their SVGs. Azure icons are used under the
-[Microsoft icon terms](https://learn.microsoft.com/en-us/azure/architecture/icons/#icon-terms)
-for architecture documentation, not as the logo of this sample.
+The architecture and request flows are documented directly in these guides.
+Separate graphic exports, editable diagram sources and rendering tools are not
+included in the published checkout and are not required for deployment or its
+verification. Optional offline artwork remains subject to the
+[Azure icon terms](https://learn.microsoft.com/en-us/azure/architecture/icons/#icon-terms)
+and [Microsoft Entra icon guidance](https://learn.microsoft.com/en-us/entra/architecture/architecture-icons).
