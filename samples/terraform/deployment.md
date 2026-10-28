@@ -8,6 +8,10 @@ This is the step-by-step deployment guide. Start here rather than executing the
 examples in every document. The other guides provide details for a selected
 step; they are not additional deployments to run afterward.
 
+**First understand the code:** use the
+[beginner walkthrough](#understand-the-files-before-deploying) before the
+execution steps. It is read-only and can be followed on GitHub without a terminal.
+
 **Who:** the person operating the workload's approved deployment process, with
 the network/DNS owner available for the handoffs below.
 **Where:** PowerShell **7**, in the approved checkout's `samples\terraform`
@@ -123,6 +127,202 @@ remain explicit sample-maintenance responsibilities; `terraform validate` and
 mock tests alone cannot prove that Azure will accept a deployment.
 
 </details>
+
+## Understand the files before deploying
+
+This is a **read-only walkthrough**, not a shorter deployment procedure. Its
+example is a **new gateway workload using an existing platform network and
+central DNS**. If the gateway already exists, retain its approved inputs,
+ownership mode and authoritative state; do not create a second deployment.
+
+### One configuration, not a sequence of scripts
+
+Terraform reads the `.tf` files in this directory **together**. `main.tf` is not
+a script to run first, and `private-network.tf` is not a script to run afterward.
+Resource references and dependencies determine ordering, not filenames.
+Files under `profiles` supply input values when selected; their presence in a
+subfolder does not make Terraform execute or automatically load them.
+
+| Term in the files | Meaning |
+| --- | --- |
+| `variable` / `var.` | An input's definition / its effective value, such as the chosen network mode. |
+| `locals` / `local.` | Calculated helper values, such as which subnet ID to use. A list or calculation does not itself create resources. |
+| `resource "azapi_resource"` | An Azure resource managed through Terraform's AzAPI provider. |
+| `data "azapi_resource"` | A lookup of an existing Azure resource, not an import into this workload's ownership. |
+| `count = 0` | No instance of that resource is managed by this configuration. |
+| `for_each = {}` | The collection is empty, so no resource instances are managed for that block. |
+
+On a **new** workload, these empty selections suppress creation. Changing an
+already-deployed selection to empty can propose removal of previously managed
+resources instead; it is not a safe ownership-migration mechanism.
+
+### Which files do I open or edit?
+
+For the first conversation, open the existing-network profile, network context
+and network resource file. Follow the input into the code rather than trying to
+read every file alphabetically.
+
+| File | Purpose | Normal environment-specific edit? |
+| --- | --- | --- |
+| [terraform.tfvars.example](terraform.tfvars.example) | Template for subscription, naming, regions, model choices and optional features. | Copy to `terraform.tfvars` for a **new** workload, then edit the copy. Retain an existing approved input file instead of overwriting it. |
+| [profiles/network-existing.tfvars.json](profiles/network-existing.tfvars.json) | Template selecting `existing` and supplying subnet/zone IDs. | Copy to `network-existing.environment.tfvars.json`, then replace every placeholder in the copy. Keep environment inputs protected and out of public Git. |
+| [profiles/private-connectivity.tfvars.json](profiles/private-connectivity.tfvars.json) / [profiles/private-only.tfvars.json](profiles/private-only.tfvars.json) | Intermediate and final private-access settings, independent of network ownership. | Select the correct shared file for the approved stage; do not customize the shared profile for one environment. |
+| [variables.tf](variables.tf) | Input types, defaults and validation rules. | Read to understand inputs; normally leave the definitions unchanged. |
+| [private-network-context.tf](private-network-context.tf) | Ownership switch, existing-resource lookups, checks and resolved subnet IDs. | Read; normally leave the implementation unchanged. |
+| [private-network.tf](private-network.tf) | Conditional network/DNS creation and workload private endpoints. | Read; do not delete blocks or comment out the file to reuse networking. |
+
+An existing Terraform/Terragrunt pipeline can pass approved platform module
+outputs through the [adapter](#optional-terragrunt-adapter) **instead of** copying
+the network template. Keep one authoritative input/deployment process.
+
+The other core files describe the workload: [main.tf](main.tf) handles naming,
+resource groups and shared monitoring; [ai-gateway.tf](ai-gateway.tf) describes
+the gateway and routing; [foundry-models.tf](foundry-models.tf) describes the
+model account/deployments; [foundry-agents.tf](foundry-agents.tf) describes the
+base agent account/project, storage and registry.
+**The optional private hosted-agent extension is additive:** disabling it does
+not remove those base agent/supporting resources, and Terraform does not start
+an agent application merely by creating its infrastructure. Approve the full
+sample's resource scope and costs, not just the gateway.
+
+### Why four subnet roles but only two endpoint keys?
+
+The existing-network template actually has **three base subnet-ID fields**.
+Two of them are entries in the `endpoint_subnet_ids` map; the third sits outside
+that map. They address different jobs:
+
+| Create-mode subnet role | Field under `existing_private_network` | Job |
+| --- | --- | --- |
+| `gateway` | `gateway_subnet_id` | Dedicated outbound VNet integration: the gateway uses this subnet to reach private backends. |
+| `endpoints` | `endpoint_subnet_ids.gateway` | Placement of the gateway's private ingress endpoint. |
+| `endpoints` | `endpoint_subnet_ids.models` | Placement of the model account's private endpoint. |
+| `client` | `client_subnet_id` | Required in existing mode only when the optional sample test VM, `enable_private_test_client`, is enabled. |
+| `agents` | `agent_subnet_id` | Required for the optional private hosted-agent extension, which also needs additional endpoint/DNS inputs. |
+
+**The two endpoint fields may contain the same full, approved subnet ID.**
+Then the three base fields refer to two physical subnets: one for gateway
+integration and one shared by the gateway/model private endpoints. The
+integration subnet must remain separate from private endpoint subnets.
+Separate endpoint subnets are also possible if the platform approves their
+placement, routes and policies.
+
+`gateway` and `models` inside the endpoint map are **role keys**, not required
+Azure subnet names. The template's example VNet/subnet names are placeholders,
+not a required VNet count or topology. Four DNS zone entries likewise do not
+mean four subnets.
+
+There is also an asymmetry worth knowing: with private networking enabled,
+`create` always creates the three base subnet roles `gateway`, `endpoints` and
+`client`, even if the sample VM is disabled. It adds `agents` only for the
+private hosted-agent extension. In `existing`, an unused sample VM does not
+require a supplied client subnet. An existing private corporate client does
+not need to become a Terraform-managed sample VM.
+
+### Follow one input through the code
+
+Read these steps; do not execute or duplicate the source snippets.
+
+1. The selected environment copy of the existing-network profile supplies
+   `private_network_mode = "existing"` and `existing_private_network`.
+   [variables.tf](variables.tf) declares and validates those inputs.
+   The appropriate private-access profile separately enables private networking;
+   the ownership file alone does not enable it or select Private-only.
+2. [private-network-context.tf](private-network-context.tf) evaluates this
+   existing expression inside its `locals` block:
+
+   ```hcl
+   create_private_network = var.enable_private_networking && var.private_network_mode == "create"
+   ```
+
+   With private networking enabled and mode `existing`, the result is `false`.
+   Existing subnet/VNet metadata is read through data lookups, and helper values
+   select the supplied IDs.
+3. In [private-network.tf](private-network.tf), search for `private_vnet` and
+   `private_subnets`. The VNet's conditional count becomes `0`; the subnet
+   resource collection becomes `{}`. Creation of the sample NSGs, DNS zones
+   and VNet links is also guarded by `create_private_network`.
+4. Follow `existing_private_network.gateway_subnet_id` to
+   `local.private_gateway_subnet_id`, then to `subnetResourceId` in
+   [ai-gateway.tf](ai-gateway.tf). That is the existing subnet used for gateway
+   outbound integration.
+5. Back in [private-network.tf](private-network.tf), search for
+   `resource "azapi_resource" "private_endpoint"`. These workload endpoints
+   remain enabled and use the resolved `endpoint_subnet_ids` for their placement.
+   They are **new endpoints in approved existing subnets**.
+
+**Existing mode does not disable the whole network file.** It reuses the
+network/DNS foundation while still creating the workload's private endpoints.
+Missing required inputs fail; they do not trigger a fallback network creation.
+
+### Who manages DNS, and how do the input files get selected?
+
+In existing mode, central DNS zones, resolver, links, routing and firewall remain
+with the platform. **Zone ownership is separate from endpoint association
+ownership.** `private_dns_zone_group_management = "workload"` means Terraform
+manages the new endpoints' associations to existing zones, not new central zones.
+`"platform"` leaves those associations to platform policy/automation. Choose
+exactly one owner, confirm permissions and wait for actual DNS readiness.
+Do not select `"platform"` merely because the zones are centrally owned.
+
+For a new workload, real base values go in `terraform.tfvars` (or the approved
+alternative) and the network IDs go in the selected environment network file.
+Terraform automatically reads the standard `terraform.tfvars` and automatic
+var-files; arbitrary filenames and shared profiles require explicit selection.
+An alternative such as `workload.tfvars` is not automatically read just because
+it exists. The [input composition step](#compose-the-inputs) supplies the
+`-var-file` arguments in the approved order.
+
+Later input values override earlier ones **for the whole variable**;
+Terraform does not automatically deep-merge nested objects across var-files.
+Keep the complete `existing_private_network` object in its responsible input
+source instead of splitting partial versions across files. Keep the complete
+approved file selection on later monitoring, update and drift plans too.
+
+### Which commands and helper scripts matter?
+
+You do not run every script in the repository. For a code walkthrough, run none.
+The actual deployment commands and their safety gates remain in the
+[runbook](#runbook-order).
+
+| Terraform command | What it does |
+| --- | --- |
+| `init` | Initializes providers and the selected backend. Confirm state ownership first; do not create or migrate a backend casually. |
+| `plan` | Compares configuration, state and refreshed resource information. Proposes changes without applying them; it still needs the correct Azure context, inputs and permissions. |
+| `apply` | Executes approved changes and can create, modify or delete billable resources. Review the saved plan first. |
+
+State records Terraform's resource-to-Azure mapping; the backend stores that
+state. Reusing platform resource IDs does not require copying the platform state,
+importing its resources into this workload or creating a new competing owner.
+
+| Helper under `scripts` | When it is relevant / side effects |
+| --- | --- |
+| [Test-Offline.ps1](scripts/Test-Offline.ps1) | Sample maintenance checks without Azure deployment. Not a customer deployment entry point; provider downloads may still be needed. |
+| [Get-GatewayMonitoring.ps1](scripts/Get-GatewayMonitoring.ps1) | Reads actual monitoring linkage after resources exist. Does not create or repair the exporter/destination. |
+| [Test-ModelAliases.ps1](scripts/Test-ModelAliases.ps1) | Sends real model requests. Requires reachable endpoints and caller permissions; incurs inference charges. |
+| [Test-PrivateGateway.ps1](scripts/Test-PrivateGateway.ps1) | Private-path test through the optional sample VM using Run Command. Not a wrapper for an arbitrary existing corporate client. |
+| [Test-DeploymentAcceptance.ps1](scripts/Test-DeploymentAcceptance.ps1) | Structured acceptance. Diagnostic mode alone is not full runtime acceptance. `-RunPrivateProbe` starts the designated deallocated sample VM, sends billable probes and deallocates it afterward; follow its approved lifecycle requirements. |
+| [Test-CustomerAcceptance.ps1](scripts/Test-CustomerAcceptance.ps1) | Compatibility entry point for that same acceptance runner, not an additional workflow. |
+| [Complete-PortalAcceptance.ps1](scripts/Complete-PortalAcceptance.ps1) | Validates a passing backend report and operator-recorded portal evidence. Does not open or inspect the portal itself. |
+
+Without a sample VM, use the documented existing-private-client/manual acceptance
+path; do not add a VM just to obtain a passing automated report. Supporting
+helpers such as `private-path-probe.py` are called by their documented runner,
+not additional beginner setup steps. The repository's top-level `cli`, `commands`
+and `skills` belong to separate interfaces; their installers are not extra
+Terraform deployment steps.
+
+**Stop point for the walkthrough:** you can now identify the input files, trace
+an existing subnet ID and explain which resources remain workload-owned.
+Before a real plan, obtain the [platform handoff](#platform-handoff-before-a-plan)
+and follow the [runbook order](#runbook-order). For a new existing-mode workload,
+new workload resources and private endpoints are expected; changes to the
+central VNet/subnet/NSG/zone/link foundation are not. Review endpoint DNS
+associations according to the chosen owner and stop on unexpected removals or
+replacements.
+
+Do not demonstrate `apply`, `destroy`, imports or state moves during a code
+review. The final Private-only profile is not a private-from-first-create shortcut;
+keep the approved staged procedure and never reopen an already-private resource.
 
 ## Runbook order
 

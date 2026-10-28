@@ -5,6 +5,12 @@ Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Sa
 
 ## Start here: step-by-step deployment
 
+**Want to understand the files before deploying?**
+[Start with the beginner code walkthrough](deployment.md#understand-the-files-before-deploying).
+It explains what to edit, how the files work together, why the existing-network
+profile differs from the created subnets, and which scripts are optional.
+No terminal, Azure login or deployment is needed for that walkthrough.
+
 > [!IMPORTANT]
 > **[Open the step-by-step deployment guide (`deployment.md`)](deployment.md#start-here).**
 >
