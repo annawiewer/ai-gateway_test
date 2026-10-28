@@ -791,6 +791,13 @@ This reference uses **`existing` networking** with the gateway/model
 roles may share an approved subnet; the delegated gateway integration subnet
 remains separate. No VNet count or hub/spoke design is prescribed.
 
+![Two private paths with platform-owned subnet roles, resolver-mediated DNS lookups and the four required central private DNS zones](docs/images/02-network-and-dns.svg)
+
+[Open full-size SVG](docs/images/02-network-and-dns.svg)
+
+Blue arrows show HTTPS model traffic; purple dashed arrows show DNS queries
+and replies through the existing resolver.
+
 | Path | Network role |
 | --- | --- |
 | Private client to gateway | Client DNS resolves the gateway hostname to its private endpoint. The client sends an authenticated HTTPS request over the approved private route. |
@@ -1027,6 +1034,10 @@ owners. A copied ID is not a permission grant or a connectivity test.
 The ownership boundaries below describe **`existing` mode**. For `create`,
 the sample instead owns its new network/DNS foundation; approve the new address
 range and check overlap as described in [network foundation](#network-foundation-create-or-existing).
+
+![Platform networking and DNS retain their ownership and state; workload Terraform consumes resource IDs and creates separate application resources and private endpoints](docs/images/03-resource-ownership.svg)
+
+[Open full-size SVG](docs/images/03-resource-ownership.svg)
 
 These are management boundaries, not network boundaries. Passing resource IDs
 does not import platform resources or merge Terraform states. Each endpoint has

@@ -18,6 +18,11 @@ override.tf.json
 __pycache__/
 acceptance-results/
 docs/portal-review-*/
-# Local-only architecture artwork and its renderer.
-docs/images/
+# Publish only the SVGs embedded in the overview and deployment guide.
+docs/images/*
+!docs/images/01-overall-architecture.svg
+!docs/images/02-network-and-dns.svg
+!docs/images/03-resource-ownership.svg
+!docs/images/architecture-public.svg
+!docs/images/architecture-private-only.svg
 scripts/Render-Architecture.mjs

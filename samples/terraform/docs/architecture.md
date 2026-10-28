@@ -320,8 +320,10 @@ alone is not complete acceptance.
 ## Documentation scope
 
 The architecture and request flows are documented directly in these guides.
-Separate graphic exports, editable diagram sources and rendering tools are not
-included in the published checkout and are not required for deployment or its
-verification. Optional offline artwork remains subject to the
+The illustrations embedded in the [overview](../README.md) and
+[deployment guide](../deployment.md) are included as self-contained SVGs, with
+links to the full-size images. Additional image exports, editable diagram
+sources and rendering tools remain local and are not required for deployment
+or its verification. The illustrations use official service artwork under the
 [Azure icon terms](https://learn.microsoft.com/en-us/azure/architecture/icons/#icon-terms)
 and [Microsoft Entra icon guidance](https://learn.microsoft.com/en-us/entra/architecture/architecture-icons).

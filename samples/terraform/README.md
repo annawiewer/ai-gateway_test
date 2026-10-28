@@ -104,6 +104,13 @@ This reference combines **`existing` network ownership** with the gateway/model
 **`private-only` target after approved staged setup**. Subnet roles do not
 prescribe a VNet count or hub/spoke topology.
 
+![Existing platform networking and central DNS reused by new gateway and model private endpoints, with separate gateway outbound integration](docs/images/01-overall-architecture.svg)
+
+[Open full-size SVG](docs/images/01-overall-architecture.svg)
+
+Blue arrows show model requests; purple dashed arrows show DNS, not model
+traffic or telemetry.
+
 ```text
 Private client -> gateway private endpoint -> AI Gateway
 AI Gateway -> outbound VNet integration -> model private endpoint -> Foundry model
@@ -238,6 +245,10 @@ gateway checks access and policy; the selected Foundry model generates the
 answer.** The supporting resources below prepare a later agent application
 and make requests observable.
 
+![Public application authenticates with Entra ID or an API key; AI Gateway uses its separate managed identity for Foundry Models](docs/images/architecture-public.svg)
+
+[Open full-size SVG](docs/images/architecture-public.svg)
+
 | Component | Purpose in this sample |
 | --- | --- |
 | **AI Gateway** | One model API endpoint for clients. It checks the runtime API key or Entra token and invocation role, applies a token limit per caller, resolves the model alias and forwards the request. It does not run the model or agent code. |
@@ -262,6 +273,10 @@ Both paths manage all three core components. Hosted-agent infrastructure is
 included even if you only test model calls.
 
 ### Private agent reference for new deployments
+
+![Private application authenticates with Entra ID or an API key through the gateway private endpoint; gateway managed identity reaches the private model backend](docs/images/architecture-private-only.svg)
+
+[Open full-size SVG](docs/images/architecture-private-only.svg)
 
 Use `enable_private_networking = true`, `enable_private_hosted_agent = true`
 and the selected private-only ingress profile. These inputs create the agent
