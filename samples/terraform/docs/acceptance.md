@@ -6,14 +6,9 @@ Use this after the chosen [networking path](../README.md#choose-your-networking-
 has been applied successfully. This guide verifies the deployed resources;
 it does **not** create or repair them.
 The [legacy-resource limitation](reference.md#resource-type-and-lifecycle) remains.
-An isolated Sweden Central rehearsal on October 27, 2026 created the original
-`service` / `AIGateway` through Terraform and closed public access in stages.
-Private model calls, authentication controls, public network rejections,
-telemetry, central firewall routing and four independent no-change plans passed.
-This does not prove private-from-first-create or verify your policies,
-CI/backend or region. The October 25
-[private-agent proof](private-hosted-agent.md#observed-deployment-and-proof)
-is separate; no hosted-agent application ran in the October 27 rehearsal.
+Historical results are retained in the
+[scoped verification record](reference.md#private-only-gateway-ingress-status);
+they do not establish acceptance of your deployment or private-from-first-create.
 
 The blocks below address the base gateway/model/project deployment. They do
 not automatically select or verify the optional private agent. Use its
@@ -21,12 +16,16 @@ not automatically select or verify the optional private agent. Use its
 [separate runtime/identity checks](private-hosted-agent.md#repeatable-operation-after-deployment)
 for new private agent deployments.
 
-**Automated private-profile entrypoint:** follow the [end-to-end runbook](end-to-end.md)
-and `scripts\Test-DeploymentAcceptance.ps1` for executable checks, sanitized reports,
-same-private-route negative authentication, correlated telemetry and a separate
-portal/metrics review. The detailed blocks below cover the manual route, including an
-**existing private client without the sample VM**, and the public path.
-Do not run them as a second billable test by default after a successful VM run.
+**Choose one execution route.** The detailed blocks below are the **manual**
+route, including an existing private client without a sample VM and the public
+path. The [optional sample-VM acceptance runner](end-to-end.md) is an alternative
+only when that VM is configured: even its diagnostics require a VM ID, read ARM,
+run a full drift plan and write local reports. Its explicit runtime flag also
+starts the VM, uses Run Command and sends billable inference requests.
+Do not enable a VM to satisfy manual acceptance or repeat these blocks as a
+second billable test after a successful VM run. Both routes use the
+[shared portal checklist](#ai-gateway-portal-checklist); neither automates browser
+verification.
 
 For an **existing private client**, use the
 [two-terminal handoff](private-connectivity.md#test-from-an-existing-private-client):
@@ -546,7 +545,9 @@ snippets were not live-executed in that rehearsal.
 
 ## 6. Verify telemetry delivery, not just exporter existence
 
-Complete [OTLP setup](monitoring.md) first. Keep the six service role checks above;
+Complete [OTLP destination setup](monitoring.md#stage-a-prepare-and-verify-the-destination)
+and the selected full deployment or approved exporter repair first.
+Keep the six service role checks above;
 the DCR publishing role below is an additional, narrowly scoped assignment.
 
 ```powershell
@@ -908,24 +909,70 @@ the selected configuration and private backend checks pass.
 
 ## 8. Record the manual portal review
 
-This completes the **manual** route, including an existing private client without
-the sample VM and an intentionally public deployment. A successful VM-based
-runner uses its own generated portal manifest instead; do not repeat billable
-tests or invent a VM report to satisfy this step.
+The checklist below is shared by **both** acceptance routes. The record steps
+after it complete the manual route, including an existing private client without
+a sample VM and an intentionally public deployment. A successful VM runner uses
+its [generated portal manifest](end-to-end.md#validate-the-sample-vm-portal-manifest)
+instead of the manual record. Do not repeat tests or invent a VM report.
 
 **Who/where:** A or the designated reviewer, using an approved authenticated
 browser and the intended corporate account. Confirm the tenant and resource
 against this run's protected acceptance record, not another browser session.
+
+### AI Gateway portal checklist
+
+For manual acceptance, first complete Steps 1-7. For the optional VM route,
+require `backendStatus = PASS` for the current run. Earlier portal browsing is
+a **diagnostic baseline**, not final UI acceptance. Public-network rejection
+and any hosted-agent tests remain separate required evidence where applicable.
+
+Open **https://ai.gateway.azure.com** in an authenticated browser with the intended
+corporate account, not a lab/admin account. Verify the actual tenant and selected
+subscription/resource against this run's report or manual acceptance record.
+Use a client with VNet connectivity when exercising the private route. A portal
+playground might call an enabled public gateway endpoint; record its actual route
+and do not label it private proof.
+
+The Networking page can display an approved/succeeded gateway-side connection
+while the corresponding `Microsoft.Network/privateEndpoints` resource is failed.
+Check both resource states and private DNS/routing; the portal row alone is not
+proof of a working private endpoint.
+
+Use actual current UI labels and controls; no unverified selectors or assumptions
+about preview navigation are baked into the scripts.
+
+| Check name | Required observation |
+| --- | --- |
+| `resource-context` | Correct tenant, subscription, shared group and gateway; no accidental resource/account switch after refresh |
+| `configuration` | Provider/backend and every alias agree with this run's report or manual record/configuration; inspect details without saving changes |
+| `playground` | One bounded benign call per alias, successful visible response, reported usage/errors sensible; record actual route and UTC times |
+| `metrics` | Requests and available token/error/latency views load, use the selected resource/time filter, and show fresh test traffic; compare one positive numeric count with its underlying query using identical filters/aggregation |
+| `error-states` | Clear empty state for a window with no traffic and understandable error for a safe unsupported alias/invalid key where the UI supports it; never delete resources or change policies to manufacture errors |
+| `browser-health` | Navigation, refresh, loading/error completion and charts function; record durations, browser version, relevant console failures and failing request status codes without headers/bodies |
+
+Record usability observations and defects, not just a screenshot of a chart.
+Missing/unsupported controls are FAIL/BLOCKED, not a fabricated PASS. Do not mark
+requests/tokens healthy while displaying old or unrelated traffic. With shared
+traffic, use identical resource/window/status filters and aggregation in the UI
+and reference query; do not assume the total equals only this run's calls.
+Metrics definitions and display rounding must match.
+
+Never capture keys, sign-in screens, authorization headers, connection strings
+or request prompts; do not save HAR files/raw network traces. Nonsecret trace IDs
+and the actual UTC window connect the reference telemetry to this run.
+All UI evidence is **operator-attested**, not independently verified by a script.
+
+### Record the manual portal evidence
 
 1. Finish Steps 1-7 for this deployment. Resolve every required failed or
    unverified check first. For Private-only, retain the final private controls
    and authenticated public-network denial; recovery/staging evidence is not
    sufficient. Earlier portal browsing is diagnostic, not final sign-off.
 2. Perform **all six checks** in the shared
-   [AI Gateway portal checklist](end-to-end.md#4-ai-gateway-portal-review):
+   [AI Gateway portal checklist](#ai-gateway-portal-checklist):
    `resource-context`, `configuration`, `playground`, `metrics`, `error-states`
    and `browser-health`. Follow that checklist's route, bounded-call and
-   redaction rules. Skip its **sample-VM manifest validator**, not the UI checks.
+   redaction rules. Do not use the **sample-VM manifest validator** for this route.
 3. In the approved evidence folder outside the checkout, create
    `manual-portal-evidence-<run-id>.md` using this run's identifier. For the
    two-terminal route, use the final handoff's `runId` and reference its metadata

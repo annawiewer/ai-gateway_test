@@ -4,15 +4,15 @@
 
 ## Start here
 
-This is the step-by-step deployment guide. Start here rather than executing the
-examples in every document. The other guides provide details for a selected
-step; they are not additional deployments to run afterward.
+This is the **shared operator procedure** for the
+[four deployment scenarios](README.md). Select the starting situation
+below, prepare the approved inputs, then follow only the applicable procedure.
+Specialist guides are linked at their execution step, not extra deployments to
+run afterward.
 
-**First understand the code:** use the
-[beginner walkthrough](#understand-the-files-before-deploying) before the
-execution steps. It is read-only and can be followed on GitHub without a terminal.
-Jump to the [replacement checklist](#replacement-checklist-for-existing-network-inputs)
-or the [editor, runner and languages](#where-do-i-edit-and-where-does-terraform-run).
+**Not deploying yet?** Read [Understand the sample](docs/understand-the-sample.md)
+without a terminal. File roles, the subnet-input explanation and optional editor
+help live there; service behavior is explained in [Architecture](docs/architecture.md).
 
 **Who:** the person operating the workload's approved deployment process, with
 the network/DNS owner available for the handoffs below.
@@ -20,13 +20,24 @@ the network/DNS owner available for the handoffs below.
 `samples\terraform` as the working directory. Use the approved local terminal or
 pipeline; Azure Portal and editor steps are labeled separately.
 
+> [!IMPORTANT]
+> This time-limited preview sample retains
+> `Microsoft.ApiManagement/service@2025-09-01-preview` and SKU `AIGateway`.
+> Microsoft requires migration **before January 15, 2027**. As checked
+> October 25, 2026, the replacement `Microsoft.ApiManagement/aigateways`
+> resource does not support gateway private endpoints. This guide does not
+> upgrade the SKU/provider or perform that migration. Check
+> [resource compatibility and lifecycle](docs/reference.md#resource-type-and-lifecycle)
+> before deployment.
+
 ### First decide what already exists
 
-| Starting situation | Network choice | Workload state and next action |
+| Starting situation | Ownership and access | Workload state and next action |
 | --- | --- | --- |
-| No gateway-specific network/DNS and no gateway deployment | `create` | Ask the platform owner to identify the approved state/backend for this **new workload**. The sample creates a network foundation, not a corporate landing zone. |
-| Central network/DNS already exists, but this gateway has never been deployed | `existing` | Use approved platform subnet/zone IDs and the approved state/backend for the **new gateway workload**. Do not copy the network team's state into it. |
-| This gateway has already been deployed with Terraform | Keep its current mode | Use its current source revision, complete inputs and authoritative state/backend. Do not start a second deployment or change ownership mode as part of this guide. |
+| [New gateway on an existing private platform](docs/scenarios/existing-network.md) | `existing` plus the approved private-access stage | Use approved subnet/zone IDs and the backend for the **new gateway workload**, not the network team's state. Follow the [runbook order](#runbook-order). |
+| [New private lab with sample-managed networking](docs/scenarios/private-lab.md) | `create` plus the approved private-access stage | Confirm a new workload backend and non-overlapping address range. The sample creates a network foundation, not a corporate landing zone. Follow the [runbook order](#runbook-order). |
+| [Deliberate new public lab](docs/scenarios/public-lab.md) | `create`, without a private-access profile | Obtain explicit public-access and cost approval. Ownership alone does not activate private networking. Follow the [runbook order](#runbook-order). |
+| [Update an existing gateway](docs/scenarios/update-existing.md) | Retain its approved ownership, access and exceptions | Keep complete inputs and authoritative state/backend. Use [Update an existing gateway](#update-an-existing-gateway), not new-deployment bootstrap. |
 
 An **existing network** is not the same as an **existing gateway deployment**.
 If you do not know which row applies, stop and ask the platform/deployment owner.
@@ -85,368 +96,11 @@ values and save the file. JSON does not accept comments or trailing commas.
 Use **Ctrl+S** after editing; a file named `terraform.tfvars.txt` is not
 `terraform.tfvars`.
 
-<details>
-<summary>Technical background and dated preview notes (reference, not execution steps)</summary>
-
-> [!NOTE]
-> **Legacy SKU and migration deadline:** This sample uses
-> `Microsoft.ApiManagement/service` with SKU `AIGateway`. Microsoft requires
-> migration **before January 15, 2027**. This SKU is retained here for the
-> private-endpoint scenario: as of October 25, 2026, the newer
-> `Microsoft.ApiManagement/aigateways` resource does **not** support private
-> endpoints. This is a time-limited preview reference, not a long-term deployment
-> target. Plan migration without assuming private-endpoint feature parity;
-> this sample does not perform that migration. See Microsoft's
-> [migration deadline and limitations](https://learn.microsoft.com/azure/api-management/ai-gateway-resource).
-
-## Terraform implementation
-
-> [!IMPORTANT]
-> **Terraform Registry disclaimer (checked October 25, 2026):** No dedicated
-> Microsoft-published Registry module was identified for this standalone
-> `AIGateway` preview. The [general API Management AVM](https://registry.terraform.io/modules/Azure/avm-res-apimanagement-service/azurerm)
-> and community gateway modules are not the same as a dedicated module for this
-> preview. This directory is a repository-specific root configuration, not an official
-> Registry module to install.
-
-A **module** packages reusable Terraform configuration; a **provider** implements
-communication with Azure. This configuration uses Microsoft's
-[AzAPI provider](https://learn.microsoft.com/azure/developer/terraform/overview-azapi-provider),
-declared as `Azure/azapi` in [versions.tf](versions.tf), rather than a custom
-provider or a gateway-specific module.
-
-[ai-gateway.tf](ai-gateway.tf) declares `azapi_resource` with
-`Microsoft.ApiManagement/service@2025-09-01-preview` and SKU `AIGateway`.
-It also explicitly defines the gateway's child resources and their API versions.
-AzAPI sends these definitions to Azure Resource Manager (ARM) and Terraform
-manages their state and dependencies. The documented
-[AzureRM API Management SKU list](https://registry.terraform.io/providers/hashicorp/azurerm/5.11.0/docs/resources/api_management)
-does not include `AIGateway`; that is distinct from saying Terraform cannot deploy it.
-
-Some preview child resources are not in AzAPI's bundled schema, so their local
-`schema_validation_enabled` check is selectively disabled in the source.
-This does **not** bypass Azure API validation, RBAC or Azure Policy. API contracts
-remain explicit sample-maintenance responsibilities; `terraform validate` and
-mock tests alone cannot prove that Azure will accept a deployment.
-
-</details>
-
-## Understand the files before deploying
-
-This is a **read-only walkthrough**, not a shorter deployment procedure. Its
-example is a **new gateway workload using an existing platform network and
-central DNS**. If the gateway already exists, retain its approved inputs,
-ownership mode and authoritative state; do not create a second deployment.
-
-### Where do I edit, and where does Terraform run?
-
-An **editor**, such as VS Code, is where you read and edit the files. A
-**terminal or CI runner** executes the Terraform CLI from `samples\terraform`
-in the approved checkout, or with its working directory explicitly pointing
-there. VS Code's integrated **PowerShell 7** terminal is one possible **local**
-command environment, not a requirement.
-
-Enterprise platform teams often use an approved CI runner with the workload's
-existing state/backend, complete inputs and credentials. Retain that authoritative
-process; do not start a second state in Cloud Shell or on another machine.
-Confirm [Inputs and state](#inputs-and-state) before any initialization or plan.
-
-| File type | Language and purpose |
-| --- | --- |
-| `.tf` | HCL (HashiCorp Configuration Language): Terraform resource and configuration definitions. |
-| `.tfvars` | HCL: environment input values, not a script to execute. |
-| `.tfvars.json` | JSON: environment input values, not a script to execute. |
-| `.ps1` | PowerShell: helper scripts, used only at their documented step. |
-
-### One configuration, not a sequence of scripts
-
-Terraform reads the `.tf` files in this directory **together**. `main.tf` is not
-a script to run first, and `private-network.tf` is not a script to run afterward.
-Resource references and dependencies determine ordering, not filenames.
-Files under `profiles` supply input values when selected; their presence in a
-subfolder does not make Terraform execute or automatically load them.
-
-| Term in the files | Meaning |
-| --- | --- |
-| `variable` / `var.` | An input's definition / its effective value, such as the chosen network mode. |
-| `locals` / `local.` | Calculated helper values, such as which subnet ID to use. A list or calculation does not itself create resources. |
-| `resource "azapi_resource"` | An Azure resource managed through Terraform's AzAPI provider. |
-| `data "azapi_resource"` | A lookup of an existing Azure resource, not an import into this workload's ownership. |
-| `count = 0` | No instance of that resource is managed by this configuration. |
-| `for_each = {}` | The collection is empty, so no resource instances are managed for that block. |
-
-On a **new** workload, these empty selections suppress creation. Changing an
-already-deployed selection to empty can propose removal of previously managed
-resources instead; it is not a safe ownership-migration mechanism.
-
-### Which files do I open or edit?
-
-For the first conversation, open the existing-network profile, network context
-and network resource file. Follow the input into the code rather than trying to
-read every file alphabetically.
-
-| File | Purpose | Normal environment-specific edit? |
-| --- | --- | --- |
-| [terraform.tfvars.example](terraform.tfvars.example) | Template for subscription, naming, regions, model choices and optional features. | Copy to `terraform.tfvars` for a **new** workload, then edit the copy. Retain an existing approved input file instead of overwriting it. |
-| [profiles/network-existing.tfvars.json](profiles/network-existing.tfvars.json) | Template selecting `existing` and supplying subnet/zone IDs. | Copy to `network-existing.environment.tfvars.json`, then replace every placeholder in the copy. Keep environment inputs protected and out of public Git. |
-| [profiles/private-connectivity.tfvars.json](profiles/private-connectivity.tfvars.json) / [profiles/private-only.tfvars.json](profiles/private-only.tfvars.json) | Intermediate and final private-access settings, independent of network ownership. | Select the correct shared file for the approved stage; do not customize the shared profile for one environment. |
-| [variables.tf](variables.tf) | Input types, defaults and validation rules. | Read to understand inputs; normally leave the definitions unchanged. |
-| [private-network-context.tf](private-network-context.tf) | Ownership switch, existing-resource lookups, checks and resolved subnet IDs. | Read; normally leave the implementation unchanged. |
-| [private-network.tf](private-network.tf) | Conditional network/DNS creation and workload private endpoints. | Read; do not delete blocks or comment out the file to reuse networking. |
-
-An existing Terraform/Terragrunt pipeline can pass approved platform module
-outputs through the [adapter](#optional-terragrunt-adapter) **instead of** copying
-the network template. Keep one authoritative input/deployment process.
-
-The other core files describe the workload: [main.tf](main.tf) handles naming,
-resource groups and shared monitoring; [ai-gateway.tf](ai-gateway.tf) describes
-the gateway and routing; [foundry-models.tf](foundry-models.tf) describes the
-model account/deployments; [foundry-agents.tf](foundry-agents.tf) describes the
-base agent account/project, storage and registry.
-**The optional private hosted-agent extension is additive:** disabling it does
-not remove those base agent/supporting resources, and Terraform does not start
-an agent application merely by creating its infrastructure. Approve the full
-sample's resource scope and costs, not just the gateway.
-
-### Replacement checklist for existing-network inputs
-
-These **color symbols plus text labels belong to this guide**, not to the input
-files. GitHub cannot persist arbitrary colored substring highlights in an actual
-JSON file; its syntax colors do not identify placeholders. **Do not insert emoji,
-Markdown, HTML or comments into JSON.**
-
-For the environment copy of [network-existing.tfvars.json](profiles/network-existing.tfvars.json):
-
-| Label | What it means here |
-| --- | --- |
-| 🟨 **REPLACE** | Replace each of the seven complete resource-ID values below, not just the zero UUID or the word `replace`. |
-| 🟩 **KEEP FOR THIS MODE** | Keep `"private_network_mode": "existing"` for this network/DNS reuse scenario, not for every deployment. It does **not** mean the gateway already exists. |
-| 🟦 **DECIDE WITH PLATFORM TEAM** | `private_dns_zone_group_management` is `"workload"` in the template, but is an ownership decision, not an always-keep value. Agree `"workload"` or `"platform"` for endpoint DNS associations; exactly one owner. |
-
-Central ownership of a DNS zone does **not** automatically mean platform
-ownership of its endpoint associations. See the
-[DNS ownership explanation](#who-manages-dns-and-how-do-the-input-files-get-selected).
-This file must be explicitly selected with the other inputs; by itself it
-neither enables private networking nor ensures Private-only access.
-
-**Seven-ID checklist:** all fields below are inside `existing_private_network`
-in `network-existing.environment.tfvars.json`. Each row is 🟨 **REPLACE**.
-
-| Field | Copy this complete approved resource ID |
-| --- | --- |
-| `gateway_subnet_id` | Dedicated gateway **outbound VNet integration** subnet ID. |
-| `endpoint_subnet_ids.gateway` | Gateway **ingress Private Endpoint** subnet ID. |
-| `endpoint_subnet_ids.models` | Model account's **Private Endpoint** subnet ID. |
-| `private_dns_zone_ids.gateway` | Full zone ID ending in `/privateDnsZones/privatelink.azure-api.net`. |
-| `private_dns_zone_ids.cognitiveservices` | Full zone ID ending in `/privateDnsZones/privatelink.cognitiveservices.azure.com`. |
-| `private_dns_zone_ids.openai` | Full zone ID ending in `/privateDnsZones/privatelink.openai.azure.com`. |
-| `private_dns_zone_ids.services` | Full zone ID ending in `/privateDnsZones/privatelink.services.ai.azure.com`. |
-
-Copy each approved ID **in full inside the existing quotes**, preserving JSON
-keys, nesting, commas and braces. Dotted paths above describe nesting; do not
-create dotted JSON keys. Resource-ID structure and the required DNS zone names
-are not arbitrary replacements. Obtain IDs from the
-[resource-ID guide](#find-resource-ids-and-fill-in-the-network-input-file);
-do not globally replace all subscription UUIDs, since central zones may use
-another subscription. Endpoint roles may share one approved subnet; gateway
-integration stays separate. Optional features need their additional inputs.
-
-In the base `terraform.tfvars` copy, 🟨 **REPLACE** the zero `subscription_id`
-and `platform@example.com`. For the workload name, regions and model settings,
-🟦 **DECIDE WITH PLATFORM TEAM**: `aigateway` is a valid naming default;
-`eastus2` and the model settings are examples requiring approval, not automatic
-recommendations. Use the existing
-[required-values table](#3-fill-in-the-required-values).
-
-### Optional: highlight input placeholders in VS Code
-
-The optional [terraform-inputs.code-workspace](terraform-inputs.code-workspace)
-provides editor markings with **Highlight 2.1.0**
-([Marketplace](https://marketplace.visualstudio.com/items?itemName=fabiospampinato.vscode-highlight),
-[source](https://github.com/fabiospampinato/vscode-highlight)).
-Use this third-party extension only if approved by your organization.
-The workspace **recommends but does not install** it.
-
-For a clean first-time setup, keep this order:
-
-1. In your approved **VS Code or VS Code Insiders**, open **File > Preferences >
-   Profiles**, then **New Profile**. Choose **Empty Profile**, create a separate
-   profile such as `Terraform Inputs`, and use it for the current window.
-2. **Before installing Highlight**, use **File > Open Workspace from File** to
-   load the checked-out `samples\terraform\terraform-inputs.code-workspace`.
-   Merely opening its JSON as text does **not** activate it. Confirm the new
-   profile is still active. The workspace opens `.` relative to itself
-   (`samples\terraform`); it already sets nonempty `highlight.regexes` and
-   `highlight.enabled` to `true` at **Workspace** scope.
-3. **Only now**, open **Extensions** (**Ctrl+Shift+X**), search
-   `@id:fabiospampinato.vscode-highlight`, right-click **Highlight**, choose
-   **Install Another Version**, and select **2.1.0** in this profile.
-   Do not choose **Apply Extension to all Profiles**. Open
-   `terraform.tfvars.example` or your selected input copy to see the markings.
-
-**Why this order:** in 2.1.0, first activation with empty `highlight.regexes`
-writes default TODO rules to global/user settings. Highlight's own
-**Enable/Disable/Toggle** commands write global settings too; do not use them.
-The new profile and preloaded rules avoid disturbing existing profiles.
-To turn markings off, open **Settings > Workspace** and set
-`highlight.enabled` to `false`, not a User/global setting.
-
-- **Appearance:** theme-native badge foreground/background, a warning border
-  and bold text—not necessarily the GitHub legend's yellow/green/blue.
-- **Marked fragments only:** the zero UUID, literal template example/replace
-  resource names, `platform@example.com` and documented angle-bracket IDs inside
-  quoted input values. Still replace the **complete approved resource ID**;
-  do not reconstruct it from highlighted pieces.
-- **Limits:** fixed DNS suffixes, keys, runtime `.tf` files and ordinary defaults
-  are not highlighted. **Unmarked does not mean valid, approved or complete.**
-  Matching is limited to input files under a `samples\terraform` path; a file
-  from another checkout opened manually in that window may also match. Custom
-  inputs elsewhere are not covered.
-
-This workspace contains no tasks, Terraform commands or Azure changes.
-Editor profiles do not replace the approved deployment process or select a
-Terraform state/backend; retain the existing authoritative state and pipeline.
-
-### Why four subnet roles but only two endpoint keys?
-
-The existing-network template actually has **three base subnet-ID fields**.
-Two of them are entries in the `endpoint_subnet_ids` map; the third sits outside
-that map. They address different jobs:
-
-| Create-mode subnet role | Field under `existing_private_network` | Job |
-| --- | --- | --- |
-| `gateway` | `gateway_subnet_id` | Dedicated outbound VNet integration: the gateway uses this subnet to reach private backends. |
-| `endpoints` | `endpoint_subnet_ids.gateway` | Placement of the gateway's private ingress endpoint. |
-| `endpoints` | `endpoint_subnet_ids.models` | Placement of the model account's private endpoint. |
-| `client` | `client_subnet_id` | Required in existing mode only when the optional sample test VM, `enable_private_test_client`, is enabled. |
-| `agents` | `agent_subnet_id` | Required for the optional private hosted-agent extension, which also needs additional endpoint/DNS inputs. |
-
-**The two endpoint fields may contain the same full, approved subnet ID.**
-Then the three base fields refer to two physical subnets: one for gateway
-integration and one shared by the gateway/model private endpoints. The
-integration subnet must remain separate from private endpoint subnets.
-Separate endpoint subnets are also possible if the platform approves their
-placement, routes and policies.
-
-`gateway` and `models` inside the endpoint map are **role keys**, not required
-Azure subnet names. The template's example VNet/subnet names are placeholders,
-not a required VNet count or topology. Four DNS zone entries likewise do not
-mean four subnets.
-
-There is also an asymmetry worth knowing: with private networking enabled,
-`create` always creates the three base subnet roles `gateway`, `endpoints` and
-`client`, even if the sample VM is disabled. It adds `agents` only for the
-private hosted-agent extension. In `existing`, an unused sample VM does not
-require a supplied client subnet. An existing private corporate client does
-not need to become a Terraform-managed sample VM.
-
-### Follow one input through the code
-
-Read these steps; do not execute or duplicate the source snippets.
-
-1. The selected environment copy of the existing-network profile supplies
-   `private_network_mode = "existing"` and `existing_private_network`.
-   [variables.tf](variables.tf) declares and validates those inputs.
-   The appropriate private-access profile separately enables private networking;
-   the ownership file alone does not enable it or select Private-only.
-2. [private-network-context.tf](private-network-context.tf) evaluates this
-   existing expression inside its `locals` block:
-
-   ```hcl
-   create_private_network = var.enable_private_networking && var.private_network_mode == "create"
-   ```
-
-   With private networking enabled and mode `existing`, the result is `false`.
-   Existing subnet/VNet metadata is read through data lookups, and helper values
-   select the supplied IDs.
-3. In [private-network.tf](private-network.tf), search for `private_vnet` and
-   `private_subnets`. The VNet's conditional count becomes `0`; the subnet
-   resource collection becomes `{}`. Creation of the sample NSGs, DNS zones
-   and VNet links is also guarded by `create_private_network`.
-4. Follow `existing_private_network.gateway_subnet_id` to
-   `local.private_gateway_subnet_id`, then to `subnetResourceId` in
-   [ai-gateway.tf](ai-gateway.tf). That is the existing subnet used for gateway
-   outbound integration.
-5. Back in [private-network.tf](private-network.tf), search for
-   `resource "azapi_resource" "private_endpoint"`. These workload endpoints
-   remain enabled and use the resolved `endpoint_subnet_ids` for their placement.
-   They are **new endpoints in approved existing subnets**.
-
-**Existing mode does not disable the whole network file.** It reuses the
-network/DNS foundation while still creating the workload's private endpoints.
-Missing required inputs fail; they do not trigger a fallback network creation.
-
-### Who manages DNS, and how do the input files get selected?
-
-In existing mode, central DNS zones, resolver, links, routing and firewall remain
-with the platform. **Zone ownership is separate from endpoint association
-ownership.** `private_dns_zone_group_management = "workload"` means Terraform
-manages the new endpoints' associations to existing zones, not new central zones.
-`"platform"` leaves those associations to platform policy/automation. Choose
-exactly one owner, confirm permissions and wait for actual DNS readiness.
-Do not select `"platform"` merely because the zones are centrally owned.
-
-For a new workload, real base values go in `terraform.tfvars` (or the approved
-alternative) and the network IDs go in the selected environment network file.
-Terraform automatically reads the standard `terraform.tfvars` and automatic
-var-files; arbitrary filenames and shared profiles require explicit selection.
-An alternative such as `workload.tfvars` is not automatically read just because
-it exists. The [input composition step](#compose-the-inputs) supplies the
-`-var-file` arguments in the approved order.
-
-Later input values override earlier ones **for the whole variable**;
-Terraform does not automatically deep-merge nested objects across var-files.
-Keep the complete `existing_private_network` object in its responsible input
-source instead of splitting partial versions across files. Keep the complete
-approved file selection on later monitoring, update and drift plans too.
-
-### Which commands and helper scripts matter?
-
-You do not run every script in the repository. For a code walkthrough, run none.
-The actual deployment commands and their safety gates remain in the
-[runbook](#runbook-order).
-
-| Terraform command | What it does |
-| --- | --- |
-| `init` | Initializes providers and the selected backend. Confirm state ownership first; do not create or migrate a backend casually. |
-| `plan` | Compares configuration, state and refreshed resource information. Proposes changes without applying them; it still needs the correct Azure context, inputs and permissions. |
-| `apply` | Executes approved changes and can create, modify or delete billable resources. Review the saved plan first. |
-
-State records Terraform's resource-to-Azure mapping; the backend stores that
-state. Reusing platform resource IDs does not require copying the platform state,
-importing its resources into this workload or creating a new competing owner.
-
-| Helper under `scripts` | When it is relevant / side effects |
-| --- | --- |
-| [Test-Offline.ps1](scripts/Test-Offline.ps1) | Sample maintenance checks without Azure deployment. Not a customer deployment entry point; provider downloads may still be needed. |
-| [Get-GatewayMonitoring.ps1](scripts/Get-GatewayMonitoring.ps1) | Reads actual monitoring linkage after resources exist. Does not create or repair the exporter/destination. |
-| [Test-ModelAliases.ps1](scripts/Test-ModelAliases.ps1) | Sends real model requests. Requires reachable endpoints and caller permissions; incurs inference charges. |
-| [Test-PrivateGateway.ps1](scripts/Test-PrivateGateway.ps1) | Private-path test through the optional sample VM using Run Command. Not a wrapper for an arbitrary existing corporate client. |
-| [Test-DeploymentAcceptance.ps1](scripts/Test-DeploymentAcceptance.ps1) | Structured acceptance. Diagnostic mode alone is not full runtime acceptance. `-RunPrivateProbe` starts the designated deallocated sample VM, sends billable probes and deallocates it afterward; follow its approved lifecycle requirements. |
-| [Test-CustomerAcceptance.ps1](scripts/Test-CustomerAcceptance.ps1) | Compatibility entry point for that same acceptance runner, not an additional workflow. |
-| [Complete-PortalAcceptance.ps1](scripts/Complete-PortalAcceptance.ps1) | Validates a passing backend report and operator-recorded portal evidence. Does not open or inspect the portal itself. |
-
-Without a sample VM, use the documented existing-private-client/manual acceptance
-path; do not add a VM just to obtain a passing automated report. Supporting
-helpers such as `private-path-probe.py` are called by their documented runner,
-not additional beginner setup steps. The repository's top-level `cli`, `commands`
-and `skills` belong to separate interfaces; their installers are not extra
-Terraform deployment steps.
-
-**Stop point for the walkthrough:** you can now identify the input files, trace
-an existing subnet ID and explain which resources remain workload-owned.
-Before a real plan, obtain the [platform handoff](#platform-handoff-before-a-plan)
-and follow the [runbook order](#runbook-order). For a new existing-mode workload,
-new workload resources and private endpoints are expected; changes to the
-central VNet/subnet/NSG/zone/link foundation are not. Review endpoint DNS
-associations according to the chosen owner and stop on unexpected removals or
-replacements.
-
-Do not demonstrate `apply`, `destroy`, imports or state moves during a code
-review. The final Private-only profile is not a private-from-first-create shortcut;
-keep the approved staged procedure and never reopen an already-private resource.
-
 ## Runbook order
+
+Use this order for a **new workload**. For a deployed gateway, use the
+[update entry](#update-an-existing-gateway) instead; do not repeat bootstrap or
+replace its complete inputs with a new base file.
 
 | Step | Action | Continue only when |
 | --- | --- | --- |
@@ -462,6 +116,40 @@ keep the approved staged procedure and never reopen an already-private resource.
 The [Terragrunt adapter](#optional-terragrunt-adapter) is an alternative way to
 connect the same inputs to an existing pipeline, not a second deployment to
 run beside direct Terraform.
+
+## Update an existing gateway
+
+Use the [existing-gateway scenario](docs/scenarios/update-existing.md), not the
+new-workload copy/bootstrap steps. A missing local state file does not make
+the gateway new.
+
+1. Confirm the current approved source revision, authoritative backend/state,
+   stable naming and all input-file locations with the deployment owner. Use
+   the existing initialization and identity process; do not create a second state.
+2. Restore the [complete input selection](#compose-the-inputs), including
+   optional/runtime inputs, ownership, current access and approved exceptions.
+   Later object values replace whole objects, not individual nested fields.
+3. Preserve disabled gateway/model public access and the existing endpoint
+   approval mode. The shared private profiles select manual approval; changing
+   that mode can replace a healthy endpoint. Retain any approved compatibility
+   override after the access profile. Do not use the new-deployment Models-Public
+   override for maintenance.
+4. Follow only the procedure for the approved change:
+
+   | Change | Canonical procedure |
+   | --- | --- |
+   | Maintain or complete an existing private deployment | [Existing private deployments](docs/private-connectivity.md#existing-private-deployments) |
+   | Repair/update monitoring | [Current-state selection and monitoring procedure](docs/monitoring.md#choose-the-current-access-state) |
+   | Add an approved Entra caller | [Access](#access), retaining existing keys and other bindings |
+   | Other approved change, including an existing public deployment | The workload's existing pipeline and [full plan review](#review-every-plan-before-apply), preserving its approved configuration; not the new public-lab bootstrap |
+
+5. Review a fresh plan, apply only approved changes and complete the selected
+   [acceptance path](#acceptance-and-maintenance). No changes means no apply.
+
+**Stop:** unexpected deletion/replacement, public reopening, missing inputs or
+unclear state ownership. Changes to network ownership, endpoint placement or DNS
+association ownership require a separate migration/handoff review, not a flag
+flip. Never bypass `prevent_destroy` or reset state to make an update proceed.
 
 ## Prerequisites
 
@@ -531,6 +219,12 @@ acceptance runner needs a Git checkout and a clean source commit, not a ZIP
 download. Environment-specific deployment input files remain ignored.
 
 ### 3. Confirm the platform prerequisites
+
+Approve the full core scope: gateway, model deployments, **base agent account
+and project, Storage, Premium registry and monitoring**, even without the
+optional hosted-agent extension. Private-only closes gateway/model public access;
+it does not make every supporting service private. Review the
+[resource scope and boundaries](docs/architecture.md#1-base-sample-architecture).
 
 Check model versions, capacity and optional hosted-agent availability in the
 approved regions, inherited Azure Policy, required tags and permissions to
@@ -764,12 +458,15 @@ resource-ID value** with its approved ID; use the
 [replacement checklist](#replacement-checklist-for-existing-network-inputs).
 Never overwrite an existing approved input file. The minimal example supplies
 gateway integration, separate per-service
-gateway/model endpoint subnets and the four core DNS zones. Optional storage
+gateway/model endpoint **fields** and the four core DNS zones. The three core
+subnet fields may use two physical subnets: the endpoint fields may share an
+approved subnet, separate from integration. Optional storage
 endpoints, private agents and the test VM remain disabled by default; enabling
 one also requires its additional network inputs. See
 [required inputs and permissions](docs/private-connectivity.md#existing-network-prerequisites).
 
-Both choices still create **new workload-owned private endpoints**. Existing mode
+With private networking enabled, both choices still create **new workload-owned
+private endpoints**. Existing mode
 reads the actual subnet/VNet location, IPv4 CIDRs, delegations and gateway NSG attachment through AzAPI; it
 does not edit central networks, subnet policies, NSGs, UDRs, firewall, resolver,
 DNS zones or links. Different services can use different approved endpoint
@@ -948,8 +645,11 @@ sharing or copying the platform's state into the gateway deployment.
 
 The order is **base inputs → additional input files → network ownership →
 private-access profile → explicitly approved endpoint compatibility override**.
-Keep the complete selection on every full, targeted and drift plan. Resolve the
-two selected files, without changing that selection:
+Keep the complete selection on every full, targeted and drift plan. Later
+assignments replace the **whole variable**, not just nested keys: keep one
+complete `existing_private_network` object, including any optional fields, in
+its approved input source. Do not split partial objects across overlays.
+Resolve the two selected files, without changing that selection:
 
 ```powershell
 if (-not $workloadVarFile -or -not $networkOwnershipFile) {
@@ -993,7 +693,7 @@ The actual plan commands appear in the monitoring and selected deployment steps.
 The private-only profile is the desired final posture, **not** a verified
 private-from-first-create shortcut. The explicitly approved intermediate stages
 below change only the private-access profile/temporary override, not the chosen ownership inputs.
-Never use an intermediate profile on an already-disabled gateway or model account.
+Never select a profile or override that reopens disabled gateway or model access.
 Do not add a later override that reopens public access.
 
 Do not switch an already-deployed `create` network to `existing` as a normal
@@ -1068,175 +768,37 @@ Owner for the test VM, create duplicate DNS zones or disable policy.
 
 ### Optional Terragrunt adapter
 
-**Who:** the Terraform/Terragrunt platform maintainer. If the operator does not maintain
-that pipeline, ask its maintainer to adapt this subsection. Do not build a
-second deployment system. If you do not use Terragrunt, keep the direct
-Terraform input-file workflow above.
-
-[terragrunt-existing.hcl.example](examples/terragrunt-existing.hcl.example) consumes
-separate network and DNS dependencies and uses this **same standalone Terraform
-root from a local checkout**, not unpublished remote feature code.
+The platform maintainer can use the
+[Terragrunt integration procedure](docs/reference.md#optional-terragrunt-adapter)
+instead of direct input files. It uses the same root and approved workload
+backend, not another deployment or a copy of platform state. The former
+subsection links below now point to that procedure.
 
 #### 1. Identify the existing live units and workload state
 
-The following is an **illustrative layout**. `platform-live` represents the
-existing deployment-configuration repository; `live` does not mean production-only.
-Retain existing folders, input-file names, include labels and backend/state
-configuration. No renaming or recreation is required.
-
-```text
-C:\work\gateway-source\ai-gateway_test\samples\terraform\  approved clean source
-C:\work\platform-live\
-  root.hcl                    existing include/auth/backend conventions
-  network\terragrunt.hcl       existing, applied network unit
-  dns\terragrunt.hcl           existing, applied central-DNS unit
-  ai-gateway\
-    terragrunt.hcl            adapted copy of the supplied adapter
-    workload.tfvars           approved non-network workload inputs
-```
-
-Confirm which existing `root.hcl` and backend/state key belong to this workload.
-For a new gateway, use its approved new workload unit; for an already managed
-gateway, do not introduce a second unit/state owner. The network and DNS units
-remain independent. The sample does **not** create `root.hcl`, choose a backend
-or migrate any state.
+See [live units and workload state](docs/reference.md#1-identify-the-existing-live-units-and-workload-state).
 
 #### 2. Confirm available outputs before editing the adapter
 
-Ask the platform maintainer to inspect only the relevant outputs through the
-existing platform pipeline. No full state export is needed. The dependency
-units must already be applied and readable by the approved runner.
-
-| Dependency | Expected outputs |
-| --- | --- |
-| `network` | `gateway_subnet_id` (string), `endpoint_subnet_ids` (map containing `gateway` and `models`) |
-| `dns` | `private_dns_zone_ids` (map containing `gateway`, `cognitiveservices`, `openai`, `services`) |
-
-Each value is a **full resource-ID string**, not a resource name or a whole
-subnet/zone object. If the platform uses other output names, change the adapter's
-right-hand-side expressions to the real outputs. For example, only if the
-existing module actually exposes that map/key:
-
-```hcl
-gateway_subnet_id = dependency.network.outputs.subnet_ids["gateway-integration"]
-```
-
-This is one field **inside** `inputs.existing_private_network`, not a new
-top-level Terraform variable. The four DNS keys still map to the exact zone
-names in the [ID lookup table](#find-resource-ids-and-fill-in-the-network-input-file).
-Missing output or `Unsupported attribute` means stop and correct the contract
-with its owner; do not fill deployment dependencies with fake `mock_outputs`.
+See [the dependency-output contract](docs/reference.md#2-confirm-available-outputs-before-editing-the-adapter).
 
 #### 3. Place and adapt the two workload files
 
-Copy the supplied adapter into the approved workload unit as `terragrunt.hcl`
-**only if that file does not already exist**. For an existing file, the
-maintainer integrates the blocks through the usual review process instead of
-overwriting its settings. Create/select that unit's protected `workload.tfvars`
-using the [base input catalogue](#inputs-and-state), without copying another
-deployment's state.
-
-| Adapter field | What to set for the illustrative layout |
-| --- | --- |
-| `include "platform"` | Retain the approved parent include and its label. `find_in_parent_folders("root.hcl")` is correct only when that is the existing platform convention. |
-| `locals.sample_root` | `"C:\\work\\gateway-source\\ai-gateway_test\\samples\\terraform"` for the approved clean source checkout. Record its exact commit and keep deployment tfvars/state out of it. |
-| `dependency "network".config_path` | `"${get_terragrunt_dir()}\\..\\network"` for the existing network unit. It is not a subnet ID. |
-| `dependency "dns".config_path` | `"${get_terragrunt_dir()}\\..\\dns"` for the existing DNS unit. It is not a zone ID. |
-| First `extra_arguments` var-file | The approved workload input file, shown here as `workload.tfvars`; retain an existing filename and any additional runtime input files before the access profile. |
-| `inputs.existing_private_network` | Map the verified platform outputs, preserving the required nested field names. |
-| `private_dns_zone_group_management` | `workload` only with the agreed permissions; `platform` only when central automation owns the associations. |
-
-HCL quoted Windows paths use `\\`. Save the edited file. Check **the live
-repository's** ignore rules for inputs, plans, cache and evidence: this sample's
-`.gitignore` does not protect a different live repository.
-
-Keep network-ownership fields out of `workload.tfvars` and inherited var-files:
-explicit Terraform var-files can override Terragrunt `inputs`. Do **not** also
-load the placeholder `network-existing.tfvars.json`. The adapter already obtains
-those IDs from dependencies. Inspect inherited extra arguments/environment and
-all runtime files with the pipeline owner rather than assuming this unit's
-visible block is the complete configuration.
+See [adapter placement and complete inputs](docs/reference.md#3-place-and-adapt-the-two-workload-files).
 
 #### 4. Use the existing pipeline, for this workload unit only
 
-The adapter selects **final private-only posture**, not a verified
-private-from-first-create bootstrap. Resolve the same monitoring, temporary-access
-approval and DNS readiness gates as the direct path before running a full plan.
-Do not silently remove the private profile to get a new deployment through.
-
-From the approved workload live-unit directory, the maintainer can use the
-installed Terragrunt version's normal plan job. The current CLI supports
-[`run --`](https://docs.terragrunt.com/reference/cli/commands/run/); the equivalent
-single-unit saved-plan example is:
-
-```powershell
-Set-Location 'C:\work\platform-live\ai-gateway' # Replace with the approved live unit.
-terragrunt --version
-$planPath = 'C:\protected-evidence\gateway\terragrunt-private.tfplan'
-terragrunt run -- plan -input=false "-out=$planPath"
-if ($LASTEXITCODE -ne 0) { throw 'Terragrunt workload plan failed.' }
-terragrunt run -- show $planPath
-if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the Terragrunt workload plan.' }
-```
-
-Use the approved, existing restricted artifact folder; do not invent a new
-backend or upgrade Terragrunt for this example. Terragrunt can initialize/read
-backends and execute inherited hooks even for a plan, so this is a
-**target-authorized pipeline operation**, not an offline syntax test.
-Do not run `--all`/`run-all` or apply the network/DNS units to install the gateway.
-
-Review the [same ownership/access checklist](#review-every-plan-before-apply).
-Then use the normal approval and saved-plan apply job for **this
-workload**, preserving its exact source, backend and artifact. The platform
-maintainer owns the installed version's cache/artifact and
-[extra-argument handling](https://docs.terragrunt.com/features/units/extra-arguments/);
-do not guess a `.terragrunt-cache` path or start plain Terraform in the live unit.
-
-The sample's PowerShell helpers run Terraform relative to their own source
-directory; they do not automatically locate a Terragrunt unit/cache or inherit
-its input arguments. The maintainer must integrate output/drift/test execution
-with the **same configured module and state** and record source provenance.
-Until that integration exists, use the manual acceptance steps through the
-approved pipeline, adapting the output commands there. Do not run a helper
-against the clean source checkout or copy state to make it work.
-
-**Expected handoff:** mapped real outputs, one approved workload owner/backend,
-a reviewed plan with no central-network changes, and a named pipeline/test
-operator. Pipeline integration and live connectivity remain work
-for that operator; this adapter is not a separate turnkey deployment system.
+See [single-unit execution and helper integration](docs/reference.md#4-use-the-existing-pipeline-for-this-workload-unit-only).
 
 ## Access
 
 Grant identity-based access with **Microsoft Entra ID**, or manage **API keys**.
 The [end-to-end private request sequence](docs/architecture.md#end-to-end-private-request-flow)
 shows client authentication, DNS and the gateway's separate backend identity.
-It explains runtime behavior, not deployment order.
-
-API-key behavior remains the default. To add Entra callers, extend the existing
-ignored input file; do not replace its other settings:
-
-```hcl
-gateway_access_principals = {
-  application = {
-    principal_id   = "<actual-managed-identity-or-service-principal-object-id>"
-    principal_type = "ServicePrincipal"
-  }
-}
-```
-
-Use Entra **object IDs**, not application/client IDs, from the gateway
-subscription's tenant. Types are `User`, `Group` or `ServicePrincipal` (default,
-including managed identities); each object ID may appear once. Terraform grants
-**AI Gateway Models User** (`a6b68e3d-a1f0-4c60-8678-237c050cf4ea`) at gateway scope:
-all models, not MCP tools, management operations or key retrieval. For one-model
-access, use a separately reviewed alias-scoped assignment instead of this map.
-The executor needs role-assignment permission at the gateway scope.
-
-This works as an **additive post-deployment change**: reuse the original state and
-complete inputs, retain the final Private-only profile last, and review a fresh
-saved plan before applying it. Keep map keys stable and entries on subsequent
-plans; removing an entry removes its managed role. Import equivalent pre-existing
-assignments at the intended address or keep them externally managed, not duplicated.
+For an additive Entra change, use the [Access reference](docs/reference.md#access)
+for the complete input example, object-ID/role-scope contract and client probes.
+Retain the existing state, full inputs, access posture and endpoint exceptions;
+extend the approved principal map without replacing unrelated settings.
 
 Use audience `https://azure-api.net/aigateway`; SDK clients calling as themselves
 request `https://azure-api.net/aigateway/.default`. Custom apps signing in users
@@ -1246,25 +808,9 @@ client credentials or built-in Azure CLI/PowerShell clients. Send
 `Authorization: Bearer <token>`, never an ARM or model-backend token. See the
 [portal security and identity guide](https://ai.gateway.azure.com/docs/security-identity).
 
-```powershell
-# Run these probes only after deployment, from a client with the selected route.
-.\scripts\Test-ModelAliases.ps1 -Authentication EntraId
-# Existing default:
-.\scripts\Test-ModelAliases.ps1 -Authentication ApiKey
-```
-
-The Entra probe uses the current Azure CLI identity, does not retrieve keys and
-does not fall back to them. It calls every compatible alias and incurs inference
-charges. The caller needs the selected network/DNS route and propagated RBAC.
-Verify both authorized and unauthorized identities and fresh telemetry; offline
-checks are not a live Entra proof.
-
-**Live-verified:** a managed-identity caller reached both sample aliases over the
-private endpoint: HTTP 403 before the Terraform-managed invocation grant, HTTP
-200 afterward, with matching gateway/backend traces. Missing, invalid and
-wrong-audience credentials returned 401; API-key calls remained successful.
-The temporary grant was removed and the final plan had no changes. This does
-not validate custom delegated-user clients or migrate the hosted agent.
+Run the reference's billable probes **after deployment** from the selected route,
+verifying authorized/unauthorized callers and fresh telemetry. Its dated
+managed-identity evidence is not custom delegated-user client verification.
 
 **Not Entra-only:** keys are neither disabled nor deleted. The existing agent and
 private VM retain their key-reader roles and API-key calls. The gateway's backend
@@ -1321,81 +867,33 @@ changes. Keep plan files/output protected; never publish them with the source.
 
 The gateway exporter needs real OpenTelemetry Protocol (OTLP) endpoints and a
 linked Data Collection Rule (DCR), discovered from Application Insights.
-First create that monitoring destination, then create a fresh full deployment plan.
-Do not supply guessed endpoints or copy generated IDs.
+Use [Gateway OpenTelemetry setup](docs/monitoring.md#choose-the-current-access-state)
+as the **only executable monitoring procedure**:
 
-**Choose the starting state first.** Copy the assignment from exactly one row
-into the same PowerShell session before running the commands below. If you use
-extra environment `-var-file` arguments, put them before the selected ownership
-file and listed profile/overrides.
+1. Retain the [complete inputs](#compose-the-inputs) and select the current access
+   state there. Never drop ownership/private inputs or reopen a closed endpoint.
+2. Complete [Stage A: prepare and verify the destination](docs/monitoring.md#stage-a-prepare-and-verify-the-destination),
+   including targeted-plan review and actual endpoint/DCR readiness. Do not
+   repeat its apply if it has already completed.
+3. For a new workload, return to [Public](#public) or [Private-only](#private-only)
+   and create a **fresh full plan**. That configures the exporter and its DCR
+   publisher role. For an approved existing-exporter repair, follow
+   [Stage B](docs/monitoring.md#stage-b-repair-an-existing-exporter) instead.
 
-| Starting state | Set the monitoring plan arguments |
-| --- | --- |
-| Intentionally Public (keep `create` ownership) | `$networkArgs = @()` |
-| Already Private-only | `$networkArgs = @('-var-file=profiles\private-only.tfvars.json')` |
-| Gateway still public, but models already private | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json')` |
-| New private environment or public-to-private transition, with temporary public access explicitly approved | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json', '-var=models_public_network_access=Enabled')` |
-
-For new private environments where even temporary public access is prohibited,
-**stop**: this guide does not provide a validated private-from-first-create procedure.
-
-```powershell
-if ($null -eq $networkArgs) { throw 'Choose the monitoring arguments for the current deployment state first.' }
-if (-not $networkOwnershipFile) { throw 'Choose the network-ownership file first.' }
-terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" @networkArgs @endpointCompatibilityArgs `
-    '-target=azapi_resource.insights["gateway"]' '-out=monitoring-destination.tfplan'
-if ($LASTEXITCODE -ne 0) { throw 'Monitoring destination plan failed.' }
-terraform show monitoring-destination.tfplan
-if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the saved monitoring plan.' }
-```
-
-Review the plan using the [checklist](#review-every-plan-before-apply).
-For a new workload the monitoring destination can include its resource-group
-and workspace prerequisites. For an existing destination, expect only the
-approved monitoring update, not a network or gateway replacement.
-
-**Only after approving that exact plan**, run the Azure-changing command:
-
-```powershell
-terraform apply monitoring-destination.tfplan
-if ($LASTEXITCODE -ne 0) { throw 'Monitoring destination apply failed; stop.' }
-```
-
-**Next, check readiness** rather than inventing the generated monitoring IDs:
-
-```powershell
-$metadata = terraform output -json gateway_monitoring
-if ($LASTEXITCODE -ne 0) { throw 'Cannot read monitoring metadata.' }
-$metadata = $metadata | ConvertFrom-Json
-.\scripts\Get-GatewayMonitoring.ps1 `
-    -SubscriptionId $subscriptionId `
-    -ApplicationInsightsId $metadata.insights_id `
-    -ExpectedLogAnalyticsId $metadata.log_analytics_id -WaitSeconds 120
-```
-
-**Expected:** returned verified destination metadata, including endpoints and a
-linked DCR, without a timeout/permission/provisioning error. If it is not ready,
-use the [failure table](#if-something-fails-or-you-open-a-new-terminal) before
-proceeding. Do not recreate the destination or paste an old DCR ID.
-
-Never drop the private profile or ownership inputs on an existing private
-environment. Review targeted plans too: they can include dependencies.
-The helper is read-only and checks destination
-readiness, DCR/DCE ownership and the linked Log Analytics/Azure Monitor workspaces.
-After it succeeds, create a **fresh full plan** for the selected path. Terraform
-then configures the exporter and the gateway's publisher role on the linked DCR.
-
-For a bounded existing-exporter repair, target `azapi_resource.telemetry_exporter`
-with the same inputs. If Azure rejects an in-place exporter-kind change, stop:
-replacement needs its own reviewed `-replace=azapi_resource.telemetry_exporter`
-plan and explicit deletion/recreation approval. It is not atomic and must not
-replace the gateway or delete monitoring data.
+**Expected:** verified destination endpoints/linkage, with no permission,
+provisioning or timeout error. Metadata readiness is not telemetry delivery
+proof; acceptance still needs fresh requests. Never guess IDs or broaden access.
+An immutable exporter-kind failure needs the
+[separately approved replacement procedure](docs/monitoring.md#existing-legacy-exporter-immutable-kind),
+not automatic deletion/recreation.
 
 ## Public
 
-Use only when public gateway/model endpoints are intentional. It is the Terraform
-default, **not** a required prerequisite for Private-only.
+Use for a **deliberate new public lab** only, with explicit approval for public
+gateway/model endpoints. It is the Terraform default, **not** a required
+prerequisite for Private-only. A deployed gateway uses the
+[update entry](#update-an-existing-gateway) and its full approved configuration;
+do not use new-lab defaults to repair or update it.
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
@@ -1436,50 +934,26 @@ The final [private-only profile](profiles/private-only.tfvars.json) disables
 **both gateway and model public access**. Private clients reach the gateway's
 private endpoint; separate gateway outbound VNet integration reaches the model
 private endpoint. Private DNS, endpoint approval and working routes are all required.
+This is not a claim that all supporting services are private.
 
-For an **already private** deployment, skip temporary-public staging. Keep
-`-var-file=profiles\private-only.tfvars.json` last on every full, monitoring and
-drift plan, after the complete workload and selected ownership inputs.
-Never apply the intermediate profile to an already-disabled gateway.
+**Already deployed?** Use [existing private deployments](docs/private-connectivity.md#existing-private-deployments),
+retaining complete inputs, state/backend, disabled access and the approved
+endpoint mode. Never repeat temporary-public staging on an already-private
+gateway or backend.
 
-For a **new environment or one transitioning from public**, use these provisioning
-stages only where temporary public access is explicitly permitted and the legacy
-resource contract is available. The retained
-`private-connectivity` file is an intermediate stage, **not a third deployment path**:
+**New private gateway:** follow the canonical
+[private-path runbook](docs/private-connectivity.md#step-1-choose-your-test-client).
+Its bounded sequence prepares private connectivity, proves the selected private
+route, closes model access, then closes gateway access and repeats acceptance.
+The initial Models-Public exception requires explicit approval and belongs only
+to that new-deployment path. The intermediate `private-connectivity` profile
+is not a third deployment path or final acceptance.
 
-| Stage | Plan arguments, after workload and ownership inputs | Required gate before continuing |
-| --- | --- | --- |
-| Prepare private networking | `-var-file=profiles\private-connectivity.tfvars.json -var=models_public_network_access=Enabled` | Review/apply; gateway/model remain public. Approve private endpoints, complete workload/platform DNS readiness and prove private DNS/inference. |
-| Close model public access | `-var-file=profiles\private-connectivity.tfvars.json` | Review/apply; model disabled. Repeat the private probe. |
-| Close gateway public access | `-var-file=profiles\private-only.tfvars.json` | Review/apply; both disabled. Recheck private inference and authenticated public-network rejection. |
-
-Do not reopen access to bypass a failure or Azure Policy. If temporary public access
-is prohibited, do not use this staged procedure unchanged: validate a supported
-private creation sequence first. First-create behavior is not proven by a
-successful update of an existing gateway.
-
-Wait for actual ARM provisioning completion and approved/succeeded private
-connections. On an asynchronous timeout, inspect actual state before making a new
-plan; an accepted update is not proof of completion. All callers, including agents
-and CI, need their own private connectivity before gateway public access is closed.
-
-The actual private execution steps are kept together in the
-[private-path runbook](docs/private-connectivity.md#step-1-choose-your-test-client):
-
-1. Select **existing private client** or **optional sample VM** in Step 1.
-   The VM needs a public SSH key and extra scoped permissions; it is not required
-   merely because the gateway is private.
-2. For approved new/temporary-public provisioning, perform Step 2 and review its
-   saved plan before applying. For an existing private deployment, use
-   [its entry](docs/private-connectivity.md#existing-private-deployments) instead;
-   never reopen a closed endpoint.
-3. Perform Step 3's endpoint/DNS readiness checks and the commands for the
-   selected client. Both client paths are explicit; do not call the VM wrapper
-   when no sample VM exists.
-4. Close model and gateway access through Step 4 only after the required private
-   checks pass. Repeat the selected client's check after each closure.
-5. Complete Step 5's final runtime and full drift checks. If using the VM,
-   perform Step 6's deallocation even after a failure.
+Choose an **existing private client** or **optional sample VM** before the full
+plan. All callers, including agents and CI, need their own route and DNS before
+gateway closure. Wait for actual provisioning, approval and DNS readiness;
+inspect asynchronous failures rather than reopening access. If temporary public
+access is prohibited, stop: this guide does not establish private-from-first-create.
 
 **Expected:** the selected clients can use the private route, both public-access
 settings are disabled, the full drift plan has no changes and authenticated
@@ -1491,61 +965,20 @@ or skip directly to [acceptance](#acceptance-and-maintenance).
 
 ## Optional private hosted agent
 
-For a new private agent, enable the networking configuration **before account
-creation**; it cannot simply be added to an existing agent account afterward:
+If selected, prepare the additive infrastructure through
+[Configure new agent accounts from the start](docs/private-hosted-agent.md#configure-new-agent-accounts-from-the-start)
+and [Prepare an additive plan](docs/private-hosted-agent.md#prepare-an-additive-plan).
+Network injection must be selected **before the new account is created**; it
+cannot simply be added to an existing account. The base agent account/project,
+Storage and Premium registry remain core resources when this extension is off.
 
-```hcl
-enable_private_networking   = true
-enable_private_hosted_agent = true
-# In create mode, location must equal gateway_location.
-# In existing mode, the supplied agent subnet's VNet must instead match location.
-```
-
-Keep the final private-only profile last, after workload and ownership inputs.
-In create mode, `location` must equal `gateway_location` because the sample uses
-one VNet. In existing mode, provide `agent_subnet_id` delegated to
-`Microsoft.App/environments` in the agent region, at least `/27` and wholly
-within this sample's supported RFC1918 IPv4 address space. This is a sample
-subset, not a universal platform restriction; see the
-[agent subnet requirements](docs/private-connectivity.md#existing-network-prerequisites).
-Also supply `agents` and `registry` endpoint subnet IDs and the `registry` DNS
-zone ID. The extension adds an account/project,
-uses a created or supplied outbound-injection subnet, creates inbound Foundry
-and registry private endpoints, and adds scoped project permissions.
-It reuses the gateway/model
-route and monitoring. Foundry public access is disabled; ACR public access is
-unchanged. DNS changes affect every client in the linked VNet.
-
-The Foundry private endpoint is **inbound**; agent network injection is **outbound**.
-The account has `prevent_destroy`; turning off the flag or changing injection
-requires an approved migration. Basic agent data is Azure-managed, not a
-separately provisioned private Storage/Cosmos DB/Search setup. This is not deny-all egress:
-Entra, ARM and telemetry connectivity still need validation; no NAT/firewall or
-fully private monitoring path is added.
-
-Terraform does **not** deploy an image or agent application:
-
-1. Read `terraform output -json private_hosted_agent` for the **new** project and
-   endpoints; compatibility outputs `project_id`/`project_endpoint` refer to the
-   original project. Verify account/capability-host provisioning and private DNS,
-   including registry login and regional data endpoints.
-2. Deploy the application from a private executor using the
-   [hosted-agent/private ACR guide](https://learn.microsoft.com/azure/foundry/agents/how-to/deploy-hosted-agent-private-azure-container-registry).
-   Do not reprovision Terraform-owned infrastructure through a second workflow.
-   For a prebuilt image, explicitly configure image passthrough by digest rather
-   than assuming a package argument suppresses builds. Scope any build/deploy
-   permissions to the required resources.
-3. Discover the actual deployed **runtime managed-identity object ID**. Verify
-   runtime AcrPull on the exact registry separately from Terraform's project
-   AcrPull. Record the owner of any role assigned outside Terraform.
-4. Set `private_hosted_agent_runtime_principal_id` to that verified ID and review
-   a new plan with complete inputs and the private-only profile last. This binds
-   narrow gateway key retrieval; the agent still calls the gateway with an API key.
-   Never persist that key in tfvars, state, logs or agent metadata. Verify both
-   runtime roles again if a new agent version changes identity.
-
-Remove only job-created temporary roles and deallocate the executor after use.
-Keep the runtime-principal input on subsequent plans, or its binding can be removed.
+After infrastructure and private connectivity are ready, the application owner
+follows the separate [deployment and acceptance gates](docs/private-hosted-agent.md#deployment-and-acceptance-gates):
+use the **new** `private_hosted_agent` project, deploy the image/application from
+an approved private executor, discover the real runtime identity, verify runtime
+AcrPull and bind narrow gateway key retrieval. Terraform does not deploy the
+application. Retain all runtime inputs and never store keys in state or files.
+Finish with [repeatable operation and cleanup](docs/private-hosted-agent.md#repeatable-operation-after-deployment).
 
 Changing `enable_private_test_client` changes the private agent's key-reader role.
 Terraform replaces that role assignment rather than updating its immutable role.
@@ -1571,32 +1004,20 @@ Choose **one** acceptance execution path:
 | Test client | Procedure | Important limit |
 | --- | --- | --- |
 | Approved existing private client, no sample VM | [Existing-client private checks](docs/private-connectivity.md#test-from-an-existing-private-client), then [manual acceptance](docs/acceptance.md), including the [six-check manual portal review](docs/acceptance.md#8-record-the-manual-portal-review). | The VM-based runner cannot certify this client. Keep operator-attested evidence and mark unperformed checks; do not fabricate a runner PASS. |
-| Optional sample VM | [Guarded end-to-end runner](docs/end-to-end.md), after smoke-test deallocation. | Requires the VM initially deallocated, explicit model/compute approval and a separate portal review. Public rejection and agent runtime are still separate. |
+| Optional sample VM | [Optional sample-VM acceptance runner](docs/end-to-end.md), after smoke-test deallocation. | Requires the VM ID even for diagnostics, full inputs, VM initially deallocated, explicit model/compute approval and a separate portal review. Public rejection and agent runtime are still separate. |
 | Intentionally public deployment | [Manual acceptance](docs/acceptance.md), including its [manual portal review](docs/acceptance.md#8-record-the-manual-portal-review), on that approved public route. | It is not private-route evidence. |
 
-For the optional guarded **sample-VM** report, use the already verified context
-and read the actual workload group rather than guessing its generated name:
+For the optional sample-VM report, use the runner's
+[complete parameter selection](docs/end-to-end.md#2-read-only-backend-checks),
+then its [explicit runtime step](docs/end-to-end.md#3-explicit-private-runtime-and-telemetry).
+It reads ARM, runs a full drift plan and writes local reports; the runtime flag
+also starts the VM, uses Run Command, makes billable calls and deallocates it.
+Keep every approved file in `-AdditionalVarFile`; the access profile is last.
+Use manual acceptance if a post-profile compatibility override is needed.
 
-```powershell
-if ($endpointCompatibilityArgs.Count -ne 0) {
-    throw 'Use manual acceptance to preserve the required post-profile override.'
-}
-$resourceGroup = terraform output -raw resource_group_name
-if ($LASTEXITCODE -ne 0) { throw 'Cannot read the workload group.' }
-.\scripts\Test-DeploymentAcceptance.ps1 `
-    -SubscriptionId $subscriptionId -TenantId $tenantId `
-    -ResourceGroup $resourceGroup `
-    -ReportDirectory 'C:\secure\acceptance' `
-    -AdditionalVarFile (@($workloadVarFile) + $additionalVarFiles + @($networkOwnershipFile)) `
-    -NetworkProfile private-only -RunPrivateProbe
-```
-
-Retain every extra input in `-AdditionalVarFile`, including the selected ownership
-file; the runner adds the private-access profile last. This does not test hosted-agent
-runtime or public network rejection. Its overall result remains blocked until a
-separate authenticated portal review is recorded using the generated checklist
-and `Complete-PortalAcceptance.ps1`; that validator checks evidence completeness,
-not the UI itself. Never treat blocked or unexecuted checks as passed.
+Both routes require the [shared portal checklist](docs/acceptance.md#ai-gateway-portal-checklist).
+The VM manifest validator checks evidence completeness, **not the browser**.
+Never treat blocked or unexecuted checks as passed.
 
 For platform-managed DNS, acceptance requires delivered private-endpoint zone
 groups with the exact supplied zone IDs; group names and Terraform ownership do
@@ -1627,9 +1048,10 @@ does not replace acceptance in that environment.
 | Final drift and open issues | Full plan uses every original input and exits `0`; otherwise the exact difference/failure remains open. `NOT RUN`, `BLOCKED` and `not verified` are not relabeled as passed. |
 | Cleanup and costs | Any deployed sample VM is confirmed **deallocated** (otherwise record `not deployed`), temporary job-created roles are removed, retained roles are preserved, and continuing service/storage costs have an owner. |
 
-Run `.\scripts\Test-Offline.ps1` only in a **separate clean checkout
-without deployment tfvars or state**, as described in the
-[offline CI step](docs/end-to-end.md#1-clean-checkout-and-offline-ci). Do not run
+Run maintenance tests only in a **separate clean checkout without deployment
+tfvars or state**, as described in [offline checks](docs/reference.md#offline-checks).
+The helper may download providers and writes local files; it does not touch Azure.
+Do not run
 generic fixtures against a configured workload directory. The operator can
 retain the approved revision's CI result instead of rerunning maintenance tests.
 Azure Policy can deny, modify or create related resources; inspect actual posture
@@ -1671,7 +1093,8 @@ does not undo Azure changes. To resume:
 2. Re-select the **same saved workload and ownership files**. Do not copy
    templates over them. Restore all additional runtime inputs too.
 3. Confirm the last completed stage from actual Azure state and the protected
-   run record. For monitoring, choose its table's **current-state** row again.
+   run record. For monitoring, choose the canonical procedure's
+   [current-state row](docs/monitoring.md#choose-the-current-access-state) again.
    Never assume a new terminal means a new deployment or reuse the initial
    public override after an endpoint was closed.
 4. Inspect any in-flight/failed operation and obtain the appropriate next-step
@@ -1679,3 +1102,51 @@ does not undo Azure changes. To resume:
 5. If the optional VM was started, its named owner checks power state and
    [deallocates it](docs/private-connectivity.md#step-6-stop-the-vm-when-you-are-done)
    even when the previous session crashed.
+
+## Understand the files before deploying
+
+The read-only walkthrough has moved to [Understand the sample](docs/understand-the-sample.md).
+These signposts preserve earlier links; they are not additional operator steps.
+
+### Where do I edit, and where does Terraform run?
+
+See [editors, runners and file languages](docs/understand-the-sample.md#where-do-i-edit-and-where-does-terraform-run).
+
+### One configuration, not a sequence of scripts
+
+See [one shared Terraform root](docs/understand-the-sample.md#one-configuration-not-a-sequence-of-scripts).
+
+### Which files do I open or edit?
+
+See [files to edit, select and leave unchanged](docs/understand-the-sample.md#which-files-do-i-open-or-edit).
+
+### Replacement checklist for existing-network inputs
+
+See the [seven-ID replacement checklist](docs/understand-the-sample.md#replacement-checklist-for-existing-network-inputs).
+
+### Optional: highlight input placeholders in VS Code
+
+See [optional scoped editor help](docs/understand-the-sample.md#optional-highlight-input-placeholders-in-vs-code).
+
+### Why four subnet roles but only two endpoint keys?
+
+See [three core subnet inputs and optional roles](docs/understand-the-sample.md#three-core-subnet-inputs).
+
+### Follow one input through the code
+
+See [the subnet-ID trace](docs/understand-the-sample.md#follow-one-input-through-the-code).
+
+### Who manages DNS, and how do the input files get selected?
+
+See [DNS ownership and input selection](docs/understand-the-sample.md#who-manages-dns-and-how-do-the-input-files-get-selected).
+
+### Which commands and helper scripts matter?
+
+See [helper purposes and side effects](docs/understand-the-sample.md#which-commands-and-helper-scripts-matter).
+
+## Terraform implementation
+
+The AzAPI/module distinction and preview contract notes are in
+[Terraform implementation](docs/reference.md#terraform-implementation);
+[resource lifecycle](docs/reference.md#resource-type-and-lifecycle) remains a
+deployment prerequisite, not an optional repair step.

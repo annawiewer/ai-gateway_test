@@ -1,8 +1,15 @@
 # Private-only path
 
-This is the private alternative to the [public endpoint path](../README.md#public-endpoint-path),
-not an extra step after its public plan/apply. It uses the gateway resource type
-declared by this sample; see [resource type and lifecycle](reference.md#resource-type-and-lifecycle).
+This is the **canonical private-connectivity procedure** selected from the
+[shared operator guide](../deployment.md#private-only), not an extra step after
+a public deployment. It uses the gateway resource type declared by this sample;
+see [resource type and lifecycle](reference.md#resource-type-and-lifecycle).
+
+**Already deployed?** Start at [existing private deployments](#existing-private-deployments)
+with the complete approved inputs and state/backend. Never repeat new-deployment
+temporary-public staging or reopen a disabled gateway/model backend.
+**New private gateway?** Complete [prerequisites](#prerequisites), then
+[choose the test client](#step-1-choose-your-test-client).
 
 **Goal:** prove this route works with gateway and model public access disabled:
 
@@ -17,72 +24,34 @@ Private client -> gateway private endpoint -> private model endpoint
 | `enable_private_networking` | `true` | `true` |
 | `gateway_private_endpoint_manual_approval` | `true` (Pending, then explicitly approve) | `true` |
 | `gateway_public_network_access` | `Enabled` | `Disabled` after private-route verification |
-| `models_public_network_access` | `Disabled` after step 4 | `Disabled` |
+| `models_public_network_access` | `Disabled`; Step 2 documents the approved new-deployment-only exception | `Disabled` |
 
 The profiles express desired configuration, not runtime proof. Public and
 Private-only are the two deployment paths; the intermediate profile is retained
-for staged provisioning and compatibility. Keep `private-only` last on every
-final-state plan, including drift/monitoring changes; it overrides earlier
+for staged provisioning and compatibility. Keep `private-only` as the final
+access var-file on every final-state plan, including drift/monitoring changes;
+retain approved endpoint compatibility exceptions after it. It overrides earlier
 var-files and `terraform.tfvars`. Also retain the selected
 [network-ownership profile](../deployment.md#network-foundation-create-or-existing)
 before it: create a sample foundation, or reuse approved network/DNS IDs.
 Neither ownership profile changes public access. Reusing the intermediate
 profile can plan to reopen a disabled gateway.
 
-The gateway endpoint uses a manual request followed by an explicit APIM
-connection approval. With workload-managed DNS, Terraform waits for approval
-before creating its DNS zone group. With platform-managed DNS, the central
-process owns that association; Terraform does not wait for it.
-Approval first verifies that the service-created connection belongs to
-the expected endpoint. An explicit PUT action preserves the required body `id`;
-the legacy API rejects ordinary update-resource requests that omit this field.
-Already-approved connections are read with GET instead: the legacy API also
-rejects redundant approval. After a newly Pending connection is approved, run
-a second plan/apply to record this read-only GET state before the final drift
-check. This does not recreate the endpoint or change its approval.
-This avoids an observed legacy auto-approval failure:
-`PrivateConnectionNotFound`, where Network expects a generated connection name
-but APIM stores the caller-supplied name. `Approved` alone is not sufficient:
-wait for the asynchronous operation, both provisioning states and private DNS,
-then prove inference from the VNet.
+The gateway endpoint requests manual approval. Workload-managed DNS waits for
+that approval; platform-managed associations require a separate readiness
+handoff. **Changing the approval flag can replace an existing gateway endpoint.**
+Preserve its approved mode and any
+[post-profile compatibility exception](../deployment.md#compose-the-inputs).
+The [legacy approval/cleanup reference](reference.md#legacy-gateway-private-endpoint-approval-and-cleanup)
+holds API details and historical repairs, not instructions to retry or recreate
+a failed endpoint automatically.
 
-**Existing deployments:** this profile now selects the separately named
-`-gateway-manual-pe`. Switching the flag replaces the gateway endpoint, not the
-gateway service or the model endpoint. Review the plan before migrating. To
-retain a healthy automatic endpoint, override
-`-var=gateway_private_endpoint_manual_approval=false` after the profile on every
-plan. Never import a new endpoint over the old state without first preserving
-state and accounting for the old cloud resource.
-
-**Cleanup caveat:** the legacy service can retain an APIM connection record
-after its failed Network endpoint and NIC have been deleted. In the observed
-repair, deleting that orphan or first rejecting it returned an asynchronous
-`UpdateApiServiceFailed`; the approved replacement kept working. Follow the
-operation's polling URL: an initial `202` is not successful cleanup. Verify the
-old endpoint/NIC are absent and the replacement still passes private inference.
-Record the residual APIM reference rather than repeatedly retrying or rebuilding
-the gateway. A zero-drift Terraform plan does not prove this unmanaged reference
-has disappeared.
-
-See the [AI Gateway private networking guide](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking)
-for the Pending/Approve sequence.
-
-> **October 27, 2026: original-SKU creation and staged Terraform closure passed**
-> in an isolated Sweden Central rehearsal with independently owned network/DNS.
-> Both private aliases, auth/public-network boundaries, telemetry, firewall
-> traffic and four no-change plans passed. This does not prove private-from-
-> first-create or verify your environment. The October 25 portal/private-
-> agent proof is separate; no hosted-agent application ran in the new rehearsal.
-> See [evidence and verification boundaries](reference.md#private-only-gateway-ingress-status).
->
-> Hosted-agent networking and proof of agent execution remain outside this profile.
-> A separate opt-in [private hosted-agent extension](private-hosted-agent.md)
-> configures the new agent account at creation. Its separately deployed
-> application passed a live test; the extension is not enabled by this profile.
-
-**Already have a working private deployment?** Go to
-[existing private deployments](#existing-private-deployments); do not repeat
-staging or re-enable gateway/model public access.
+Hosted-agent networking is a separate opt-in
+[extension](private-hosted-agent.md#configure-new-agent-accounts-from-the-start);
+the base agent account/project, Storage and Premium registry are still core
+resources. This profile does not make all supporting services private.
+The [dated verification record](reference.md#private-only-gateway-ingress-status)
+does not replace acceptance of the target environment.
 
 ## Prerequisites
 
@@ -93,7 +62,7 @@ Use PowerShell 7 in the approved `samples\terraform` directory. Retain the
 workload's state/backend; the central network keeps its own owner/state.
 Do not run the public-path plan/apply. Additional requirements:
 
-- Complete the [two-stage OTLP destination setup](monitoring.md) before planning
+- Complete the [OTLP current-state selection and destination setup](monitoring.md#choose-the-current-access-state) before planning
   the exporter. Keep the private profile on those plans too; readiness discovery
   must not re-enable a private gateway/model backend or rebuild the gateway.
 - `Microsoft.Network` registered
@@ -127,6 +96,8 @@ create both, or reuse both; no create-network/external-DNS hybrid.
 Set `private_network_mode = "existing"` with `enable_private_networking = true`.
 `existing_private_network` is required in this mode and must remain `null` in
 `create` mode. Missing required inputs fail; no fallback foundation is created.
+Keep the complete object in its approved input source; later var-files replace
+whole objects and do not deep-merge optional fields into an earlier object.
 The deployment reads subnets and their parent VNets through AzAPI for actual
 location, **IPv4** CIDRs, delegations and the gateway subnet's NSG attachment.
 It does not infer geography from an ARM ID or use the demo `/16` for existing subnets.
@@ -138,6 +109,10 @@ It does not infer geography from an ARM ID or use the demo `/16` for existing su
 | `private_dns_zone_ids` | Map of logical key to central zone ARM ID, as listed below; zones may be in another subscription. Required even when the platform owns DNS zone groups. |
 | `agent_subnet_id` | Required only when `enable_private_hosted_agent = true`: a separate integration subnet at least `/27`, wholly within RFC1918 IPv4, delegated to `Microsoft.App/environments`, with its VNet in the agent region (`location`). |
 | `client_subnet_id` | Required only when `enable_private_test_client = true`: an explicitly approved subnet in workload `subscription_id` for the optional probe VM/NIC. Their location follows the actual VNet. Existing private clients need no sample VM or client-subnet input. |
+
+The core contract is **three subnet fields and four zone IDs**.
+`endpoint_subnet_ids.gateway` and `.models` may contain the same approved subnet
+ID; `gateway_subnet_id` remains separate. Four zones do not imply four endpoints.
 
 RFC1918-only agent address space (`10.0.0.0/8`, `172.16.0.0/12`,
 `192.168.0.0/16`) is **this sample's supported subset**, not a universal Foundry
@@ -382,11 +357,12 @@ private_test_client_ssh_public_key = "ssh-ed25519 <your-public-key>"
 
 ## Step 2: Prepare private connectivity with models temporarily public
 
-Use this stage for either a **new gateway** using the original `service` /
-`AIGateway` contract, or an **existing gateway whose gateway and model public
-access are both still enabled**. The subscription/region must permit that
-contract, and temporary public access must be explicitly approved. This is
-an intermediate provisioning stage, not the final posture.
+Use this stage only for a **new gateway** using the original `service` /
+`AIGateway` contract. The subscription/region must permit that contract, and
+initial temporary public access must be explicitly approved. The Models-Public
+override below is bounded to that new deployment, not universal repair,
+maintenance or public-to-private update advice. This is an intermediate
+provisioning stage, not the final posture.
 
 Existing network/DNS infrastructure does **not** mean a gateway already exists:
 with `existing` ownership this stage can create a new workload using approved
@@ -394,10 +370,9 @@ platform subnets/zones. It must not create parallel network foundations.
 The October 27 rehearsal demonstrated this staged Terraform creation path in
 one environment, not universal creation/recreation availability.
 
-**Do not run this stage on an already-disabled gateway or backend.** If models
-are already private and the gateway is still public, verify the existing private
-route in Step 3, then continue with Step 4's gateway closure; do not reopen models.
-If both are private, use [the existing-private entry](#existing-private-deployments).
+**Do not run this new-deployment stage on an existing gateway.** Use
+[the existing-private entry](#existing-private-deployments) to preserve or complete
+its approved private posture. It never reopens a disabled gateway or backend.
 If policy prohibits even temporary public access, stop and validate a supported
 private-from-first-create sequence separately; this staged guide is not that proof.
 
@@ -470,6 +445,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot read the selected network metadata.' }
 **Expected:** all required endpoints and associations are ready. Manual DNS
 records without zone groups are outside the automated runner's certification
 contract. Optional Storage and agent/registry paths need their own checks too.
+
+After a newly Pending gateway connection is approved, the subsequent reviewed
+plan/apply must also record its read-only GET state before final drift
+verification. This does not recreate the endpoint or change approval; see the
+[approval-state reference](reference.md#legacy-gateway-private-endpoint-approval-and-cleanup).
 
 **Model prerequisite:** all aliases must support the probe's OpenAI Chat
 Completions request, including `max_tokens` and `temperature`. The sample's
@@ -803,12 +783,10 @@ terraform apply "private-only.tfplan"
 if ($LASTEXITCODE -ne 0) { throw 'Gateway-private apply failed; stop and inspect actual state.' }
 ```
 
-Terraform maps this setting to ARM `publicNetworkAccess`. Earlier
-Terraform/CLI attempts failed in the October 25 investigation, where a later
-portal operation succeeded. On October 27, staged **Terraform** creation and
-closure also succeeded in an isolated rehearsal with the corrected approval
-action. These are dated observations, not a portal-only requirement or a
-guarantee for another environment. Allow asynchronous completion, then verify ARM
+Terraform maps this setting to ARM `publicNetworkAccess`. The
+[dated Terraform/portal observations](reference.md#private-only-gateway-ingress-status)
+are not a portal-only requirement or a guarantee for another environment.
+Allow asynchronous completion, then verify ARM
 `Disabled` / `Succeeded` and the private connection `Approved` / `Succeeded`.
 Do not mistake an initial accepted response for completion, invent a fixed
 timeout, or automatically reopen public ingress after a failure. On timeout or
@@ -851,7 +829,7 @@ controls and emits per-call trace IDs. It does not itself verify all role
 bindings, connections or telemetry ingestion.
 Complete the [deployment acceptance guide](acceptance.md) for this private
 deployment; do not switch to the public-path plan/apply. A DNS/inference pass is
-only the private-route part of acceptance. The VM-based [end-to-end runner](end-to-end.md) adds
+only the private-route part of acceptance. The [optional sample-VM runner](end-to-end.md) adds
 VM lifecycle handling, backend checks, correlated telemetry and portal evidence.
 Pass `-NetworkProfile private-only` to that runner for a disabled gateway; it
 uses the same selected profile for both the live posture check and drift plan.
@@ -889,7 +867,11 @@ incur their continuing charges.
 ## Existing private deployments
 
 Preserve the authoritative state/backend and all approved environment and
-network-ownership inputs.
+network-ownership inputs, runtime files and endpoint-approval exceptions.
+Use [input composition](../deployment.md#compose-the-inputs); do not create
+fresh base files or replay Step 2's Models-Public override. The shared profiles
+select manual approval, which can replace a healthy automatic endpoint unless
+its approved exception is retained.
 Complete or preserve the Private-only end state:
 
 - Gateway already `Disabled`: set `$networkProfile = 'private-only'`, inspect
@@ -901,9 +883,16 @@ Complete or preserve the Private-only end state:
   `gateway-private-models-public` before model closure, not `private-only`.
   After the approved closure, repeat the export and client checks with fresh
   `private-only` metadata; the recovery-stage evidence is not final acceptance.
-- Gateway still `Enabled`: verify the existing private path, then follow the
-  required gateway-disable stage above. This intermediate state is not
-  Private-only acceptance.
+- Gateway still `Enabled`: verify the **existing** endpoint/DNS/private path.
+  If models are still public, complete [Step 4](#step-4-disable-model-public-access)
+  without the Models-Public override and repeat the private checks before
+  gateway closure. If models are already private, go directly to the
+  [required gateway-disable stage](#required-final-stage-disable-gateway-public-access).
+  This intermediate state is not Private-only acceptance.
+
+If the required private connectivity does not already exist, stop for a
+separately reviewed integration change. This maintenance entry is not permission
+to bootstrap or reopen an existing gateway with new-deployment defaults.
 
 For the already-disabled entry, a fresh full review plan is:
 

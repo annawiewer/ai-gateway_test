@@ -1,5 +1,11 @@
 # Gateway OpenTelemetry setup
 
+This is the **canonical monitoring procedure** for the
+[shared deployment guide](../deployment.md#monitoring-setup) and approved updates.
+Run it once for the selected task; do not repeat setup from another guide.
+New workloads prepare the destination here, then return to their full deployment
+path. Existing workloads retain their complete approved inputs and current access.
+
 The current AI Gateway portal requires **OpenTelemetry**, the existing Application
 Insights resource ID, and all three OTLP endpoints. A legacy connection-string
 exporter, or merely changing its casing, does not establish this configuration.
@@ -31,21 +37,56 @@ group or broaden scope to work around denial. Query operators separately need
 Log Analytics query access and AMW Prometheus query access. Publisher access is
 not reader access.
 
-## Two-stage bootstrap or legacy-exporter upgrade
+## Choose the current access state
 
 **Who/where:** the workload operator, in PowerShell 7 in the approved
 `samples\terraform` working directory. First complete the main guide's
-[input selection](../deployment.md#compose-the-inputs) and choose the
-[monitoring arguments for the current access state](../deployment.md#monitoring-setup).
-Keep those variables; this guide does not reset ownership to `create` or
-choose a new access profile.
+[input selection](../deployment.md#compose-the-inputs) and
+[platform handoff](../deployment.md#platform-handoff-before-a-plan).
+Keep those variables and the authoritative workload state/backend.
+
+Copy exactly one assignment into that same session. These arguments follow the
+complete base/additional inputs and selected ownership file; only the approved
+endpoint-compatibility arguments follow the access profile.
+
+| Current state or approved new-deployment stage | Set the monitoring plan arguments |
+| --- | --- |
+| Intentionally public, with approved `create` ownership | `$networkArgs = @()` |
+| Already Private-only | `$networkArgs = @('-var-file=profiles\private-only.tfvars.json')` |
+| Gateway still public, models already private | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json')` |
+| **New private gateway only**, with initial temporary public access explicitly approved | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json', '-var=models_public_network_access=Enabled')` |
+
+The final row is bounded to the [new-deployment staging procedure](private-connectivity.md#step-2-prepare-private-connectivity-with-models-temporarily-public).
+It is **not** repair/update advice for a deployed gateway, even if that gateway
+is currently public. Never use it after gateway or model access has been closed.
+If temporary public access is prohibited, stop: no private-from-first-create
+procedure is established here.
+
+If an existing deployment's posture is not represented above, retain its
+approved inputs and resolve the maintenance procedure with its owner; do not
+select a row that reopens access. The
+[existing-private entry](private-connectivity.md#existing-private-deployments)
+covers closure of remaining public access after private-route verification.
+The ownership profile alone does not enable private networking.
+
+## Two-stage bootstrap or legacy-exporter upgrade
+
+Complete [current-state selection](#choose-the-current-access-state) first.
+This procedure does not reset ownership to `create`, replace approved inputs
+or choose a different access profile.
 
 ```powershell
 foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputArgs',
                     'endpointCompatibilityArgs', 'networkArgs', 'subscriptionId')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
-        throw "Missing $name. Complete the main guide's input and monitoring selection first."
+        throw "Missing $name. Complete input selection and this guide's current-state selection first."
     }
+}
+if (-not $networkOwnershipFile) {
+    throw 'Select the approved network-ownership input file before planning.'
+}
+if ($null -eq $networkArgs) {
+    throw 'Select the current access-state arguments; use an empty array only for the approved public case.'
 }
 ```
 
@@ -56,8 +97,10 @@ must never be used after the backend has been closed. Do not use these targeted
 plans as final drift/acceptance evidence. No command below should be applied
 without reviewing its saved plan and service-side effects.
 
-**Stage A: enable only the destination.** If the main guide has already completed
-this step and verified readiness, do not repeat its apply.
+### Stage A: Prepare and verify the destination
+
+Enable only the destination. If this stage has already completed and readiness
+is verified for the current deployment, do not repeat its apply.
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
@@ -68,6 +111,13 @@ terraform show monitoring-destination.tfplan
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the destination plan.' }
 ```
 
+For an existing deployment this must be **one in-place gateway Insights update**,
+with the same resource ID and Log Analytics association. Stop on gateway, agent,
+network or other changes, especially replacement/deletion. A genuinely new,
+explicitly eligible legacy deployment also creates prerequisite group/Log
+Analytics resources; review those separately. Targeting cannot bypass SKU
+creation restrictions.
+
 Review the [plan checklist](../deployment.md#review-every-plan-before-apply).
 **Only after approval**, apply that saved file:
 
@@ -75,13 +125,6 @@ Review the [plan checklist](../deployment.md#review-every-plan-before-apply).
 terraform apply 'monitoring-destination.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Destination apply failed; do not continue.' }
 ```
-
-For an existing deployment this must be **one in-place gateway Insights update**,
-with the same resource ID and Log Analytics association. Stop on gateway, agent,
-network or other changes, especially replacement/deletion. A genuinely new,
-explicitly eligible legacy deployment also creates prerequisite group/Log
-Analytics resources; review those separately. Targeting cannot bypass SKU
-creation restrictions.
 
 **Discover and verify readiness without copying generated IDs:**
 
@@ -96,7 +139,8 @@ $destination = .\scripts\Get-GatewayMonitoring.ps1 `
 $destination | ConvertTo-Json -Depth 5
 ```
 
-This is read-only. It waits for enablement, endpoints and DCR linkage, then checks
+This is an ARM metadata read, **not runtime telemetry proof**. It waits for
+enablement, endpoints and DCR linkage, then checks
 provisioning, DCR/DCE endpoint ownership, AMW and the existing Log Analytics
 destination. It verifies that every linked external group is managed by this
 Insights component or AMW. Unknown topology, auth failure or timeout stops the
@@ -113,11 +157,13 @@ investigating rather than repeatedly mutating the exporter.
 | Situation | Next action |
 | --- | --- |
 | New workload | Return to the main guide's selected [Public](../deployment.md#public) or [Private-only](../deployment.md#private-only) full deployment path. Do not run a targeted exporter repair as a second bootstrap. |
-| Existing workload with a specifically approved exporter repair | Continue with Stage B below using the same inputs and current access state. |
+| Existing workload with a specifically approved exporter repair | Continue with [Stage B](#stage-b-repair-an-existing-exporter) using the same inputs and current access state. |
 | Destination not ready or permissions fail | Stop and involve the monitoring/platform owner. Generated IDs, state edits and public-access changes are not fixes. |
 
-**Stage B: refresh, plan and review the exporter/role.** For the bounded
-existing-workload repair only:
+### Stage B: Repair an existing exporter
+
+Refresh, plan and review the exporter/role for the bounded existing-workload
+repair only:
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
@@ -128,16 +174,17 @@ terraform show monitoring-exporter.tfplan
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the exporter plan.' }
 ```
 
-Only after the expected changes below have been reviewed and approved:
+Dependencies include the publisher role and existing gateway; targeting is not
+a guarantee of scope. For an existing legacy-exporter repair expect exactly one
+DCR role creation and one in-place exporter update. Stop for anything else.
+
+Only after those expected changes have been reviewed and approved:
 
 ```powershell
 terraform apply 'monitoring-exporter.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Exporter apply failed.' }
 ```
 
-Dependencies include the publisher role and existing gateway; targeting is not
-a guarantee of scope. For an existing legacy-exporter repair expect exactly one
-DCR role creation and one in-place exporter update. Stop for anything else.
 If the service rejects changing exporter kind in place, stop and obtain specific
 approval for deletion/recreation; this sample does not pre-delete or auto-retry.
 For a new eligible environment use the normal full networking-path plan after
@@ -177,7 +224,8 @@ recovery rather than silently retrying or rolling back.
 Terraform refresh reads the real endpoints/DCR from Insights; no portal setup,
 new provider or manual endpoint/ID input is required for supported metadata.
 Allow propagation, then run a fresh **full**, untargeted drift plan and the
-[acceptance gates](end-to-end.md). A targeted repair does not fix unrelated
+[acceptance gates](acceptance.md). Use the [optional sample-VM runner](end-to-end.md)
+only when that is the selected client. A targeted repair does not fix unrelated
 Private Link, HTTP 500, retained-group or drift failures.
 
 ## Delivery and portal evidence

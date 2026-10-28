@@ -6,10 +6,11 @@ Management. It gives developers one familiar way to call model APIs and MCP tool
 platform teams enforce security, policy, networking, and observability.
 
 > [!IMPORTANT]
-> **Deploy with Terraform: [start the step-by-step deployment guide (`deployment.md`)](samples/terraform/deployment.md#start-here).**
-> The [Terraform README](samples/terraform/README.md) explains the architecture and
-> available options. **`deployment.md` is the procedure to follow**, including
-> integration with an existing network and central DNS.
+> **Deploy or update infrastructure: [choose your Terraform scenario](samples/terraform/README.md#choose-your-scenario).**
+> Start with an existing private network, a new private lab, a deliberately public
+> lab, or an already deployed gateway. Each entry shows which files matter and
+> leads to the shared deployment procedure. The AI Gateway CLI extension and
+> coding-agent plugin are separate options, not earlier steps in that path.
 
 - **Govern model APIs** — Microsoft Foundry, OpenAI, Anthropic, Google Vertex, and more, while developers keep the SDKs they already use.
 - **Federate MCP tools** — combine MCP servers, OpenAPI APIs, and SaaS connectors behind one governed MCP endpoint.
@@ -20,6 +21,15 @@ platform teams enforce security, policy, networking, and observability.
 > AI Gateway is in **public preview**, available free of charge. See the **[documentation](https://aka.ms/aigateway/docs)** to get started.
 
 ---
+
+## Pick your task
+
+| Task | Start here |
+| --- | --- |
+| Deploy or update gateway infrastructure with Terraform | [Scenario chooser and relevant files](samples/terraform/README.md#choose-your-scenario) |
+| Understand the Terraform sample without running anything | [Beginner explanation](samples/terraform/docs/understand-the-sample.md) |
+| Manage gateways, models, tools and policies with the CLI | [Azure CLI](#azure-cli) |
+| Build an application that uses an existing gateway | [Coding-agent plugin](#coding-agent-plugin) |
 
 ## Azure CLI
 
@@ -112,9 +122,10 @@ To report a security issue, see [SECURITY.md](SECURITY.md).
 Looking for working examples? The [samples catalog](samples/README.md) curates end-to-end
 samples and infrastructure that build on the AI Gateway tier in Azure API Management.
 
-The [Terraform sample](samples/terraform/README.md) provides **Public** and
-**Private-only** configurations for AI Gateway and Foundry, with optional private
-hosted-agent infrastructure. Both paths support application access with
+The [Terraform sample](samples/terraform/README.md#choose-your-scenario) has four
+scenario entries over one shared implementation, with **Public** and
+**Private-only** configurations for AI Gateway and Foundry and an optional private
+hosted-agent extension. Both access paths support application access with
 **Microsoft Entra ID or API keys**. For network reuse, the
 [existing-network reference architecture](samples/terraform/README.md#existing-network-reference-architecture)
 links to the detailed network/DNS, ownership and request-flow views.

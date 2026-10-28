@@ -14,6 +14,7 @@ change the sample's resource type.
 
 For the execution order, use the [step-by-step deployment guide](../deployment.md#start-here).
 This guide explains connections, not instructions to recreate existing resources.
+For the no-terminal file walkthrough, see [Understand the sample](understand-the-sample.md).
 
 **Existing-network references:**
 [Overall architecture](../README.md#existing-network-reference-architecture) |
@@ -65,8 +66,10 @@ without running an agent.
 | **Azure Blob Storage** | Supplies a connected data store for agent features that need files or artifacts. The project receives Blob data access. | It is not where the model is hosted; a model-only gateway call does not require a Blob read. The published private profile does not add a Blob private endpoint. |
 | **Hosted agent application, later** | Runs agent application code in Foundry Agent Service and can use the same gateway API as other clients. | It is not deployed by this Terraform sample. Image, identity and network connectivity belong to a separate deployment; private-only ingress requires a supported private route and DNS from that runtime. |
 
-Storage and the registry are provisioned even when the first test is just a
-model call, because the sample prepares the agent environment as well. Do not
+The base agent account/project, Storage and Premium registry are **core sample
+resources**, provisioned even when the first test is just a model call and the
+private hosted-agent extension is disabled. The sample prepares the agent
+environment as well. Do not
 confuse that sample scope with a product requirement for every gateway client.
 
 ### Monitoring infrastructure
@@ -96,6 +99,11 @@ spoke. Approved existing endpoint subnets may differ by service. In both modes
 the workload creates the private endpoints, while their DNS zone groups have
 one explicitly chosen workload or platform owner.
 
+The shared root separates [foundation creation](../private-network.tf) from
+[workload endpoints and associations](../private-endpoints.tf), with resolved
+IDs in [network context](../private-network-context.tf). All files are loaded
+together; the split creates no modules, new states or ownership transfer.
+
 There are **two different private paths**:
 
 1. **Client to gateway:** a client with VNet connectivity resolves the gateway
@@ -120,7 +128,10 @@ The `private-only` profile disables gateway and model public access; the
 intermediate `private-connectivity` profile disables only model public access
 and is not an accepted final deployment.
 These base ingress profiles do not configure agent network injection or a
-private Blob endpoint. Base agent infrastructure alone is not a verified
+private Blob endpoint. The original agent account and registry remain publicly
+enabled; Storage public access also defaults to enabled unless an approved
+restriction is configured. **Private-only does not mean all supporting services
+are private.** Base agent infrastructure alone is not a verified
 private runtime path. For new private agent deployments, explicitly enable
 the configuration below from the start; unrelated existing agents need no
 migration for this reference scenario.

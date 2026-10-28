@@ -1,21 +1,30 @@
-# End-to-end verification and portal acceptance
+# Optional sample-VM acceptance runner
 
+<a id="end-to-end-verification-and-portal-acceptance"></a>
 <a id="customer-like-rehearsal-and-portal-acceptance"></a>
+
+This is the **optional sample-managed VM** runner, not a requirement for every
+private client. For an existing private client without that VM, use the
+[private-client handoff](private-connectivity.md#test-from-an-existing-private-client)
+and [manual acceptance](acceptance.md) instead.
 
 The offline suite, live backend verifier and authenticated portal review are
 separate gates. **None is a substitute for the other two.** The verifier never
 deploys, repairs, grants roles, switches SKUs or deletes Azure resources.
+It does read ARM, run a full Terraform drift plan and write local reports.
+The explicit runtime flag additionally starts the VM, uses Run Command, calls
+billable inference and deallocates the VM. The portal review remains manual.
 
 **Choose the right route before running anything:**
 
 | Your situation | Use |
 | --- | --- |
 | No sample test VM; an existing private client is available | The [private-client checks](private-connectivity.md#test-from-an-existing-private-client) and [manual acceptance](acceptance.md), including its [manual portal record](acceptance.md#8-record-the-manual-portal-review). This runner has no existing-client runtime mode. |
-| Sample VM is configured; you only want read-only diagnostics | Step 2. Expect incomplete acceptance, because no model calls/telemetry proof are performed. |
+| Sample VM is configured; you want Azure-read-only diagnostics and a full drift plan | Step 2 also writes local reports. Expect incomplete acceptance: no model calls/telemetry proof are performed. |
 | Sample VM is configured and initially deallocated; costs are approved | Step 2's complete parameter selection, then Step 3's explicit runtime command. |
 | Deployment needs a post-profile compatibility override | Manual acceptance, retaining that override. This runner supports extra var-files before the access profile, not extra `-var` arguments afterward. |
 
-Even the runner's read-only networking checks expect the sample VM's
+Even diagnostics require the sample's **VM ID** and
 `private_probe_configuration` output. Without that configured VM, those checks
 cannot pass; do not enable new infrastructure merely to obtain a green report.
 
@@ -45,18 +54,12 @@ identities, ingestion or the real portal. No hosted agent/image is deployed by
 this sample, so image pull, artifact access and agent execution need a separate
 approved test. Private routing alone is **not** private-only gateway ingress.
 The explicit `private-only` profile requests disabled gateway public access.
-The October 27 isolated Sweden Central rehearsal created the original AIGateway
-through Terraform, reused independent network/DNS states and closed public
-access in stages. Both aliases, auth/network controls, telemetry, firewall
-traffic and four no-change plans passed. This is not private-from-first-create
-or verification of your CI/backend/policy environment.
-The separate October 25
-[private-agent deployment](private-hosted-agent.md#observed-deployment-and-proof)
-proved agent OK, correlated gateway/backend HTTP 200 and authenticated public
-network rejection; no agent application ran in the October 27 rehearsal.
-See the [scoped evidence](reference.md#private-only-gateway-ingress-status).
+The [scoped verification record](reference.md#private-only-gateway-ingress-status)
+separates the October 27 original-SKU creation/private-closure rehearsal from
+the October 25 portal/private-agent proof. Neither verifies your environment
+or establishes private-from-first-create.
 
-For new **agent** deployments, enable the
+If the optional **private hosted-agent extension** is selected, enable its
 [private configuration from account creation](private-hosted-agent.md#configure-new-agent-accounts-from-the-start).
 Application deployment, runtime identity binding and
 [hosted-agent repeat checks](private-hosted-agent.md#repeat-the-evidence-not-the-original-provisioning)
@@ -82,21 +85,17 @@ destroy/replace action; retain gateway `prevent_destroy`. The acceptance runner 
 
 ## 1. Clean checkout and offline CI
 
-Use an approved immutable commit in a separate checkout. Record its SHA. Run with
-PowerShell 7, Terraform 1.11.4 and Python 3.12+ from `samples\terraform`:
-
-```powershell
-.\scripts\Test-Offline.ps1
-```
-
-This initializes with the committed provider lockfile in readonly mode, checks
-format/validation, runs mocked Terraform tests and the Python/PowerShell suites.
-Use a clean checkout without local tfvars/state for this step; initialization is
-not a migration of an existing backend. CI runs this same command on Windows,
-without Azure secrets, OIDC permissions or cloud deployment on pull requests.
-Provider installation needs internet access; "offline" means no Azure operations.
+Record the approved immutable source SHA and its CI result. If rerunning
+maintenance fixtures is required, follow [Offline checks](reference.md#offline-checks)
+in a separate clean checkout without deployment inputs/state, not the configured
+workload directory. The helper can download providers and writes local files;
+"offline" means no Azure operations, not network-free or read-only. An existing
+approved CI result can be retained rather than rerunning those fixtures.
 
 ## 2. Read-only backend checks
+
+**Read-only describes Azure effects, not local effects:** this step includes a
+full Terraform plan and local report writes, and still requires the sample VM.
 
 Reconnect the approved state/backend and supply its existing private inputs.
 Ensure the checkout is clean, Terraform is initialized and Azure CLI is signed
@@ -261,55 +260,14 @@ Never edit a backend status to make the report pass.
 
 ## 4. AI Gateway portal review
 
-**The six UI checks below apply to both acceptance routes.** For the sample-VM
-runner, require `backendStatus = PASS` for the current run. For manual acceptance,
-complete [Steps 1-7](acceptance.md), perform the same checklist below and follow
-[Step 8's manual evidence procedure](acceptance.md#8-record-the-manual-portal-review).
-Manual reviewers skip only the VM-specific manifest/validator subsection, not
-the portal checks or numeric metrics comparison. Do not create a VM report or
-enable a test VM merely to use this checklist.
+Require `backendStatus = PASS` for the current VM run, then perform all six
+checks in the canonical [AI Gateway portal checklist](acceptance.md#ai-gateway-portal-checklist).
+It includes route identification, bounded calls, numeric metrics comparison
+and redaction requirements. Return here only to validate the VM manifest.
 
-Open **https://ai.gateway.azure.com** in an authenticated browser with the intended
-corporate account, not a lab/admin account. Verify the actual tenant and selected
-subscription/resource against this run's report or manual acceptance record. Use a client with VNet connectivity
-when exercising the private route. A portal playground might call the enabled
-public gateway endpoint; record its actual route and do not label it private proof.
-
-The Networking page can display an approved/succeeded gateway-side connection
-while the corresponding `Microsoft.Network/privateEndpoints` resource is failed.
-Check both resource states and private DNS/routing; the portal row alone is not
-proof of a working private endpoint.
-
-Only begin final functional acceptance after the selected route's backend checks
-pass. Earlier browsing is a **diagnostic baseline**, not a full UI pass.
-Use actual current UI labels and controls; no unverified selectors
-or assumptions about preview navigation are baked into the scripts.
-
-| Check name | Required observation |
-| --- | --- |
-| `resource-context` | Correct tenant, subscription, shared group and gateway; no accidental resource/account switch after refresh |
-| `configuration` | Provider/backend and every alias agree with this run's report or manual record/configuration; inspect details without saving changes |
-| `playground` | One bounded benign call per alias, successful visible response, reported usage/errors sensible; record actual route and UTC times |
-| `metrics` | Requests and available token/error/latency views load, use the selected resource/time filter, and show fresh test traffic; compare one positive numeric count with its underlying query using identical filters/aggregation |
-| `error-states` | Clear empty state for a window with no traffic and understandable error for a safe unsupported alias/invalid key where the UI supports it; never delete resources or change policies to manufacture errors |
-| `browser-health` | Navigation, refresh, loading/error completion and charts function; record durations, browser version, relevant console failures and failing request status codes without headers/bodies |
-
-Record both usability observations and defects, not just a screenshot of a chart.
-For missing/unsupported controls use FAIL/BLOCKED, not a fabricated PASS. Do not
-mark requests/tokens as healthy while only displaying old or unrelated traffic.
-With shared background traffic, compare the same resource/window/status filters
-in the UI and backend query; do not assume the displayed total equals just the
-probe count. Metrics definitions/rounding must match before comparing values.
-
-For each checklist item fill `status`, `observed` and a relative `evidence` filename
-for a redacted screenshot or observation text stored beside the manifest. Fill
-`reviewer` and `reviewedUtc` only after the review. In `metrics`, record the
-underlying `source` query/metric definition, UTC window (at most 24 hours and
-covering the probe), numeric `portalValue` and `referenceValue`, and an
-`explanation` of identical filters/aggregation. Never capture keys, sign-in screens,
-authorization headers, connection strings or request prompts; do not save HAR
-files/raw network traces. The non-secret trace IDs in the backend report or
-manual request evidence connect the reference telemetry to this run.
+Without a sample VM, use [manual portal evidence](acceptance.md#record-the-manual-portal-evidence)
+after the manual backend checks instead. Do not create a VM report or enable
+infrastructure to use the shared checklist.
 
 ### Validate the sample-VM portal manifest
 
@@ -323,6 +281,15 @@ instead; do not manufacture either generated report.
 backend report, fill each item from actual observations, save the redacted
 evidence files beside it, and press **Ctrl+S**. Replace `<run-id>` below with
 that exact directory name. Do not reuse a manifest from an older deployment.
+
+For each checklist item fill `status`, `observed` and a relative `evidence`
+filename for a redacted screenshot or observation text beside the manifest.
+Fill `reviewer` and `reviewedUtc` only after the review. For `metrics`, record
+the underlying `source` query/metric definition, UTC window (at most 24 hours and
+covering the probe), numeric `portalValue` and `referenceValue`, and an
+`explanation` of identical filters/aggregation. Nonsecret trace IDs connect the
+reference telemetry to this run. Follow the shared checklist's redaction rules;
+the validator does not independently inspect the browser.
 
 ```powershell
 .\scripts\Complete-PortalAcceptance.ps1 `

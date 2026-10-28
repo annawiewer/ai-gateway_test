@@ -3,28 +3,57 @@
 Manage an Azure AI Gateway that routes calls to Foundry models. This is standalone
 Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway), not an `azd` app.
 
-## Start here: step-by-step deployment
+<a id="start-here-step-by-step-deployment"></a>
 
-**Want to understand the files before deploying?**
-[Start with the beginner code walkthrough](deployment.md#understand-the-files-before-deploying).
-It explains what to edit, how the files work together, why the existing-network
-profile differs from the created subnets, and which scripts are optional.
-No terminal, Azure login or deployment is needed for that walkthrough.
+## Choose your scenario
+
+**First decide whether the gateway itself is new or already deployed.**
+An existing network does not mean an existing gateway. Pick one entry; you do
+not need to work through the other scenarios.
+
+| Your starting situation | Entry page | Main inputs |
+| --- | --- | --- |
+| **New gateway; existing private network and central DNS** | [Reuse existing platform networking](docs/scenarios/existing-network.md) | New workload values, approved subnet/zone IDs and DNS-association owner |
+| **New gateway; create a private test network** | [New private lab](docs/scenarios/private-lab.md) | New workload values and approved, non-overlapping network ranges |
+| **New gateway; deliberately public test setup** | [New public lab](docs/scenarios/public-lab.md) | New workload values and approval for public access |
+| **Gateway already deployed; make an update** | [Update an existing gateway](docs/scenarios/update-existing.md) | Existing approved inputs, profiles and authoritative state |
+
+**Just learning?** [Understand the sample without deploying](docs/understand-the-sample.md)
+explains the files, their relationships and optional editor help. No terminal,
+Azure login or deployment is needed.
+
+Each scenario page identifies the relevant files and leads to the
+[shared deployment procedure](deployment.md#runbook-order). The scenario folders
+contain documentation, **not separate Terraform stacks**. This README is the
+overview and architecture reference; it does not contain an additional command
+sequence to run.
+
+## Which files matter?
+
+All commands still run from `samples/terraform`, not from a scenario or profile
+folder. Terraform loads **all root `.tf` files together**.
+
+| Files | What you do |
+| --- | --- |
+| [terraform.tfvars.example](terraform.tfvars.example) | For a **new** workload only, copy to a protected input file such as `terraform.tfvars` and fill in approved workload values. Keep existing approved inputs for updates. |
+| [profiles/network-existing.tfvars.json](profiles/network-existing.tfvars.json) | For a new existing-network deployment, make a protected environment copy and replace the complete placeholder object. |
+| [profiles/network-create.tfvars.json](profiles/network-create.tfvars.json) | Select for a new sample-managed lab; this ownership choice alone does not enable private networking. |
+| [profiles/private-connectivity.tfvars.json](profiles/private-connectivity.tfvars.json), [profiles/private-only.tfvars.json](profiles/private-only.tfvars.json) | Select only the access profile for the approved private deployment stage. Neither replaces workload or network inputs. |
+| Root `*.tf`, `variables.tf`, `outputs.tf`, `versions.tf` | Normally leave unchanged. These are the shared implementation, input contract, outputs and provider constraints, not files to select per scenario. |
+| `scripts/` | Run only the helper required by the selected procedure; some plan, contact Azure, manage the test VM or perform billable inference. |
+| `docs/` | Start with one scenario. Open the linked explanation, procedure or reference only as needed. |
+
+Profiles are not activated by their folder location. Later input assignments
+replace whole variable objects, not individual nested fields. Follow the
+[input selection and precedence rules](deployment.md#compose-the-inputs);
+keep environment values and state out of public Git.
 
 > [!IMPORTANT]
-> **[Open the step-by-step deployment guide (`deployment.md`)](deployment.md#start-here).**
->
-> Follow that guide to deploy this sample: prerequisites, path selection, required
-> inputs, files to edit, commands to run, expected results and stop conditions.
-> **This README is the overview and architecture reference, not the deployment procedure.**
-
-**Already have central network and DNS?** The same guide includes
-[existing-network integration at a glance](deployment.md#existing-network-integration-at-a-glance):
-the two environment-specific input files, the platform handoff and where to
-continue.
-An existing network does **not** mean the gateway has already been deployed.
-The guide separates network ownership from workload/state ownership;
-neither the `create` nor the `existing` choice changes the gateway SKU.
+> **This is not a gateway-only stack.** New deployments also include the base
+> agent account/project, Blob Storage and Premium Container Registry, even if
+> the optional private hosted-agent extension is off. **Private-only** describes
+> gateway/model access, not a guarantee that every supporting service is private.
+> Review [what gets deployed](#what-gets-deployed) and policy compatibility below.
 
 > [!NOTE]
 > **Legacy SKU and migration deadline:** This sample uses
@@ -95,7 +124,8 @@ state/migration plan is reviewed. Do not copy state or import the same resources
 into a second owner. Switching workload/platform DNS zone-group ownership also
 requires a separately reviewed state handoff, not a routine flag flip.
 The selected network mode does not change the `AIGateway` SKU.
-Recorded live evidence includes the isolated existing-network rehearsal below;
+Recorded live evidence includes isolated existing-network rehearsals in the
+[verification reference](docs/reference.md#private-only-gateway-ingress-status);
 repeat acceptance for the target network and central DNS topology.
 
 ### Existing-network reference architecture
@@ -141,23 +171,11 @@ The private setup guide uses temporary provisioning stages to establish and
 verify connectivity before disabling public access. These are **not a third
 deployment path** and do not satisfy Private-only acceptance.
 
-**Update, October 25, 2026:** disabling public ingress through the portal succeeded
-for the observed gateway after a long wait; ARM confirmed `Disabled` / `Succeeded`
-and an `Approved` / `Succeeded` private connection. The previous configuration
-blocker was resolved **for that gateway**, not a confirmed universal product fix.
-A subsequent private hosted-agent invocation
-returned **OK**, with gateway and model-backend **HTTP 200** in the same trace;
-an authenticated public gateway request returned an explicit network-denial
-**HTTP 403**. The final Terraform plan had no changes.
-See [evidence and verification boundaries](docs/reference.md#private-only-gateway-ingress-status).
-
-**Update, October 27, 2026:** a separate isolated Sweden Central rehearsal created
-the original `AIGateway` through Terraform using independently owned network/DNS,
-then disabled gateway and model public access through staged Terraform updates.
-Both private model aliases, authentication/network boundaries, telemetry,
-central firewall routing and four independent no-change plans passed.
-This does not prove private-from-first-create or verify another target environment.
-Hosted-agent execution was not tested in that rehearsal.
+**Verification scope:** isolated rehearsals demonstrated staged private-only
+operation, not private-from-first-create or suitability for every target
+environment. Historical outcomes and the separate hosted-agent verification
+boundaries are recorded in the
+[verification reference](docs/reference.md#private-only-gateway-ingress-status).
 
 **Already using the private profile?** Follow [existing private deployments](docs/private-connectivity.md#existing-private-deployments).
 Keep the **selected** profile on every plan, including drift and monitoring
@@ -182,11 +200,9 @@ private test VM keep their API-key flow; the gateway keeps its managed identity
 for backend model access. See [Access configuration](docs/reference.md#access)
 for identity types, token requirements and post-deployment changes.
 
-**Live-verified over the private route:** both sample models returned **200** with
-managed-identity Entra access, **403** without the invocation role, and **401**
-for missing/invalid credentials. API-key calls also passed; gateway/backend
-traces matched. The temporary grant was removed afterward. This verifies the
-managed-identity caller flow, not custom delegated-user applications.
+The [access reference](docs/reference.md#access) records the isolated
+managed-identity verification and its limits; it is not proof of custom
+delegated-user application behavior.
 
 <a id="before-you-start"></a>
 
@@ -269,8 +285,9 @@ The optional hosted agent is not a required hop for direct application model
 calls. Telemetry is separate from the synchronous response, and a configured
 connection is not proof of runtime traffic.
 
-Both paths manage all three core components. Hosted-agent infrastructure is
-included even if you only test model calls.
+All new scenarios retain the base agent account/project, Storage and Premium
+Registry even if you only test model calls. The private hosted-agent extension
+adds its network-configured account/project; it does not remove that base.
 
 ### Private agent reference for new deployments
 
@@ -369,10 +386,13 @@ and the separate acceptance requirements in view.
 
 ## Additional runtime checks
 
-For a reproducible private-path rehearsal, use the
-[end-to-end runbook](docs/end-to-end.md): credential-free CI, a guarded backend
-verifier and a separate authenticated portal review including fresh metrics.
-The portal evidence validator checks completeness; it does not automate the UI.
+For the optional sample-VM route, use the
+[sample-VM acceptance runner](docs/end-to-end.md): credential-free CI, a guarded
+backend verifier and a separate authenticated portal review including fresh
+metrics. This runner requires the sample VM; it is not the procedure for every
+private client. The portal evidence validator checks completeness, not the UI.
+An existing private client follows the
+[common acceptance guide](docs/acceptance.md) instead.
 
 Complete the [deployment acceptance guide](docs/acceptance.md) for either path.
 It includes commands, expected results, and failure boundaries for missing and
