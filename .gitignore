@@ -1,9 +1,0 @@
-# Optional tooling retained locally, outside the Terraform distribution.
-/.claude-plugin/
-/.cursor-plugin/
-/.github/plugin/
-/cli/
-/commands/
-/skills/
-/gemini-extension.json
-/samples/README.md
