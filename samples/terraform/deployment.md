@@ -11,11 +11,14 @@ step; they are not additional deployments to run afterward.
 **First understand the code:** use the
 [beginner walkthrough](#understand-the-files-before-deploying) before the
 execution steps. It is read-only and can be followed on GitHub without a terminal.
+Jump to the [replacement checklist](#replacement-checklist-for-existing-network-inputs)
+or the [editor, runner and languages](#where-do-i-edit-and-where-does-terraform-run).
 
 **Who:** the person operating the workload's approved deployment process, with
 the network/DNS owner available for the handoffs below.
-**Where:** PowerShell **7**, in the approved checkout's `samples\terraform`
-directory, unless a step explicitly says Azure Portal or an editor.
+**Where:** the commands shown use PowerShell **7**, with the approved checkout's
+`samples\terraform` as the working directory. Use the approved local terminal or
+pipeline; Azure Portal and editor steps are labeled separately.
 
 ### First decide what already exists
 
@@ -135,6 +138,26 @@ example is a **new gateway workload using an existing platform network and
 central DNS**. If the gateway already exists, retain its approved inputs,
 ownership mode and authoritative state; do not create a second deployment.
 
+### Where do I edit, and where does Terraform run?
+
+An **editor**, such as VS Code, is where you read and edit the files. A
+**terminal or CI runner** executes the Terraform CLI from `samples\terraform`
+in the approved checkout, or with its working directory explicitly pointing
+there. VS Code's integrated **PowerShell 7** terminal is one possible **local**
+command environment, not a requirement.
+
+Enterprise platform teams often use an approved CI runner with the workload's
+existing state/backend, complete inputs and credentials. Retain that authoritative
+process; do not start a second state in Cloud Shell or on another machine.
+Confirm [Inputs and state](#inputs-and-state) before any initialization or plan.
+
+| File type | Language and purpose |
+| --- | --- |
+| `.tf` | HCL (HashiCorp Configuration Language): Terraform resource and configuration definitions. |
+| `.tfvars` | HCL: environment input values, not a script to execute. |
+| `.tfvars.json` | JSON: environment input values, not a script to execute. |
+| `.ps1` | PowerShell: helper scripts, used only at their documented step. |
+
 ### One configuration, not a sequence of scripts
 
 Terraform reads the `.tf` files in this directory **together**. `main.tf` is not
@@ -184,6 +207,105 @@ base agent account/project, storage and registry.
 not remove those base agent/supporting resources, and Terraform does not start
 an agent application merely by creating its infrastructure. Approve the full
 sample's resource scope and costs, not just the gateway.
+
+### Replacement checklist for existing-network inputs
+
+These **color symbols plus text labels belong to this guide**, not to the input
+files. GitHub cannot persist arbitrary colored substring highlights in an actual
+JSON file; its syntax colors do not identify placeholders. **Do not insert emoji,
+Markdown, HTML or comments into JSON.**
+
+For the environment copy of [network-existing.tfvars.json](profiles/network-existing.tfvars.json):
+
+| Label | What it means here |
+| --- | --- |
+| 🟨 **REPLACE** | Replace each of the seven complete resource-ID values below, not just the zero UUID or the word `replace`. |
+| 🟩 **KEEP FOR THIS MODE** | Keep `"private_network_mode": "existing"` for this network/DNS reuse scenario, not for every deployment. It does **not** mean the gateway already exists. |
+| 🟦 **DECIDE WITH PLATFORM TEAM** | `private_dns_zone_group_management` is `"workload"` in the template, but is an ownership decision, not an always-keep value. Agree `"workload"` or `"platform"` for endpoint DNS associations; exactly one owner. |
+
+Central ownership of a DNS zone does **not** automatically mean platform
+ownership of its endpoint associations. See the
+[DNS ownership explanation](#who-manages-dns-and-how-do-the-input-files-get-selected).
+This file must be explicitly selected with the other inputs; by itself it
+neither enables private networking nor ensures Private-only access.
+
+**Seven-ID checklist:** all fields below are inside `existing_private_network`
+in `network-existing.environment.tfvars.json`. Each row is 🟨 **REPLACE**.
+
+| Field | Copy this complete approved resource ID |
+| --- | --- |
+| `gateway_subnet_id` | Dedicated gateway **outbound VNet integration** subnet ID. |
+| `endpoint_subnet_ids.gateway` | Gateway **ingress Private Endpoint** subnet ID. |
+| `endpoint_subnet_ids.models` | Model account's **Private Endpoint** subnet ID. |
+| `private_dns_zone_ids.gateway` | Full zone ID ending in `/privateDnsZones/privatelink.azure-api.net`. |
+| `private_dns_zone_ids.cognitiveservices` | Full zone ID ending in `/privateDnsZones/privatelink.cognitiveservices.azure.com`. |
+| `private_dns_zone_ids.openai` | Full zone ID ending in `/privateDnsZones/privatelink.openai.azure.com`. |
+| `private_dns_zone_ids.services` | Full zone ID ending in `/privateDnsZones/privatelink.services.ai.azure.com`. |
+
+Copy each approved ID **in full inside the existing quotes**, preserving JSON
+keys, nesting, commas and braces. Dotted paths above describe nesting; do not
+create dotted JSON keys. Resource-ID structure and the required DNS zone names
+are not arbitrary replacements. Obtain IDs from the
+[resource-ID guide](#find-resource-ids-and-fill-in-the-network-input-file);
+do not globally replace all subscription UUIDs, since central zones may use
+another subscription. Endpoint roles may share one approved subnet; gateway
+integration stays separate. Optional features need their additional inputs.
+
+In the base `terraform.tfvars` copy, 🟨 **REPLACE** the zero `subscription_id`
+and `platform@example.com`. For the workload name, regions and model settings,
+🟦 **DECIDE WITH PLATFORM TEAM**: `aigateway` is a valid naming default;
+`eastus2` and the model settings are examples requiring approval, not automatic
+recommendations. Use the existing
+[required-values table](#3-fill-in-the-required-values).
+
+### Optional: highlight input placeholders in VS Code
+
+The optional [terraform-inputs.code-workspace](terraform-inputs.code-workspace)
+provides editor markings with **Highlight 2.1.0**
+([Marketplace](https://marketplace.visualstudio.com/items?itemName=fabiospampinato.vscode-highlight),
+[source](https://github.com/fabiospampinato/vscode-highlight)).
+Use this third-party extension only if approved by your organization.
+The workspace **recommends but does not install** it.
+
+For a clean first-time setup, keep this order:
+
+1. In your approved **VS Code or VS Code Insiders**, open **File > Preferences >
+   Profiles**, then **New Profile**. Choose **Empty Profile**, create a separate
+   profile such as `Terraform Inputs`, and use it for the current window.
+2. **Before installing Highlight**, use **File > Open Workspace from File** to
+   load the checked-out `samples\terraform\terraform-inputs.code-workspace`.
+   Merely opening its JSON as text does **not** activate it. Confirm the new
+   profile is still active. The workspace opens `.` relative to itself
+   (`samples\terraform`); it already sets nonempty `highlight.regexes` and
+   `highlight.enabled` to `true` at **Workspace** scope.
+3. **Only now**, open **Extensions** (**Ctrl+Shift+X**), search
+   `@id:fabiospampinato.vscode-highlight`, right-click **Highlight**, choose
+   **Install Another Version**, and select **2.1.0** in this profile.
+   Do not choose **Apply Extension to all Profiles**. Open
+   `terraform.tfvars.example` or your selected input copy to see the markings.
+
+**Why this order:** in 2.1.0, first activation with empty `highlight.regexes`
+writes default TODO rules to global/user settings. Highlight's own
+**Enable/Disable/Toggle** commands write global settings too; do not use them.
+The new profile and preloaded rules avoid disturbing existing profiles.
+To turn markings off, open **Settings > Workspace** and set
+`highlight.enabled` to `false`, not a User/global setting.
+
+- **Appearance:** theme-native badge foreground/background, a warning border
+  and bold text—not necessarily the GitHub legend's yellow/green/blue.
+- **Marked fragments only:** the zero UUID, literal template example/replace
+  resource names, `platform@example.com` and documented angle-bracket IDs inside
+  quoted input values. Still replace the **complete approved resource ID**;
+  do not reconstruct it from highlighted pieces.
+- **Limits:** fixed DNS suffixes, keys, runtime `.tf` files and ordinary defaults
+  are not highlighted. **Unmarked does not mean valid, approved or complete.**
+  Matching is limited to input files under a `samples\terraform` path; a file
+  from another checkout opened manually in that window may also match. Custom
+  inputs elsewhere are not covered.
+
+This workspace contains no tasks, Terraform commands or Azure changes.
+Editor profiles do not replace the approved deployment process or select a
+Terraform state/backend; retain the existing authoritative state and pipeline.
 
 ### Why four subnet roles but only two endpoint keys?
 
@@ -637,9 +759,11 @@ resolver or landing zone.
 
 For **existing**, first make a new, untracked copy of
 [network-existing.tfvars.json](profiles/network-existing.tfvars.json) named
-`network-existing.environment.tfvars.json`. Replace **every** zero subscription UUID
-and example resource name with approved IDs; never overwrite an existing approved
-input file. The minimal example supplies gateway integration, separate per-service
+`network-existing.environment.tfvars.json`. Replace **every complete example
+resource-ID value** with its approved ID; use the
+[replacement checklist](#replacement-checklist-for-existing-network-inputs).
+Never overwrite an existing approved input file. The minimal example supplies
+gateway integration, separate per-service
 gateway/model endpoint subnets and the four core DNS zones. Optional storage
 endpoints, private agents and the test VM remain disabled by default; enabling
 one also requires its additional network inputs. See
