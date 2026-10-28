@@ -83,7 +83,7 @@ output "private_endpoint_ids" {
 }
 
 output "private_network_configuration" {
-  description = "Non-secret network ownership and actual subnet/DNS metadata. Existing foundations remain customer-owned; this output is not proof of resolver or firewall readiness."
+  description = "Non-secret network ownership and actual subnet/DNS metadata. Existing foundations remain platform-owned; this output is not proof of resolver or firewall readiness."
   value = var.enable_private_networking ? {
     mode                      = var.private_network_mode
     gateway_subnet_id         = local.private_gateway_subnet_id

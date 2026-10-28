@@ -52,7 +52,7 @@ Basic Foundry account/project using either a sample-created agent subnet
 (`create`) or an approved existing subnet (`existing`). It follows Microsoft's
 [Basic VNet sample](https://github.com/microsoft-foundry/foundry-samples/tree/main/infrastructure/infrastructure-setup-terraform/11-private-network-basic-vnet)
 and [networking options](https://learn.microsoft.com/azure/foundry/agents/concepts/networking-options).
-Basic uses **platform-managed, multitenant data resources**, not customer-owned
+Basic uses **Azure-managed, multitenant data resources**, not separately provisioned
 Cosmos DB, AI Search or Storage. Choose a different Standard setup if agent data
 must reside in data resources you own.
 
@@ -76,8 +76,8 @@ This extension reuses the gateway; it does not change its resource type or SKU.
 See the [resource contract](reference.md#resource-type-and-lifecycle) when
 preparing a new environment.
 
-Basic's platform-managed data does not become customer-owned or necessarily
-network-isolated by enabling VNet injection. Also verify the preview agent
+VNet injection does not move Basic's data into separately provisioned data
+resources or guarantee network isolation. Also verify the preview agent
 invocation endpoint separately: account public-access settings alone are not
 proof of private-only hosted-agent ingress.
 
@@ -147,13 +147,13 @@ Keep all input files, the selected ownership file and the final private
 profile. For an already-private gateway:
 
 ```powershell
-foreach ($name in @('customerVarFile', 'networkOwnershipFile', 'additionalInputArgs',
+foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputArgs',
                     'endpointCompatibilityArgs')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
         throw "Missing $name. Restore the main guide's complete input selection."
     }
 }
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-agent.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Private-agent plan failed.' }
@@ -267,7 +267,7 @@ for the new runtime binding. The expected added role is the narrow gateway
 key-reader binding, not broad access or replacements. Then, for subsequent drift:
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs -detailed-exitcode
 if ($LASTEXITCODE -eq 1) { throw 'Terraform plan failed; drift is unknown.' }
@@ -354,7 +354,7 @@ Plan for two additional Private Endpoints, private DNS queries,
 hosted sessions, image build/pull, model tokens, telemetry and temporary executor
 compute. Create mode also adds one ACR private DNS zone; existing mode reuses
 the central zone, whose existing/query charges do not disappear. There is no
-additional customer Cosmos DB, AI Search, registry or model
+additional workload Cosmos DB, AI Search, registry or model
 deployment. Existing resource costs remain. Obtain current regional pricing
 before approval; policy-deployed helpers and any required egress solution are
 additional, not included merely because the Terraform plan succeeds.

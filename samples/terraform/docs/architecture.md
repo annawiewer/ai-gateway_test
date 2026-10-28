@@ -15,6 +15,12 @@ do not imply that this sample has migrated to a new resource type.
 For the execution order, use the [step-by-step deployment guide](../deployment.md#start-here).
 These diagrams explain connections, not instructions to recreate every box.
 
+**Existing-network reference views:**
+[Overall architecture](../README.md#existing-network-reference-architecture) |
+[Network and DNS](../deployment.md#existing-network-connectivity-reference) |
+[Resource ownership](../deployment.md#platform-handoff-before-a-plan) |
+[Request sequence](#end-to-end-private-request-flow).
+
 ### A few terms before reading the diagrams
 
 | Term | Meaning in this sample |
@@ -48,13 +54,13 @@ without running an agent.
 
 | Component | Why it is here | What it does not do |
 | --- | --- | --- |
-| **AI Gateway** | Provides one model API endpoint. It validates a runtime API key or Entra token and invocation role, resolves aliases such as `gpt-mini`, enforces a token budget per caller identity and forwards the request. | It does not execute the model or your agent code. It is not Azure Application Gateway, and no Application Gateway is deployed here. |
+| **AI Gateway** | Provides one model API endpoint. It validates a runtime API key or Entra token and invocation role, resolves aliases such as `gpt-mini`, enforces a token budget per caller identity and forwards the request. | It does not execute the model or agent code. It is not Azure Application Gateway, and no Application Gateway is deployed here. |
 | **Foundry model account and deployments** | Hosts the actual model inference. Example aliases route to GPT-4.1 and GPT-4.1-mini deployments. The gateway authenticates with its own managed identity. | It does not receive the caller's gateway API key as a model credential. An alias is routing configuration, not another model instance. |
 | **Foundry hosted-agent account** | Provides the separate Foundry environment in which an application team can later deploy a hosted agent. | Creating the account does not create a running agent or enable private hosted-agent execution. |
 | **Foundry project** | Groups the future agent's connections and provides a project identity with scoped access to its dependencies. | Project permissions do not automatically grant the gateway, a VM or a later agent identity the same access. |
 | **Azure Container Registry, Premium** | Stores the container image that a later hosted-agent deployment can pull. Terraform creates the registry and its project connection. | It does not build an image or run containers. An empty registry is expected before application deployment. |
 | **Azure Blob Storage** | Supplies a connected data store for agent features that need files or artifacts. The project receives Blob data access. | It is not where the model is hosted; a model-only gateway call does not require a Blob read. The published private profile does not add a Blob private endpoint. |
-| **Hosted agent application, later** | Runs your agent code in Foundry Agent Service and can use the same gateway API as other clients. | It is not deployed by this Terraform sample. Image, identity and network connectivity belong to a separate deployment; private-only ingress requires a supported private route and DNS from that runtime. |
+| **Hosted agent application, later** | Runs agent application code in Foundry Agent Service and can use the same gateway API as other clients. | It is not deployed by this Terraform sample. Image, identity and network connectivity belong to a separate deployment; private-only ingress requires a supported private route and DNS from that runtime. |
 
 Storage and the registry are provisioned even when the first test is just a
 model call, because the sample prepares the agent environment as well. Do not
@@ -82,8 +88,8 @@ telemetry field is free of operational information.
 ![A private client reaches the gateway private endpoint; the gateway reaches the model through outbound VNet integration and the model private endpoint](images/architecture-network.svg)
 
 **Ownership overlay:** in `create` mode the sample manages the shown network/DNS
-foundation. In `existing` mode those boxes represent resources owned by your
-organization, which also retains its central resolver, routes, firewall and zone links.
+foundation. In `existing` mode those boxes represent platform-owned resources.
+The platform also retains its central resolver, routes, firewall and zone links.
 The drawing is not a requirement for one VNet or a direct DNS-zone link to every
 spoke. Approved existing endpoint subnets may differ by service. In both modes
 the workload creates the private endpoints, while their DNS zone groups have
@@ -92,7 +98,8 @@ one explicitly chosen workload or platform owner.
 There are **two different private paths**:
 
 1. **Client to gateway:** a client with VNet connectivity resolves the gateway
-   hostname to its private endpoint and sends the request with a gateway API key.
+   hostname to its private endpoint and authenticates with an Entra token or
+   a gateway API key. Entra callers also require the invocation role.
 2. **Gateway to model:** the gateway uses outbound VNet integration to reach the
    model's private endpoint, then authenticates with its managed identity.
 
@@ -119,6 +126,31 @@ migration for this reference scenario.
 See [private connectivity](private-connectivity.md) and
 [platform-team prerequisites](../README.md#platform-team-policy-compatibility).
 
+### End-to-end private request flow
+
+This logical successful-request sequence uses **existing central DNS** and the
+gateway/model **`private-only` target after approved staged setup**. It is a runtime
+reference, not a deployment sequence or evidence of acceptance in a particular environment.
+
+![Thirteen-step private request sequence separating client authentication, gateway and model DNS resolution, gateway policy processing, backend managed identity and the returned response](images/04-request-sequence.svg)
+
+[Open full-size SVG](images/04-request-sequence.svg) |
+[4K PNG](images/04-request-sequence.png) |
+[Editable Excalidraw source](images/04-request-sequence.excalidraw)
+
+With **API-key client authentication**, skip the initial client token exchange
+(steps 1 and 2). The gateway still uses its **separate managed identity** for the
+model call; the model validates that backend identity's authorization. Private
+endpoints and VNet integration are transport annotations, not application lifelines.
+
+DNS results and tokens may be cached, and acquisition order can vary. The drawing
+does not prescribe a managed-identity broker endpoint or imply that Entra,
+control-plane or telemetry connections are private. Error, policy-denial,
+throttling and retry branches are omitted. For the specialized agent key flow
+see [private-agent authentication](#4-current-private-agent-authentication);
+for token audiences and invocation roles see the
+[Entra sequence](#5-target-request-sequence-with-microsoft-entra-id).
+
 ## 3. Private agent reference
 
 ![Verified private-agent request path, with inbound Foundry Private Link, separate outbound agent injection, gateway and model connectivity](images/architecture-private-agent.svg)
@@ -129,7 +161,7 @@ dependencies. This is the configuration used by the
 a private client invoked a hosted agent, which called the private gateway and
 model backend. The response was **OK**, both gateway and backend spans had
 **HTTP 200** under one trace, and an authenticated public gateway call received
-a network-denial **HTTP 403**. Actual subnet ranges come from your selected VNet inputs.
+a network-denial **HTTP 403**. Actual subnet ranges come from the approved VNet inputs.
 
 | Surface | Configured when | Boundary |
 | --- | --- | --- |
@@ -142,8 +174,8 @@ a network-denial **HTTP 403**. Actual subnet ranges come from your selected VNet
 
 The PaaS services are **not resources physically placed in the endpoint
 subnet**. The diagram labels endpoint, client, gateway and delegated agent
-subnets separately. Basic agent data remains platform-managed and multitenant,
-not customer-owned Cosmos DB, Search or Storage. A private Blob endpoint is
+subnets separately. Basic agent data remains Azure-managed and multitenant,
+not in separately provisioned Cosmos DB, Search or Storage resources. A private Blob endpoint is
 not a dependency of the demonstrated agent model call.
 
 This is a reference for **new agent deployments**, not a requirement to migrate
@@ -175,8 +207,9 @@ preview invocation endpoint's ingress boundary for each new deployment.
 
 ## 5. Target request sequence with Microsoft Entra ID
 
-**Optional caller configuration, live-tested with managed identity.** The overview
-and network diagrams above retain the tested API-key reference. Terraform supports
+**Optional caller configuration, live-tested with managed identity.** The
+specialized private-agent diagrams retain the tested API-key reference; the
+general private request flow also supports Entra callers. Terraform supports
 additive Entra caller roles through `gateway_access_principals`; the client probe
 selects Entra with `-Authentication EntraId`. The following sequence shows that
 caller's token flow. A separate private-VM probe returned 403 without the invocation
@@ -277,15 +310,25 @@ alone is not complete acceptance.
 The SVGs use the official **Azure Public Service Icons V24**, downloaded from
 the [Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/icons/).
 This release adds the dedicated **AI Gateway** icon and updated **Foundry Models,
-Foundry Project and Foundry Agent Service** icons. The original selected artwork
-is retained in [images/azure-icons](images/azure-icons); it is not recolored,
-rotated or replaced with a similar-looking service.
+Foundry Project and Foundry Agent Service** icons. The earlier diagram renderer's
+selected artwork is retained in [images/azure-icons](images/azure-icons).
+The four numbered existing-network reference views embed their artwork in the
+SVG and Excalidraw files; the sequence also uses the official
+[Microsoft Entra architecture icons](https://learn.microsoft.com/en-us/entra/architecture/architecture-icons).
+Service artwork is not recolored, rotated or replaced with a similar-looking service.
 
 Architecture structure was also rendered through the local Azure Diagram Builder
-MCP. The README SVGs use a deterministic local layout so explanations are visible
+MCP. The architecture SVGs use a deterministic local layout so explanations are visible
 without hover, and node labels and connections remain reviewable.
 
-To regenerate from the `samples/terraform` directory:
+The four numbered reference views each include an **editable `.excalidraw`
+source**, an **SVG** and a **4K PNG**, linked beneath the corresponding figure.
+Open the source in [Microsoft Excalidraw](https://aka.ms/excalidraw) and refresh
+both image exports after edits. Keep the scope captions with reused images.
+The commands below regenerate the earlier, unnumbered diagrams, **not** these
+four reference views.
+
+To regenerate the earlier diagrams from the `samples/terraform` directory:
 
 ```powershell
 node .\scripts\Render-Architecture.mjs
@@ -293,8 +336,8 @@ mmdc -i .\docs\images\architecture-request-sequence.mmd -o .\docs\images\archite
 mmdc -i .\docs\images\architecture-private-agent-sequence.mmd -o .\docs\images\architecture-private-agent-sequence.svg -b "#f5f8fc"
 ```
 
-The first command renders the two base views and the private-agent reference
-using only Node.js and checked-in icons. The remaining commands use Mermaid CLI.
+The Node.js command renders the earlier architecture views using checked-in
+icons. The remaining commands use Mermaid CLI for the specialized authentication sequences.
 Editable [current](images/architecture-private-agent-sequence.mmd) and
 [target](images/architecture-request-sequence.mmd) sequence sources are kept next
 to their SVGs. Azure icons are used under the

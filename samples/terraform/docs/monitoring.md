@@ -41,7 +41,7 @@ Keep those variables; this guide does not reset ownership to `create` or
 choose a new access profile.
 
 ```powershell
-foreach ($name in @('customerVarFile', 'networkOwnershipFile', 'additionalInputArgs',
+foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputArgs',
                     'endpointCompatibilityArgs', 'networkArgs', 'subscriptionId')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
         throw "Missing $name. Complete the main guide's input and monitoring selection first."
@@ -60,7 +60,7 @@ without reviewing its saved plan and service-side effects.
 this step and verified readiness, do not repeat its apply.
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" @networkArgs @endpointCompatibilityArgs `
     '-target=azapi_resource.insights["gateway"]' '-out=monitoring-destination.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Destination plan failed.' }
@@ -120,7 +120,7 @@ investigating rather than repeatedly mutating the exporter.
 existing-workload repair only:
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" @networkArgs @endpointCompatibilityArgs `
     '-target=azapi_resource.telemetry_exporter' '-out=monitoring-exporter.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Exporter plan failed.' }
@@ -155,7 +155,7 @@ Prepare a **new**, explicitly reviewed replacement plan rather than retrying the
 failed plan, deleting resources manually, or restoring old state:
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" @networkArgs @endpointCompatibilityArgs `
     '-target=azapi_resource.telemetry_exporter' `
     '-replace=azapi_resource.telemetry_exporter' `

@@ -110,7 +110,7 @@ main guide's [Azure context](../deployment.md#inputs-and-state) and
 state between these directories.
 
 ```powershell
-foreach ($name in @('subscriptionId', 'tenantId', 'customerVarFile',
+foreach ($name in @('subscriptionId', 'tenantId', 'workloadVarFile',
                     'additionalVarFiles', 'networkOwnershipFile', 'endpointCompatibilityArgs')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
         throw "Missing $name. Restore the main guide's approved context and input files."
@@ -126,10 +126,10 @@ $parameters = @{
     TenantId = $tenantId
     ResourceGroup = $resourceGroup
     ReportDirectory = 'C:\protected-evidence\gateway'
-    AdditionalVarFile = @($customerVarFile) + $additionalVarFiles + @($networkOwnershipFile)
+    AdditionalVarFile = @($workloadVarFile) + $additionalVarFiles + @($networkOwnershipFile)
     NetworkProfile = 'private-only'
 }
-.\scripts\Test-CustomerAcceptance.ps1 @parameters
+.\scripts\Test-DeploymentAcceptance.ps1 @parameters
 ```
 
 Replace `ReportDirectory` with the approved restricted evidence folder before
@@ -195,7 +195,7 @@ On Windows, the runner quotes HTTP URL arguments for the `az.cmd` launcher so
 and non-Windows Azure CLI invocations retain their normal argument handling.
 
 ```powershell
-.\scripts\Test-CustomerAcceptance.ps1 @parameters -RunPrivateProbe -TelemetryWaitSeconds 300
+.\scripts\Test-DeploymentAcceptance.ps1 @parameters -RunPrivateProbe -TelemetryWaitSeconds 300
 ```
 
 This flag permits starting the **output-identified test VM**, running its probe
@@ -307,7 +307,7 @@ for a redacted screenshot or observation text stored beside the manifest. Fill
 underlying `source` query/metric definition, UTC window (at most 24 hours and
 covering the probe), numeric `portalValue` and `referenceValue`, and an
 `explanation` of identical filters/aggregation. Never capture keys, sign-in screens,
-authorization headers, connection strings or customer prompts; do not save HAR
+authorization headers, connection strings or request prompts; do not save HAR
 files/raw network traces. The non-secret trace IDs in the backend report or
 manual request evidence connect the reference telemetry to this run.
 

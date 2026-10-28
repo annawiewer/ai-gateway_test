@@ -22,7 +22,7 @@ not automatically select or verify the optional private agent. Use its
 for new private agent deployments.
 
 **Automated private-profile entrypoint:** follow the [end-to-end runbook](end-to-end.md)
-and `scripts\Test-CustomerAcceptance.ps1` for executable checks, sanitized reports,
+and `scripts\Test-DeploymentAcceptance.ps1` for executable checks, sanitized reports,
 same-private-route negative authentication, correlated telemetry and a separate
 portal/metrics review. The detailed blocks below cover the manual route, including an
 **existing private client without the sample VM**, and the public path.
@@ -55,7 +55,7 @@ Log Analytics workspace and linked AMW Prometheus endpoint. Running the private 
 
 ```powershell
 $ErrorActionPreference = 'Stop'
-foreach ($name in @('subscriptionId', 'tenantId', 'customerVarFile', 'networkOwnershipFile',
+foreach ($name in @('subscriptionId', 'tenantId', 'workloadVarFile', 'networkOwnershipFile',
                     'additionalInputArgs', 'endpointCompatibilityArgs')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
         throw "Missing $name. Restore the main guide's approved context and input selection."
@@ -215,7 +215,7 @@ do not label these checks as an agent-runtime pass.
 
 Check [probe compatibility](reference.md#probe-compatibility) first. Record the
 UTC start/end times and the per-alias results without keys or prompts containing
-customer data.
+sensitive data.
 
 Choose the client before making calls:
 
@@ -706,7 +706,7 @@ For a private deployment:
 Run this on **A**, not B. With plain Terraform:
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" "-var-file=$sampleDirectory\profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs -detailed-exitcode
 switch ($LASTEXITCODE) {

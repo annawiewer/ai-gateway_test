@@ -153,7 +153,7 @@ run "reuse_central_dns_and_distinct_service_subnets" {
       length(azapi_resource.private_dns_link) == 0 &&
       length(azapi_resource.private_test_vm) == 0
     )
-    error_message = "Reuse must not create or adopt customer network/DNS foundation resources or an unsolicited test VM."
+    error_message = "Reuse must not create or adopt platform network/DNS foundation resources or an unsolicited test VM."
   }
   assert {
     condition = (

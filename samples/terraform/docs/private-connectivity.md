@@ -104,7 +104,7 @@ The following checks their presence; it deliberately does **not** reset an
 existing-network selection to `create`:
 
 ```powershell
-foreach ($name in @('customerVarFile', 'networkOwnershipFile', 'additionalInputArgs',
+foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputArgs',
                     'endpointCompatibilityArgs', 'subscriptionId')) {
     if (-not (Get-Variable -Name $name -ErrorAction SilentlyContinue)) {
         throw "Missing $name. Restore the main guide's complete input selection."
@@ -167,7 +167,7 @@ exact gateway integration subnet.
    required DNS to the approved resolver, HTTPS to the model/backend endpoints,
    Azure Key Vault, Storage and the configured monitoring destinations must work.
    The sample's create-mode NSG includes outbound TCP 443 rules for
-   `AzureKeyVault` and `Storage`; reuse mode does not add these to a customer NSG.
+   `AzureKeyVault` and `Storage`; reuse mode does not add these to a platform-managed NSG.
    NSG presence alone does not prove that the private route or egress is usable.
 6. After the platform change finishes, repeat step 3 and rerun the full gateway
    plan. Keep the same approved subnet ID. There is **no extra NSG input** to
@@ -365,7 +365,7 @@ missing, ask IT to provide the approved OpenSSH tooling or public key; do not
 lower security settings. **Expected:** one line starting `ssh-ed25519`.
 Keep the private file protected, outside the repository.
 
-Open the **approved base input file** (`$customerVarFile`), add or update these
+Open the **approved base input file** (`$workloadVarFile`), add or update these
 HCL settings with the public line, and save. Do not paste HCL into PowerShell:
 
 ```hcl
@@ -374,7 +374,7 @@ private_test_client_ssh_public_key = "ssh-ed25519 <your-public-key>"
 ```
 
 - Use a **public** key only. Never paste a private key or password.
-- The VM is billable and has no public IP. In create mode the sample NSG denies inbound traffic; existing mode retains customer NSGs/UDRs. The probe uses Run Command, not SSH.
+- The VM is billable and has no public IP. In create mode the sample NSG denies inbound traffic; existing mode retains platform-managed NSGs/UDRs. The probe uses Run Command, not SSH.
 - Existing mode also requires `existing_private_network.client_subnet_id` and approved VM agent/ARM egress; Terraform does not open central firewall or subnet rules.
 - `Test-PrivateGateway.ps1` requires this applied VM. The existing-client route below does not call it.
 
@@ -403,7 +403,7 @@ private-from-first-create sequence separately; this staged guide is not that pro
 
 ```powershell
 $networkProfile = 'private-connectivity'
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs "-var=models_public_network_access=Enabled" `
     "-out=private-connectivity-stage1.tfplan"
@@ -754,7 +754,7 @@ models-public override. If the gateway is already disabled, do not use this
 intermediate profile; follow [existing private deployments](#existing-private-deployments).
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" '-var-file=profiles\private-connectivity.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-connectivity.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Model-private plan failed.' }
@@ -785,7 +785,7 @@ For an existing gateway that is still public, plan the explicit final profile:
 
 ```powershell
 $networkProfile = 'private-only'
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs '-out=private-only.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Final private plan failed.' }
@@ -828,7 +828,7 @@ the sample VM. Then check drift with the required final profile:
 
 ```powershell
 $networkProfile = 'private-only'
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs -detailed-exitcode
 switch ($LASTEXITCODE) {
@@ -908,7 +908,7 @@ Complete or preserve the Private-only end state:
 For the already-disabled entry, a fresh full review plan is:
 
 ```powershell
-terraform plan -input=false "-var-file=$customerVarFile" @additionalInputArgs `
+terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
     "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-maintenance.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Private maintenance plan failed.' }

@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
-$runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\Test-CustomerAcceptance.ps1'
+$runner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\Test-DeploymentAcceptance.ps1'
+$legacyRunner = Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts\Test-CustomerAcceptance.ps1'
 $ast = [Management.Automation.Language.Parser]::ParseFile($runner, [ref]$null, [ref]$null)
 $converter = $ast.Find({ param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'ConvertTo-AzureCliArguments'
@@ -484,8 +485,11 @@ $runtimeCases = @('create-network-metadata-pass', 'existing-workload-pass', 'exi
     'private-only-pass', 'storage-pass', 'storage-missing-proof', 'pass', 'manual-approved', 'omitted-api-format', 'lowercase-exporter-kind', 'arm-dcr-fallback', 'runtime-error',
     'missing-telemetry', 'missing-logs', 'missing-metrics', 'metrics-error', 'telemetry-schema', 'uncorrelated-telemetry',
     'wrong-metric-scope', 'stale-metrics', 'nonfinite-metrics', 'cleanup-error')
+$runs = @($cases.Keys) + @('compat-private-only-pass', 'compat-private-only-readonly', 'compat-wrong-tenant')
 try {
-    foreach ($case in $cases.Keys) {
+    foreach ($run in $runs) {
+        $case = $run -replace '^compat-', ''
+        $entryPoint = if ($run.StartsWith('compat-')) { $legacyRunner } else { $runner }
         New-Fixture
         $f = $global:acceptanceTest
         $f.scenario = $case
@@ -598,11 +602,11 @@ try {
             }
             'running-vm' { $f.power = 'running' }
         }
-        $destination = Join-Path $testDirectory $case
+        $destination = Join-Path $testDirectory $run
         $caught = $null
         $console = @()
         try {
-            $console = @(& $runner -SubscriptionId $subscription -TenantId $tenant -ResourceGroup test `
+            $console = @(& $entryPoint -SubscriptionId $subscription -TenantId $tenant -ResourceGroup test `
                 -ReportDirectory $destination -AdditionalVarFile $additionalFile @parameters `
                 -RunPrivateProbe:($case -notin @('readonly', 'private-only-readonly', 'existing-readonly')) -TelemetryWaitSeconds 0 6>&1)
         }
@@ -649,7 +653,7 @@ try {
         if ($f.scriptPath -and (Test-Path -LiteralPath $f.scriptPath)) { throw 'Probe transport file was not cleaned up.' }
         if ("$text`n$($console -join "`n")`n$caught" -match 'SECRET-DO-NOT-LOG') { throw "Secret leaked in $case." }
     }
-    "Customer acceptance checks passed ($($cases.Count) scenarios; no Azure or model calls)."
+    "Deployment acceptance checks passed ($($runs.Count) scenarios, including compatibility entry points; no Azure or model calls)."
 }
 finally {
     $env:TEMP = $previousTemp

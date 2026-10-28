@@ -1,23 +1,23 @@
-# Copy into your workload live unit as terragrunt.hcl, not into a second owner.
-# Adapt all paths and retain your approved include/backend/state process.
+# Copy into the workload live unit as terragrunt.hcl, not into a second owner.
+# Adapt all paths and retain approved include labels, filenames and backend/state.
 # Follow deployment.md#optional-terragrunt-adapter for placement and output mapping.
 # Network/DNS units must already expose real outputs; do not deploy using mocks.
-include "customer" {
+include "platform" {
   path = find_in_parent_folders("root.hcl")
 }
 
 locals {
   # A clean local checkout of this repository, without deployment tfvars/state.
-  sample_root = "C:\\replace-with-your-checkout\\ai-gateway_test\\samples\\terraform"
+  sample_root = "C:\\replace-with-source-checkout\\ai-gateway_test\\samples\\terraform"
 }
 
 terraform {
   source = local.sample_root
 
-  extra_arguments "customer_inputs_and_private_posture" {
+  extra_arguments "workload_inputs_and_private_posture" {
     commands = get_terraform_commands_that_need_vars()
     arguments = [
-      "-var-file=${get_terragrunt_dir()}\\customer.tfvars",
+      "-var-file=${get_terragrunt_dir()}\\workload.tfvars",
       "-var-file=${local.sample_root}\\profiles\\private-only.tfvars.json",
     ]
   }
@@ -26,13 +26,13 @@ terraform {
 # Expected outputs: gateway_subnet_id (string), endpoint_subnet_ids (map).
 # For this minimal example the map contains gateway and models.
 dependency "network" {
-  config_path = "${get_terragrunt_dir()}\\..\\replace-with-your-network-unit"
+  config_path = "${get_terragrunt_dir()}\\..\\replace-with-network-unit"
 }
 
 # Expected output: private_dns_zone_ids (map), with gateway,
 # cognitiveservices, openai and services keys; see docs/reference.md.
 dependency "dns" {
-  config_path = "${get_terragrunt_dir()}\\..\\replace-with-your-dns-unit"
+  config_path = "${get_terragrunt_dir()}\\..\\replace-with-dns-unit"
 }
 
 inputs = {
@@ -45,7 +45,7 @@ inputs = {
   }
 }
 
-# customer.tfvars supplies the ordinary workload inputs, NOT these ownership inputs.
+# workload.tfvars supplies the ordinary workload inputs, NOT these ownership inputs.
 # Inspect inherited var-files too: they can override Terragrunt inputs.
 # Keep extra runtime var-files before the private-only profile.
 # Optional agent, storage endpoint and test VM remain disabled by default.

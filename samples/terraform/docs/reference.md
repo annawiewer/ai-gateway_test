@@ -253,7 +253,7 @@ ownership modes, independent of Public/Private-only exposure:
 | Mode | Foundation ownership | Workload behavior |
 | --- | --- | --- |
 | `create` (default) | Sample-managed VNet, subnets, NSGs, private DNS zones and links | Keeps existing resource names, Terraform addresses and address defaults; creates private endpoints and zone groups. |
-| `existing` | Customer/platform-owned VNets, subnets, NSGs, UDRs, firewall, resolver, DNS zones and links | Reads subnet/VNet metadata, joins approved subnets, creates new private endpoints, and manages zone groups only when selected. |
+| `existing` | Platform-owned VNets, subnets, NSGs, UDRs, firewall, resolver, DNS zones and links | Reads subnet/VNet metadata, joins approved subnets, creates new private endpoints, and manages zone groups only when selected. |
 
 The create foundation is **not** a corporate hub/firewall/landing-zone deployment.
 Network and DNS remain logically separate, but the supported modes pair their

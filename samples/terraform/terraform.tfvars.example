@@ -25,8 +25,8 @@ publisher_email  = "platform@example.com"
 #
 # Independently choose ONE network ownership profile on every plan:
 # profiles/network-create.tfvars.json: sample-created gateway network/DNS (default).
-# profiles/network-existing.tfvars.json: copy to an ignored customer file and replace ALL IDs.
-# Load customer inputs, then network ownership, then the private-access profile last.
+# profiles/network-existing.tfvars.json: copy to an ignored environment file and replace ALL IDs.
+# Load workload inputs, then network ownership, then the private-access profile last.
 # Existing mode requires private networking; missing IDs never create a fallback network.
 # Keep ownership inputs in that selected file, rather than duplicating them here.
 # Defaults shown for reference:

@@ -92,7 +92,7 @@ variable "enable_private_networking" {
 }
 
 variable "private_network_mode" {
-  description = "create manages the sample network/DNS foundation; existing consumes customer-owned subnets and DNS zones. Changing an already deployed mode requires a reviewed migration."
+  description = "create manages the sample network/DNS foundation; existing consumes platform-owned subnets and DNS zones. Changing an already deployed mode requires a reviewed migration."
   type        = string
   default     = "create"
   nullable    = false
@@ -107,7 +107,7 @@ variable "private_network_mode" {
 }
 
 variable "existing_private_network" {
-  description = "Customer-owned subnet and central DNS zone IDs. Endpoint subnet keys are gateway/models and enabled storage/agents/registry extras. This input does not transfer resource ownership."
+  description = "Platform-owned subnet and central DNS zone IDs. Endpoint subnet keys are gateway/models and enabled storage/agents/registry extras. This input does not transfer resource ownership."
   type = object({
     gateway_subnet_id    = string
     endpoint_subnet_ids  = map(string)
@@ -188,7 +188,7 @@ variable "existing_private_network" {
 }
 
 variable "private_dns_zone_group_management" {
-  description = "workload creates private endpoint DNS zone groups; platform leaves them to customer policy/automation. Platform-managed DNS must be ready before private calls or agent use."
+  description = "workload creates private endpoint DNS zone groups; platform leaves them to platform policy/automation. Platform-managed DNS must be ready before private calls or agent use."
   type        = string
   default     = "workload"
   nullable    = false
@@ -291,7 +291,7 @@ variable "gateway_private_endpoint_manual_approval" {
 }
 
 variable "enable_private_test_client" {
-  description = "Create a billable private Ubuntu test VM with no public IP and narrowly scoped API-key retrieval access. Existing mode uses the supplied client subnet and customer-owned NSG/egress policy."
+  description = "Create a billable private Ubuntu test VM with no public IP and narrowly scoped API-key retrieval access. Existing mode uses the supplied client subnet and platform-owned NSG/egress policy."
   type        = bool
   default     = false
   validation {

@@ -46,18 +46,20 @@ neither the `create` nor the `existing` choice changes the gateway SKU.
 > [limitations](docs/reference.md#limitations) before applying.
 
 This sample uses `Microsoft.ApiManagement/service` with SKU `AIGateway`.
-Check resource-type availability for your subscription and region before deployment.
+Check resource-type availability for the target subscription and region before deployment.
 See [resource type and lifecycle](docs/reference.md#resource-type-and-lifecycle)
 for the exact ARM contract and Microsoft's migration guidance.
 
-## Choose your network foundation
+<a id="choose-your-network-foundation"></a>
+
+## Choose a network foundation
 
 For private connectivity, choose **one** ownership option:
 
-| Your starting point | Network mode | What this sample does |
+| Starting point | Network mode | What this sample does |
 | --- | --- | --- |
 | **No gateway network or private DNS yet** | [`create`](profiles/network-create.tfvars.json) (default) | Creates the sample's gateway VNet, subnets, NSGs, private DNS zones and links. This is a gateway foundation, **not** a corporate hub, firewall or landing zone. |
-| **Bring centrally managed network and DNS** | [`existing`](profiles/network-existing.tfvars.json) | Reads your approved subnet/zone IDs and creates new workload private endpoints. Your platform retains ownership of networks, routing, firewall, resolver, DNS zones and links. |
+| **Centrally managed network and DNS already exist** | [`existing`](profiles/network-existing.tfvars.json) | Reads approved subnet/zone IDs and creates new workload private endpoints. The platform retains ownership of networks, routing, firewall, resolver, DNS zones and links. |
 
 These are **ownership choices, not public/private access profiles**. Public
 remains the default; `existing` requires `enable_private_networking = true`.
@@ -67,10 +69,10 @@ shows both combinations, required inputs and a local Terragrunt adapter.
 Replace every fictional ID in the existing-network example before use; missing
 inputs fail rather than silently creating a parallel network.
 
-**Where do I find those IDs, and can I fill them in myself?** Follow
-[Find resource IDs and fill in your network input file](deployment.md#find-resource-ids-and-fill-in-your-network-input-file)
+**Finding resource IDs:** follow
+[Find resource IDs and fill in the network input file](deployment.md#find-resource-ids-and-fill-in-the-network-input-file)
 for Azure Portal steps, the field-by-field mapping and the Terragrunt alternative.
-Keep the values in your organization's approved configuration. Do not share
+Keep the values in the organization's approved configuration. Do not share
 credentials, Terraform state or environment-specific inputs through unapproved channels.
 
 Network and DNS are separate concepts, but this implementation pairs them:
@@ -88,9 +90,32 @@ into a second owner. Switching workload/platform DNS zone-group ownership also
 requires a separately reviewed state handoff, not a routine flag flip.
 The selected network mode does not change the `AIGateway` SKU.
 Recorded live evidence includes the isolated existing-network rehearsal below;
-repeat acceptance for your actual network and central DNS topology.
+repeat acceptance for the target network and central DNS topology.
 
-## Choose your networking path
+### Existing-network reference architecture
+
+This view combines **`existing` network ownership** with the gateway/model
+**`private-only` target after approved staged setup**. It shows logical subnet
+roles, not a prescribed VNet or hub/spoke topology.
+
+![Existing platform networking and central DNS reused by new gateway and model private endpoints, with separate gateway outbound integration](docs/images/01-overall-architecture.svg)
+
+[Open full-size SVG](docs/images/01-overall-architecture.svg) |
+[4K PNG](docs/images/01-overall-architecture.png) |
+[Editable Excalidraw source](docs/images/01-overall-architecture.excalidraw)
+
+Blue arrows show the model request path; purple dashed arrows show **DNS, not
+model traffic or telemetry**. Supporting agent, storage and monitoring resources
+are outside the synchronous request path. Terraform prepares agent infrastructure,
+not a running agent application.
+
+Continue with [network and DNS](deployment.md#existing-network-connectivity-reference),
+[resource ownership](deployment.md#platform-handoff-before-a-plan) or the
+[end-to-end request sequence](docs/architecture.md#end-to-end-private-request-flow).
+
+<a id="choose-your-networking-path"></a>
+
+## Choose a networking path
 
 Choose between **Public** and **Private-only**. Public is the Terraform default;
 Private-only disables public access to both the gateway and model account.
@@ -119,12 +144,12 @@ the original `AIGateway` through Terraform using independently owned network/DNS
 then disabled gateway and model public access through staged Terraform updates.
 Both private model aliases, authentication/network boundaries, telemetry,
 central firewall routing and four independent no-change plans passed.
-This does not prove private-from-first-create or verify your environment.
+This does not prove private-from-first-create or verify another target environment.
 Hosted-agent execution was not tested in that rehearsal.
 
 **Already using the private profile?** Follow [existing private deployments](docs/private-connectivity.md#existing-private-deployments).
 Keep the **selected** profile on every plan, including drift and monitoring
-changes, together with all your workload inputs and the selected network-ownership
+changes, together with all workload inputs and the selected network-ownership
 file. Put the private-access profile after those files; retain any explicitly
 approved endpoint-compatibility exception from the
 [input selection](deployment.md#compose-the-inputs). Do not repeat
@@ -151,7 +176,9 @@ for missing/invalid credentials. API-key calls also passed; gateway/backend
 traces matched. The temporary grant was removed afterward. This verifies the
 managed-identity caller flow, not custom delegated-user applications.
 
-## Before you start
+<a id="before-you-start"></a>
+
+## Prerequisites and decisions
 
 **Check these first:**
 
@@ -161,11 +188,11 @@ managed-identity caller flow, not custom delegated-user applications.
 - [ ] In existing-network mode: approved subnet/DNS inputs and scoped read/join, private-endpoint and DNS permissions; see [platform prerequisites](docs/private-connectivity.md#existing-network-prerequisites)
 - [ ] If enabling the test VM: permission to manage its **custom role definition**, not just role assignments; see [test-client permissions](docs/private-connectivity.md#test-client-permissions)
 - [ ] Providers registered: `Microsoft.ApiManagement`, `Microsoft.Web`, `Microsoft.CognitiveServices`, `Microsoft.Storage`, `Microsoft.ContainerRegistry`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Monitor` (this sample does not register them for you)
-- [ ] Quota for the model and SKU in your region
+- [ ] Quota for the model and SKU in the target region
 
-**Decide before you start:**
+**Deployment decisions:**
 
-- **Public endpoints OK?** If your policy prohibits public gateway or model endpoints, even temporarily, do not run this sample unchanged.
+- **Public endpoints OK?** If the applicable policy prohibits public gateway or model endpoints, even temporarily, do not run this sample unchanged.
 - **Need private hosted-agent execution?** Enable the [private hosted-agent configuration](docs/private-hosted-agent.md) from the start for the new agent account. Terraform creates network injection, private endpoints and project dependencies; deploy the application and bind its actual runtime identity afterward. This reference path has passed a live test; it is not enabled by default.
 - **Need private-only gateway ingress?** Select the explicit private-only end-state profile after endpoint approval and private-route verification. Original-SKU creation and staged Terraform closure passed in one isolated rehearsal; private-from-first-create and other environments still need separate proof. See the [status](docs/reference.md#private-only-gateway-ingress-status).
 
@@ -174,21 +201,21 @@ managed-identity caller flow, not custom delegated-user applications.
 Before deployment, review the effective Azure Policy assignments at the target
 scope, including inherited management-group and subscription assignments,
 initiative parameters, exclusions and applicable exemptions. Compare them with
-the resources and settings in your selected deployment path.
+the resources and settings in the selected deployment path.
 
 | Check | Required outcome before apply |
 | --- | --- |
 | Allowed regions, resource types, SKUs and mandatory tags | All planned resources comply, including Azure-managed monitoring helper resources. |
-| Public network access for the gateway, model account, Storage and Container Registry | The selected path meets your requirements, including any temporary access used during staged deployment. |
+| Public network access for the gateway, model account, Storage and Container Registry | The selected path meets the approved requirements, including any temporary access used during staged deployment. |
 | Private endpoints, DNS, routing and outbound restrictions | Deployment clients and each runtime identity have a supported network path to the services they need; disabling public access alone does not provide that path. |
-| Identity, authentication and RBAC requirements | Deployment permissions, managed identities, optional Entra caller roles and retained gateway API keys are compatible with your controls. |
+| Identity, authentication and RBAC requirements | Deployment permissions, managed identities, optional Entra caller roles and retained gateway API keys are compatible with the applicable controls. |
 | Monitoring and security requirements | Required diagnostics, retention and destinations are accounted for, along with any automatically enabled Defender plans and their costs. |
 
 Resolve incompatibilities in the IaC and deployment inputs **before apply**.
-For example, if your policies require private Storage access, provide or reuse
+For example, if the applicable policies require private Storage access, provide or reuse
 the necessary private endpoint, DNS and connectivity for every client that
 needs Storage. This is a conditional requirement, not a prerequisite for every
-customer. Do not disable policies or reopen restricted endpoints to make the
+deployment. Do not disable policies or reopen restricted endpoints to make the
 sample deploy.
 
 A successful `terraform plan` is **not** proof of policy compatibility:
@@ -201,14 +228,14 @@ a plan that would undo an enforced setting.
 
 ## What gets deployed
 
-Start with a single request: **your app sends a prompt to the gateway; the
+Start with a single request: **an application sends a prompt to the gateway; the
 gateway checks access and policy; the selected Foundry model generates the
 answer.** The supporting resources below prepare a later agent application
 and make requests observable.
 
 ![Public application authenticates with Entra ID or an API key; AI Gateway uses its separate managed identity for Foundry Models](docs/images/architecture-public.svg)
 
-| Component | Why you need it in this sample |
+| Component | Purpose in this sample |
 | --- | --- |
 | **AI Gateway** | One model API endpoint for clients. It checks the runtime API key or Entra token and invocation role, applies a token limit per caller, resolves the model alias and forwards the request. It does not run the model or agent code. |
 | **Foundry model account** | Runs the actual model deployments. It trusts the gateway's managed identity, not the client's gateway API key. |
@@ -220,12 +247,13 @@ and make requests observable.
 
 See the [service-by-service architecture guide](docs/architecture.md) for
 the **base private-network diagram**, **private-agent reference** and separate
-**API-key versus optional Entra authentication sequences**. Both README diagrams
+**API-key versus optional Entra authentication sequences**. The Public and
+private-agent overview diagrams in this README
 show an **Application** authenticating with **Entra ID or an API key**; the gateway
 uses its separate managed identity for the backend. The caller's hosting location
-is your choice; Private-only also requires private DNS and network connectivity.
+is an application deployment decision; Private-only also requires private DNS and network connectivity.
 The optional hosted agent is not a required hop for direct application model calls.
-Blue arrows are requests, purple
+In those two overview diagrams, blue arrows are requests, purple
 dashed arrows are telemetry, and gray dashed arrows are configuration or a later
 deployment. A configured connection is not proof of runtime traffic.
 
@@ -278,14 +306,14 @@ A **model alias** (for example, `gpt-mini`) is the name clients send. It does no
 Use the [deployment guide's numbered sequence](deployment.md#runbook-order).
 It includes [tool and checkout checks](deployment.md#prerequisites),
 [input values and their sources](deployment.md#inputs-and-state),
-[network-ID lookup](deployment.md#find-resource-ids-and-fill-in-your-network-input-file),
+[network-ID lookup](deployment.md#find-resource-ids-and-fill-in-the-network-input-file),
 [platform handoffs](deployment.md#platform-handoff-before-a-plan),
 [plan review](deployment.md#review-every-plan-before-apply) and monitoring.
 
 For a **new workload**, copy the example only when no approved input file
 exists and the workload backend is agreed. For an **existing workload**, retain
 its input files and authoritative state; do not overwrite them with examples.
-Your existing network keeps its own state in both cases.
+The existing platform network keeps its own state in both cases.
 Optional agent deployment, Terragrunt and repair procedures are separate branches,
 not extra steps everyone must execute.
 
@@ -295,7 +323,7 @@ not extra steps everyone must execute.
 
 Use [profiles/private-only.tfvars.json](profiles/private-only.tfvars.json)
 for the final configuration: gateway and model public access are both disabled.
-Use it with your selected network-ownership profile and complete workload inputs,
+Use it with the selected network-ownership profile and complete workload inputs,
 not instead of them.
 
 ```text
@@ -310,7 +338,7 @@ private inference and authenticated public-network rejection before acceptance.
 
 **Do not use the public path for this private configuration.** Omitting the
 selected profile can plan removal of private networking or re-enable public
-access, depending on your other inputs. The intermediate `private-connectivity`
+access, depending on the other inputs. The intermediate `private-connectivity`
 profile sets gateway ingress to `Enabled`; never reuse it for an already-disabled gateway.
 
 ## Public endpoint path
