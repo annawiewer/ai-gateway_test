@@ -363,8 +363,10 @@ An approved existing private client can be used instead.
 
 **Not configured:** corporate DNS forwarding, peering, VPN, forced tunneling
 and custom firewall rules. The platform must supply these where required.
-Review the [official networking guide](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking)
-for same-region integration subnets, DNS and NSG requirements.
+Review Microsoft's
+[version-pinned legacy networking guide](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-configure-private-networking.md#prerequisites)
+for same-region integration subnets, DNS and NSG requirements. This source
+describes the original `service` / `AIGateway` networking contract.
 
 Changing an existing `create` deployment to `existing`, or disabling private
 networking, can propose removal of sample-managed resources. The created VNet
@@ -409,7 +411,7 @@ where Network expects a generated connection name but APIM stores the
 caller-supplied name. `Approved` alone is insufficient: wait for asynchronous
 completion and both provisioning states, check private DNS and prove inference
 from the selected private client. See the
-[official Pending/Approve sequence](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking).
+[legacy Pending/Approve sequence](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-configure-private-networking.md#inbound-private-link).
 
 The manual profile selects the separately named `-gateway-manual-pe`.
 Switching the approval flag replaces the gateway endpoint, not the gateway
@@ -744,9 +746,9 @@ by this sample.
 
 ### Microsoft-documented constraints
 
-- **AI Gateway preview:** best-effort, **no SLA**. APIs, limits, regions and pricing can change. Documented regions include East US 2 and Sweden Central, with access varying by subscription. ([overview](https://learn.microsoft.com/azure/api-management/ai-gateway-overview))
+- **AI Gateway preview:** best-effort, **no SLA**. APIs, limits, regions and pricing can change. Documented regions include East US 2 and Sweden Central, with access varying by subscription. ([legacy preview overview](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-overview.md))
 - **Hosted-agent VNet injection is set at account creation** and cannot be added later. Enable the [private hosted-agent configuration](private-hosted-agent.md) from the start for new agent accounts. A separately deployed agent passed the private gateway/model path on October 25; application deployment, runtime roles and acceptance remain required for each new environment. ([Foundry networking limits](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks#limitations))
-- **Private endpoints can be added later** to an existing legacy `service`/`AIGateway` resource, with outbound integration configured separately. Private endpoints alone do not give the gateway or agents outbound access. This does not establish support on the replacement `aigateways` resource. ([private networking](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking))
+- **Private endpoints can be added later** to an existing legacy `service`/`AIGateway` resource, with outbound integration configured separately. Private endpoints alone do not give the gateway or agents outbound access. This does not establish support on the replacement `aigateways` resource. ([legacy networking source](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-configure-private-networking.md#inbound-private-link))
 - **Private ACR image pulls** are supported for Foundry projects created after June 25, 2026. Older projects need public ACR reachability. This sample leaves ACR public.
 
 <a id="known-blocker-private-only-gateway-ingress"></a>
@@ -799,7 +801,7 @@ legacy-resource lifecycle restrictions remain unchanged. The later October 27
 Terraform evidence above has its own explicit scope; it does not establish the
 cause of the earlier service failure.
 
-**Observed in tests, not a universal SKU limit.** Microsoft [documents disabling public access after private connectivity is verified](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking#inbound-private-link). In the **October 18, 2026, Sweden Central** tests:
+**Observed in tests, not a universal SKU limit.** Microsoft's [legacy networking guide](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-configure-private-networking.md#inbound-private-link) documents disabling public access after private connectivity is verified. In the **October 18, 2026, Sweden Central** tests:
 
 - Both aliases passed private DNS and inference checks with model public access disabled (ACL Deny).
 - Disabling gateway public access failed with `UpdateApiServiceFailed`, through both Terraform and the CLI's public-access PATCH. Private access kept working, but public access stayed on.
@@ -862,9 +864,18 @@ resources or removes the protection.
 
 ## References
 
+> [!NOTE]
+> Legacy AI Gateway sources are pinned to Microsoft's documentation snapshot
+> `ecc0e4a` (August 11, 2026). On October 29, 2026, the former Learn networking
+> URL redirected to an unavailable page (HTTP 404); other former AI Gateway
+> URLs now describe the newer resource type. These snapshots support the cited
+> legacy behavior, not current availability or a change to this sample's API,
+> SKU, selected caller authentication or approved Terraform procedure. Check
+> current [lifecycle guidance](#resource-type-and-lifecycle) separately.
+
 - [Upstream Bicep infrastructure](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway/tree/c572db847e4bff5278bc5f8630c2acb4b6991119/infra)
 - [AzAPI provider](https://registry.terraform.io/providers/Azure/azapi/latest/docs)
-- [AI Gateway overview](https://learn.microsoft.com/azure/api-management/ai-gateway-overview)
-- [AI Gateway private networking](https://learn.microsoft.com/azure/api-management/ai-gateway-configure-private-networking)
+- [AI Gateway tier overview (legacy source snapshot)](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-overview.md)
+- [AI Gateway private networking (legacy source snapshot)](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-configure-private-networking.md)
 - [Foundry Agent Service networking](https://learn.microsoft.com/azure/foundry/agents/how-to/virtual-networks#limitations)
-- [Model and tool management](https://learn.microsoft.com/azure/api-management/ai-gateway-manage-models-tools)
+- [Model and tool management (legacy source snapshot)](https://github.com/MicrosoftDocs/azure-docs/blob/ecc0e4a879c68fbc813d056916b40560add09f20/articles/api-management/ai-gateway-manage-models-tools.md)
