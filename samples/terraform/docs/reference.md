@@ -50,9 +50,15 @@ unless its owner has approved an update.
 
 ## File guide
 
+For the customer-facing list of files to prepare, start with the
+[Scenario 01 file checklist](scenarios/01-existing-network.md#files-for-this-scenario).
+This inventory also includes implementation and maintenance files, not extra
+deployment steps.
+
 | File | What it controls |
 | --- | --- |
-| [01-04-terraform.tfvars.example](../01-04-terraform.tfvars.example) | Template for your ignored `terraform.tfvars` |
+| [examples/filled/01-existing-network/01-terraform.tfvars.example](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Active base/model, Entra caller and private-feature inputs for the [filled Scenario 01 variant](../examples/filled/01-existing-network/README.md); use a protected copy and its complete network input |
+| [01-04-terraform.tfvars.example](../01-04-terraform.tfvars.example) | Generic alternative base template for an ignored `terraform.tfvars`; do not load both base examples |
 | [01-04-profiles/private-connectivity.tfvars.json](../01-04-profiles/private-connectivity.tfvars.json) | Four private-connectivity settings, including explicit gateway endpoint approval (no secrets) |
 | [01-04-profiles/private-only.tfvars.json](../01-04-profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
 | [01-04-profiles/network-create.tfvars.json](../01-04-profiles/network-create.tfvars.json) | Sample-managed network/DNS ownership; independent of public/private access |

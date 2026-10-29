@@ -14,6 +14,13 @@ into the configuration and explain which resources remain workload-owned.
 No Terraform or Azure commands are needed for this walkthrough. Optional editor
 help is separate from the explanation and does not authorize deployment.
 
+**Looking for the selected filled example?** Open the
+[Scenario 01 file checklist](scenarios/01-existing-network.md#files-for-this-scenario)
+and [filled input walkthrough](../examples/filled/01-existing-network/README.md).
+They include the active base example and complete inputs for Entra caller roles,
+private Blob connectivity, private agents and the test VM. The generic
+core-template explanations below are background, not that variant's full checklist.
+
 ## One configuration, not a sequence of scripts
 
 Terraform reads the `.tf` files in `samples\terraform` **together as one root
@@ -39,14 +46,15 @@ resources instead; it is not a safe ownership-migration mechanism.
 
 ## Which files do I open or edit?
 
-For the first conversation, open the existing-network profile, network context,
-network foundation and endpoint files. Follow the input into the code rather
-than trying to read every file alphabetically.
+Start with the input sources for your selected variant. The implementation
+files below are for the later [input-to-code explanation](#follow-one-input-through-the-code),
+not additional files to edit or run in sequence.
 
 | File | Purpose | Normal environment-specific edit? |
 | --- | --- | --- |
-| [Base template (`01-04-terraform.tfvars.example`)](../01-04-terraform.tfvars.example) | Template for subscription, naming, regions, model choices and optional features. | For a **new** workload only, copy to `terraform.tfvars` and edit the copy during approved input preparation. Retain an existing approved file instead of overwriting it. |
-| [01-04-profiles/network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json) | Template selecting `existing` and supplying subnet/zone IDs. | For a new input set, copy to `network-existing.environment.tfvars.json` and replace every placeholder. Keep environment inputs protected and out of public Git. |
+| [Filled Scenario 01 base example (`01-terraform.tfvars.example`)](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Base/model values, Entra caller roles and selected private features already active together. | For that variant, use one protected working copy, replace fictional values and retain the [complete network inputs](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs). Do not append duplicate blocks or overwrite approved inputs. |
+| [Generic base template (`01-04-terraform.tfvars.example`)](../01-04-terraform.tfvars.example) | Alternative starting template for other feature selections. | For a **new** workload only, select this or the filled base example, not both. The [base-file step](../01-04-deployment.md#2-create-or-select-a-base-input-file) prepares the protected copy. |
+| [01-04-profiles/network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json) | Core-only template selecting `existing` and supplying subnet/zone IDs. | A protected copy needs all inputs for the selected features. The filled variant uses the larger [complete JSON block](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs), not this core-only object unchanged. |
 | [01-04-profiles/network-create.tfvars.json](../01-04-profiles/network-create.tfvars.json) | Selects sample-managed network/DNS ownership. | Select it for the approved scenario; it does not by itself enable private networking. |
 | [01-04-profiles/private-connectivity.tfvars.json](../01-04-profiles/private-connectivity.tfvars.json) / [01-04-profiles/private-only.tfvars.json](../01-04-profiles/private-only.tfvars.json) | Intermediate and final private-access settings, independent of network ownership. | Select the correct shared file for the approved stage; do not customize the shared profile for one environment. |
 | [variables.tf](../variables.tf) | Input types, defaults and validation rules. | Read to understand inputs; normally leave the definitions unchanged. |
@@ -76,6 +84,9 @@ profile does not make every supporting service private; see the
 
 The existing-network template has **three core subnet-ID fields**. Two are
 entries in `endpoint_subnet_ids`; the third sits outside that map.
+The [selected filled variant](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs)
+extends this to **eight subnet-ID fields and six DNS zones**; do not stop at
+the three core fields when its private features are enabled.
 
 | Create-mode subnet role | Field under `existing_private_network` | Job |
 | --- | --- | --- |
@@ -104,6 +115,11 @@ an unused sample VM does not require a client subnet. An existing corporate
 private client does not need to become a Terraform-managed VM.
 
 ## Replacement checklist for existing-network inputs
+
+This section explains the **generic core template** and shared base template.
+For the selected filled variant, use its [base-value guidance](../examples/filled/01-existing-network/README.md#filled-base-inputs)
+and [complete network mapping](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs)
+instead of treating the seven-ID checklist below as complete.
 
 These **color symbols plus text labels belong to this guide**, not to the input
 files. GitHub cannot persist arbitrary colored substring highlights in an actual
@@ -147,7 +163,7 @@ explains how to obtain them. Do not globally replace subscription UUIDs:
 central zones may use another subscription. Optional features need their
 additional inputs.
 
-In a new base `terraform.tfvars` copy, 🟨 **REPLACE** the zero `subscription_id`
+When starting from the **shared base template**, 🟨 **REPLACE** the zero `subscription_id`
 and `platform@example.com`. For the workload name, regions and model settings,
 🟦 **DECIDE WITH PLATFORM TEAM**: `aigateway` is a valid naming default;
 `eastus2` and the model settings are examples requiring approval, not automatic
@@ -278,7 +294,9 @@ To turn markings off, open **Settings > Workspace** and set
   are not highlighted. **Unmarked does not mean valid, approved or complete.**
   Matching is limited to input files under a `samples\terraform` path; a file
   from another checkout opened manually in that window may also match. Custom
-  inputs elsewhere are not covered.
+  inputs elsewhere are not covered. The filled Scenario 01 example file and
+  its non-zero fictional values are not covered by this generic placeholder
+  helper; use the [filled replacement guidance](../examples/filled/01-existing-network/README.md).
 
 This workspace contains no tasks, Terraform commands or Azure changes.
 Editor profiles do not replace the approved deployment process or select a

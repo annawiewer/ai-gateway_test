@@ -1,11 +1,11 @@
 # Shared deployment guide: scenarios 01-04
 
-[Overview and architecture](README.md)
+[Overview and architecture](README.md) | [Scenario 01 file checklist](docs/scenarios/01-existing-network.md#files-for-this-scenario) | [Filled Scenario 01 walkthrough](examples/filled/01-existing-network/README.md)
 
 ## Start here
 
 This is the **shared operator procedure for scenarios 01-04**. Use the
-[scenario selected in the overview](README.md). Prepare the approved inputs,
+[scenario selected in the overview](README.md#choose-your-scenario). Prepare the approved inputs,
 then follow the ordered journey below for that scenario.
 Specialist guides are linked at their execution step, not extra deployments to
 run afterward.
@@ -265,21 +265,35 @@ routine setup step.
 
 The tracked [.gitignore](.gitignore) excludes environment-specific `*.tfvars`,
 `*.tfvars.json`, state and plans in this directory. The shared profiles and
-`01-04-terraform.tfvars.example` are intentionally tracked. Ignoring a file does not
+base example files are intentionally tracked. Ignoring a file does not
 encrypt it or protect a file already tracked by Git.
 
-For a **new workload with no existing input file**, run once:
+For a **new workload with no existing input file**, choose **one** source below
+and set its line in the same PowerShell session. These are alternative base
+templates, not files to load together:
+
+| Approved selection | Set the base template source |
+| --- | --- |
+| [Filled Scenario 01 variant](examples/filled/01-existing-network/README.md), including Entra caller roles and selected private features | `$baseTemplateFile = '.\examples\filled\01-existing-network\01-terraform.tfvars.example'` |
+| [Generic template](01-04-terraform.tfvars.example) for other new-workload selections | `$baseTemplateFile = '.\01-04-terraform.tfvars.example'` |
+
+Then run this copy block **once**:
 
 ```powershell
+if (-not $baseTemplateFile) {
+    throw 'Select one base template from the table before copying.'
+}
 if (Test-Path -LiteralPath .\terraform.tfvars) {
     throw 'An input file already exists. Review it with its owner; do not overwrite it.'
 }
-Copy-Item -LiteralPath .\01-04-terraform.tfvars.example -Destination .\terraform.tfvars
+Copy-Item -LiteralPath $baseTemplateFile -Destination .\terraform.tfvars
 ```
 
 In VS Code, choose **File > Open Folder**, open `samples\terraform`, then select
-the new **terraform.tfvars**, not `01-04-terraform.tfvars.example`. Fill the table
-below and save. Leave unneeded optional settings commented out.
+the new **terraform.tfvars**, not its source example. Replace all illustrative
+values, fill the table below and save. The filled Scenario 01 source already
+includes its Entra/private-feature blocks; do not append them again. In the
+generic template, leave unneeded optional settings commented out.
 
 If an **approved input file already exists**, for either a new or an existing
 workload, open that file instead; do not execute the copy block or recreate its
@@ -310,7 +324,7 @@ state, plan files or evidence. Review staged changes before any later commit.
 | --- | --- |
 | `subscription_id` | Azure Portal **Subscriptions > approved workload subscription > Overview > Subscription ID**. Copy the UUID, not its display name or an ARM resource ID. |
 | `environment_name` | Agree a short workload label with the platform owner: 1-32 lowercase letters, digits or hyphens, starting with a letter. For an existing workload keep its exact value. This is not an existing resource-group ID. |
-| `publisher_email` | The approved operational contact address for this gateway, supplied by the workload owner. Replace `platform@example.com`. |
+| `publisher_email` | The approved operational contact address for this gateway, supplied by the workload owner. Replace the example contact address. |
 | `location` | The approved Azure region code for models, agent infrastructure and supporting services, not a display name. Example syntax: `swedencentral`; the example is not a region recommendation. The platform/model owner confirms availability and policy. |
 | `gateway_location` | The approved gateway region code. In existing mode its integration subnet's VNet must be in this region. Create mode with the private-agent extension requires `location` to match this value. |
 | `model_deployments` map keys | Agree client-facing aliases such as `gpt-mini`. Keep stable aliases for existing clients; they are not the underlying model name. |
@@ -440,12 +454,17 @@ private networking enabled, Terraform creates the gateway VNet/subnets, NSGs,
 private DNS zones and links. It does **not** create a corporate hub, firewall,
 resolver or landing zone.
 
-For **existing**, the complete object supplies three core subnet **fields**
+For **existing**, the core-only object supplies three subnet **fields**
 and four DNS zone IDs. The endpoint fields may share one approved subnet,
 separate from gateway integration: three fields can describe two physical
 subnets. Optional storage endpoints, private agents and the test VM require
 their additional inputs when selected. See
 [required inputs and permissions](docs/private-connectivity.md#existing-network-prerequisites).
+
+The [filled Scenario 01 network input](examples/filled/01-existing-network/README.md#filled-existing-network-inputs)
+already shows all **eight subnet-ID fields and six zone IDs** for its selected
+features. Use that complete mapping when preparing its protected network file;
+do not replace it with the smaller core template.
 
 With private networking enabled, both choices still create **new workload-owned
 private endpoints**. Existing mode
@@ -592,8 +611,13 @@ another owner.
 
 ## Access
 
-Before the plan, decide whether to add **Microsoft Entra ID** callers or retain
-the default **API-key** callers. The [Access reference](docs/reference.md#access)
+Before the plan, confirm the approved caller-authentication choice. The
+[filled Scenario 01 walkthrough requires Entra callers](examples/filled/01-existing-network/README.md#required-entra-caller-access)
+and Terraform-managed invocation roles; its base example already contains the
+caller block. Do not treat that requirement as undecided or append it again.
+
+Other configurations can select Entra callers or retain the default API-key
+callers. The [Access reference](docs/reference.md#access)
 owns object-ID lookup, complete inputs, token/consent requirements and billable
 post-deployment probes. Optional Entra configuration is not a prerequisite for
 an API-key client.
@@ -1028,8 +1052,18 @@ Copy-Item -LiteralPath .\01-04-profiles\network-existing.tfvars.json `
     -Destination $networkOwnershipFile
 ```
 
-Open the selected file in VS Code. Replace each complete resource-ID string
-inside its existing quotes, using the table below, then press **Ctrl+S**.
+Open the selected file in VS Code. For a **new file** using the filled Scenario 01
+variant, replace the copied core template with the
+[complete JSON block](examples/filled/01-existing-network/README.md#filled-existing-network-inputs)
+before filling real values. It includes the selected feature fields missing
+from the core template. Keep this in the **same file**, not a second network
+overlay. For an approved existing file, retain its values and verify completeness
+instead of replacing it with fictional examples.
+
+Replace each complete resource-ID string inside its existing quotes, then press
+**Ctrl+S**. The table below covers the core fields; the complete block and
+[conditional input contract](docs/private-connectivity.md#existing-network-prerequisites)
+cover the selected additions.
 Set the workload `subscription_id` in the base inputs, normally `terraform.tfvars`.
 In this JSON file, keep `"private_network_mode": "existing"` and fill
 **`existing_private_network`** using this mapping:
@@ -1079,8 +1113,10 @@ git check-ignore -v -- $networkOwnershipFile
 ignore-rule result. For approved external configuration, retain that location's
 access controls instead. Never force-add inputs to Git. These checks cover syntax
 and obvious placeholders, not the complete resource contract: inspect all fields
-above. The later plan reads actual subnets and validates regions, prefixes,
-delegations and the gateway NSG attachment. It does not prove effective
+and replace the filled example's non-zero fictional IDs too; passing the
+zero-UUID check does not approve those values. The later plan reads actual
+subnets and validates regions, prefixes, delegations and the gateway NSG
+attachment. It does not prove effective
 firewall/NSG rules or runtime connectivity.
 
 ### 4. Connect the file to the deployment process

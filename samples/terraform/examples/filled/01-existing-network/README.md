@@ -1,6 +1,6 @@
 # Scenario 01: filled input reference for existing networking
 
-[Back to Scenario 01](../../../docs/scenarios/01-existing-network.md)
+[Back to Scenario 01](../../../docs/scenarios/01-existing-network.md) | [File checklist](../../../docs/scenarios/01-existing-network.md#files-for-this-scenario) | [Shared procedure](../../../01-04-deployment.md#runbook-order)
 
 Use this reference to understand how the inputs fit together when the **gateway
 workload is new**, but networking and central Private DNS already belong to the
@@ -16,6 +16,18 @@ deployment.
 > fictional. This is a reading aid, not approved deployment input or a separate
 > deployment procedure. Do not pass this Markdown file to Terraform.
 
+**Quick links:** [Base file and values](#filled-base-inputs) |
+[Complete network JSON](#filled-existing-network-inputs) |
+[Access-stage profiles](#required-values-supplied-by-profiles) |
+[Entra caller roles](#required-entra-caller-access) |
+[Selected private features](#selected-private-features).
+
+Use **one base file, one complete network input and the approved access stage**
+together. The [file checklist](../../../docs/scenarios/01-existing-network.md#files-for-this-scenario)
+identifies each source; the [input composition step](../../../01-04-deployment.md#compose-the-inputs)
+owns their selection and order. The sections here explain the same inputs,
+not additional files to load or deployments to run.
+
 ## Color key
 
 The labels carry the meaning even when colors are unavailable.
@@ -30,8 +42,9 @@ In HCL, `#` starts a comment. **Never remove every `#`**: explanation text must
 remain commented. The selected assignments in the
 [Scenario 01 base example (`01-terraform.tfvars.example`)](./01-terraform.tfvars.example)
 are already active, including the complete Entra block and selected private
-features; no further uncommenting is needed in that file. The shared
-Base template (`01-04-terraform.tfvars.example`) still comments out these
+features; no further uncommenting is needed in that file. The
+[shared base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
+still comments out these
 extensions because it supports other scenarios; its defaults are unchanged.
 
 ## Filled base inputs
@@ -89,7 +102,8 @@ model_deployments = {
 | `model_deployments` | Approved model versions and capacity. `gpt-mini` and `gpt-full` are the caller-facing deployment names; `model_name` identifies the model. |
 
 The model identifiers are real technical identifiers taken from the
-Base template (`01-04-terraform.tfvars.example`), **not a fresh availability or
+[shared base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example),
+**not a fresh availability or
 quota confirmation**. `sku_name` is the model deployment SKU; it does not change
 the sample's gateway SKU.
 `GlobalStandard` does not guarantee processing only in Sweden.

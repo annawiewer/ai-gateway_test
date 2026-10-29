@@ -75,9 +75,10 @@ no credentialed cloud deployment workflow yet.
 
 For an existing deployment, preserve its backend/state, exact stable naming inputs
 and any migration revision. Never copy its state into a second active environment.
-For a genuinely new, eligible environment use `01-04-terraform.tfvars.example` plus the
-chosen create/existing ownership inputs and private profile, not another
-developer's local migration overrides.
+For a genuinely new, eligible environment use the
+[base example for the selected scenario](../01-04-deployment.md#2-create-or-select-a-base-input-file)
+with its complete create/existing ownership inputs and approved private stage,
+not another developer's local migration overrides.
 Follow the [private guide](private-connectivity.md) for preflight and staged,
 reviewed plan/apply. Inspect exact target IDs, public access, role scopes and every
 destroy/replace action; retain gateway `prevent_destroy`. The acceptance runner is

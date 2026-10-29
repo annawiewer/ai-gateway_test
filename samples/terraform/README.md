@@ -24,15 +24,23 @@ scenario guide or filled-example folder identifies its scenario.
 
 | Shared material | Purpose |
 | --- | --- |
-| [Base template (`01-04-terraform.tfvars.example`)](01-04-terraform.tfvars.example) | Starting template for a new workload; retain approved inputs when updating an existing workload. |
+| [Generic base template (`01-04-terraform.tfvars.example`)](01-04-terraform.tfvars.example) | Reusable starting point for a new workload. The filled Scenario 01 variant has its own active base example below; choose one source, not both. Retain approved inputs for an existing workload. |
 | [01-04-deployment.md](01-04-deployment.md) | Shared runbook; follow only the branch selected by your scenario. |
 | [01-04-profiles](01-04-profiles/) | Shared library of network/access choices, not a set to load in full. Your scenario identifies the relevant files and approved stage. |
 
-For Scenario 01, the matching filled reference is
-[examples/filled/01-existing-network/README.md](examples/filled/01-existing-network/README.md).
-The working input file remains `terraform.tfvars`; the root `*.tf` implementation
-and README filenames keep their conventional names. No separate stacks or
-copies of the shared inputs are needed.
+### Scenario 01: customer reading path
+
+| Read in this order | What you find |
+| --- | --- |
+| [1. Scenario and file checklist](docs/scenarios/01-existing-network.md#files-for-this-scenario) | Which inputs belong together, what the platform team supplies, and what stays unchanged. |
+| [2. Filled input walkthrough](examples/filled/01-existing-network/README.md) | The [active base example](examples/filled/01-existing-network/01-terraform.tfvars.example), complete network JSON, Entra caller access and selected private features. |
+| [3. Shared operator procedure](01-04-deployment.md#runbook-order) | Approved input preparation, state and platform handoffs, staged deployment and acceptance. This is the only command sequence. |
+
+The filled variant selects Entra caller roles, private Blob connectivity,
+private Hosted Agent infrastructure and a new test VM; these are not defaults
+for every Scenario 01 deployment. Its base example and the generic template
+are **alternatives**, not extra input layers. Working copies remain protected
+inputs such as `terraform.tfvars`; example folders are not separate stacks.
 
 **Just learning?** [Understand the sample without deploying](docs/understand-the-sample.md)
 explains the files, their relationships and optional editor help. No terminal,
@@ -195,6 +203,7 @@ environment files and state out of public Git.
 
 | Task | Canonical guide |
 | --- | --- |
+| Find the selected Scenario 01 files and completed example | [Scenario 01 file checklist](docs/scenarios/01-existing-network.md#files-for-this-scenario) and [filled input walkthrough](examples/filled/01-existing-network/README.md) |
 | Understand which files to open or edit | [File-by-file explanation](docs/understand-the-sample.md#which-files-do-i-open-or-edit) |
 | Prepare inputs, agree ownership and review a saved plan | [Shared deployment procedure](01-04-deployment.md#runbook-order) |
 | <a id="private-connectivity-path"></a><a id="private-only-path"></a>Deploy or maintain private access | [Private-only branch](01-04-deployment.md#private-only); already-private gateways use the [existing-deployment procedure](docs/private-connectivity.md#existing-private-deployments) |

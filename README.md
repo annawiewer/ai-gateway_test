@@ -19,6 +19,8 @@ not successive installation steps.
 
 **Already have platform networking and central DNS?** Start with
 [Scenario 01: a new gateway on existing networking](samples/terraform/docs/scenarios/01-existing-network.md).
+Its [filled walkthrough](samples/terraform/examples/filled/01-existing-network/README.md)
+links the active base example, complete network inputs and shared procedure.
 An existing *gateway* instead follows the
 [Scenario 04 update guide](samples/terraform/docs/scenarios/04-update-existing.md).
 All four scenarios use one shared Terraform implementation.
