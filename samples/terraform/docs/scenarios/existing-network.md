@@ -39,6 +39,12 @@ approved procedure for any temporary override. A later object assignment
 replaces the whole object; it does not merge extra fields into an earlier one.
 Never place environment values, secrets or state in public Git.
 
+For an illustration of the completed inputs, see the
+[filled input reference](../../examples/filled/existing-network/README.md).
+It includes fictional base and network values, a color key and guidance on
+which commented settings to leave alone. It supplements this scenario and the
+shared runbook; it is not a separate deployment procedure.
+
 ## What the platform team supplies
 
 The core network contract has three subnet fields:
