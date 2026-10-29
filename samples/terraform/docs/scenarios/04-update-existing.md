@@ -1,4 +1,4 @@
-# Update an existing gateway
+# Scenario 04: update an existing gateway
 
 [All scenarios](../../README.md#choose-your-scenario)
 
@@ -17,12 +17,12 @@ resources into a second owner.
 
 | Files or configuration | Action |
 | --- | --- |
-| Existing workload input files | Retain them and make only the approved change. Do not replace them with `terraform.tfvars.example` or new lab defaults. |
+| Existing workload input files | Retain them and make only the approved change. Do not replace them with `01-04-terraform.tfvars.example` or new lab defaults. |
 | Existing network-ownership selection | Keep the current `create` or `existing` mode and complete network object, including extension fields and DNS-association ownership. |
 | Existing access profile and additional inputs | Retain the approved end state, overrides and endpoint-compatibility exceptions. A private-only deployment stays private-only during monitoring and drift checks too. |
 | Shared root `*.tf`, backend and authoritative state | Use the approved configuration and state. Selecting another scenario folder is not an upgrade mechanism. |
 
-The [input composition rules](../../deployment.md#compose-the-inputs) still
+The [input composition rules](../../01-04-deployment.md#compose-the-inputs) still
 apply on **every** plan, including helper-generated plans. Later variable
 assignments replace whole objects. Keep complete approved objects rather than
 overlaying only newly added nested fields.
@@ -33,7 +33,7 @@ labels/keys or changing ownership does; those are separate migration decisions.
 
 ## Continue with the applicable update procedure
 
-Start with the [shared update preflight](../../deployment.md#update-an-existing-gateway),
+Start with the [shared update preflight](../../01-04-deployment.md#update-an-existing-gateway),
 then use the procedure for the deployment's current access state below.
 
 For an existing private deployment, follow
@@ -42,7 +42,7 @@ Do not repeat the initial public stages or load `private-connectivity` over an
 already private-only gateway.
 
 For an existing public deployment, use its approved update runner and the
-[shared plan-review controls](../../deployment.md#review-every-plan-before-apply).
+[shared plan-review controls](../../01-04-deployment.md#review-every-plan-before-apply).
 Do not rerun the new-workload copy/bootstrap steps. A change to private access
 is a separately planned transition, not an implicit effect of this entry.
 

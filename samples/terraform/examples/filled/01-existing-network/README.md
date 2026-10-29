@@ -1,6 +1,6 @@
-# Filled input reference: new gateway on existing networking
+# Scenario 01: filled input reference for existing networking
 
-[Back to the scenario](../../../docs/scenarios/existing-network.md)
+[Back to Scenario 01](../../../docs/scenarios/01-existing-network.md)
 
 Use this reference to understand how the inputs fit together when the **gateway
 workload is new**, but networking and central Private DNS already belong to the
@@ -30,8 +30,9 @@ fill the entire block, including its closing brace.
 ## Filled base inputs
 
 &#x1F7E2; **ACTIVE** - these are the assignment lines in the base input file.
-Use [the base template](../../../terraform.tfvars.example) as the editable
-starting point if no approved workload input file exists.
+Use the
+[Base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
+as the editable starting point if no approved workload input file exists.
 
 ```hcl
 subscription_id = "11111111-2222-4333-8444-555555555555"
@@ -70,9 +71,10 @@ model_deployments = {
 | `publisher_email` | Approved operational contact. This is not a login identity. |
 | `model_deployments` | Approved model versions and capacity. `gpt-mini` and `gpt-full` are the caller-facing deployment names; `model_name` identifies the model. |
 
-The model identifiers are real technical identifiers taken from the base
-template, **not a fresh availability or quota confirmation**. `sku_name` is the
-model deployment SKU; it does not change the sample's gateway SKU.
+The model identifiers are real technical identifiers taken from the
+Base template (`01-04-terraform.tfvars.example`), **not a fresh availability or
+quota confirmation**. `sku_name` is the model deployment SKU; it does not change
+the sample's gateway SKU.
 `GlobalStandard` does not guarantee processing only in Sweden.
 `capacity` is model-deployment capacity, not a price or the gateway caller limit;
 `token_limit` is a separate gateway token limit.
@@ -85,7 +87,7 @@ are also required.
 
 &#x1F535; **PROFILE** - this illustrates the contents of the protected
 environment copy of
-[profiles/network-existing.tfvars.json](../../../profiles/network-existing.tfvars.json).
+[01-04-profiles/network-existing.tfvars.json](../../../01-04-profiles/network-existing.tfvars.json).
 JSON has no `#` comments: every entry below is an assignment when that file is
 explicitly selected.
 
@@ -112,7 +114,7 @@ explicitly selected.
 All shown resource IDs refer to **fictional existing platform resources**, not
 resources this example asks Terraform to create. Obtain the actual IDs and
 readiness confirmation from the platform owner using the
-[field-by-field mapping and Portal lookup](../../../deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
+[field-by-field mapping and Portal lookup](../../../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
 DNS zone IDs are not Private DNS Resolver IDs.
 
 | Example choice | What must be agreed or verified |
@@ -144,15 +146,15 @@ supplies the stage-specific private-access values.
 ```
 
 The disabled public-access values illustrate the **final** state selected by
-[private-only](../../../profiles/private-only.tfvars.json), not the first-create
+[private-only](../../../01-04-profiles/private-only.tfvars.json), not the first-create
 configuration. The
-[private-connectivity](../../../profiles/private-connectivity.tfvars.json)
+[private-connectivity](../../../01-04-profiles/private-connectivity.tfvars.json)
 profile leaves gateway public access enabled and is only an intermediate stage.
 The documented bootstrap can also require a separately approved temporary
 Models-Public override.
 
 Profiles are **not loaded automatically** merely because they exist in a folder.
-Use the [input composition rules](../../../deployment.md#compose-the-inputs)
+Use the [input composition rules](../../../01-04-deployment.md#compose-the-inputs)
 and the approved staged procedure; do not jump directly to the final profile.
 
 ### Optional additions left off in this example
@@ -208,7 +210,7 @@ file with fictional examples. Replace the illustrative values and agree the
 network/DNS contract, policy, permissions, regions, quota and optional scope
 before planning. Keep real inputs and state out of public Git.
 
-Continue with the [scenario prerequisites](../../../docs/scenarios/existing-network.md#before-you-start)
-and the [shared runbook order](../../../deployment.md#runbook-order).
+Continue with the [scenario prerequisites](../../../docs/scenarios/01-existing-network.md#before-you-start)
+and the [shared runbook order](../../../01-04-deployment.md#runbook-order).
 This reference does not approve temporary public access, an apply, RBAC changes
 or platform changes, and it does not promise private-from-first-create behavior.

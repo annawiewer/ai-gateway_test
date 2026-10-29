@@ -2,9 +2,9 @@
 
 This is a technical lookup, not the execution order. For file-role basics, read
 [Understand the sample](understand-the-sample.md). Operators start with the
-[shared deployment procedure](../deployment.md#start-here); use its
-[input catalogue](../deployment.md#inputs-and-state) to find values and its
-[failure/resume guide](../deployment.md#if-something-fails-or-you-open-a-new-terminal)
+[shared deployment procedure](../01-04-deployment.md#start-here); use its
+[input catalogue](../01-04-deployment.md#inputs-and-state) to find values and its
+[failure/resume guide](../01-04-deployment.md#if-something-fails-or-you-open-a-new-terminal)
 when a step stops. Historical migrations below are not routine setup steps.
 
 Details for both [networking paths](../README.md#choose-your-networking-path).
@@ -20,7 +20,7 @@ This identifies the reviewed Terraform configuration and runtime scripts, not a
 version that you must switch to or a production certification.
 
 Use the **exact source revision approved for your deployment**, including its
-documentation, as described in the [checkout steps](../deployment.md#2-open-the-approved-source-revision).
+documentation, as described in the [checkout steps](../01-04-deployment.md#2-open-the-approved-source-revision).
 The `main` branch can change; record the commit or tag you actually use so the
 deployment is reproducible. Keep an existing deployment's approved revision
 unless its owner has approved an update.
@@ -34,9 +34,9 @@ unless its owner has approved an update.
 - Corrected optional private-agent acceptance to check the separate private
   account, and clarified staged/final evidence, telemetry and public-network
   rejection. The original `AIGateway` SKU is unchanged.
-- The [step-by-step guide](../deployment.md#start-here) includes an
-  [existing-network entry](../deployment.md#existing-network-integration-at-a-glance),
-  an [ownership/approval table](../deployment.md#platform-handoff-before-a-plan),
+- The [step-by-step guide](../01-04-deployment.md#start-here) includes an
+  [existing-network entry](../01-04-deployment.md#existing-network-integration-at-a-glance),
+  an [ownership/approval table](../01-04-deployment.md#platform-handoff-before-a-plan),
   state-preservation guidance, manual portal evidence and recovery without
   reopening an already-private gateway. These documentation updates do not change
   the Terraform resource definitions or SKU.
@@ -46,17 +46,17 @@ unless its owner has approved an update.
 | Offline checks | The implementation has Terraform/script regression checks. The corrected acceptance fixtures and documentation examples were checked offline; this does not verify your network or Azure Policy. |
 | Scoped live evidence | The [October 27 rehearsal](#private-only-gateway-ingress-status) created the original SKU with separately owned network/DNS, completed staged private closure, and checked private calls, network/authentication boundaries, telemetry, routing and no-change plans. This is historical evidence for that environment, not a new deployment of every subsequent documentation revision. |
 | Not established by that rehearsal | Private-from-first-create, another subscription/region, your backend/CI/PIM/policies, or optional hosted-agent, Blob and registry runtime acceptance. The earlier agent proof has its own separate scope. |
-| Required for your deployment | Record the source revision you use and the input/state owners, then complete the [deployment acceptance checklist](../deployment.md#deployment-acceptance-checklist). Keep keys, state and environment-specific evidence out of the public repository. |
+| Required for your deployment | Record the source revision you use and the input/state owners, then complete the [deployment acceptance checklist](../01-04-deployment.md#deployment-acceptance-checklist). Keep keys, state and environment-specific evidence out of the public repository. |
 
 ## File guide
 
 | File | What it controls |
 | --- | --- |
-| [terraform.tfvars.example](../terraform.tfvars.example) | Template for your ignored `terraform.tfvars` |
-| [profiles/private-connectivity.tfvars.json](../profiles/private-connectivity.tfvars.json) | Four private-connectivity settings, including explicit gateway endpoint approval (no secrets) |
-| [profiles/private-only.tfvars.json](../profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
-| [profiles/network-create.tfvars.json](../profiles/network-create.tfvars.json) | Sample-managed network/DNS ownership; independent of public/private access |
-| [profiles/network-existing.tfvars.json](../profiles/network-existing.tfvars.json) | Minimal existing-network/DNS ownership example; replace every fictional ID in an untracked copy |
+| [01-04-terraform.tfvars.example](../01-04-terraform.tfvars.example) | Template for your ignored `terraform.tfvars` |
+| [01-04-profiles/private-connectivity.tfvars.json](../01-04-profiles/private-connectivity.tfvars.json) | Four private-connectivity settings, including explicit gateway endpoint approval (no secrets) |
+| [01-04-profiles/private-only.tfvars.json](../01-04-profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
+| [01-04-profiles/network-create.tfvars.json](../01-04-profiles/network-create.tfvars.json) | Sample-managed network/DNS ownership; independent of public/private access |
+| [01-04-profiles/network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json) | Minimal existing-network/DNS ownership example; replace every fictional ID in an untracked copy |
 | [examples/terragrunt-existing.hcl.example](../examples/terragrunt-existing.hcl.example) | Local-root adapter for your network and DNS dependency outputs; adapt existing include/backend paths |
 | [variables.tf](../variables.tf) / [outputs.tf](../outputs.tf) | Inputs, validation, outputs |
 | [ai-gateway.tf](../ai-gateway.tf) | Gateway, provider, catalog, aliases, runtime key, telemetry exporter |
@@ -81,8 +81,8 @@ responsibilities, not modules, resource addresses or states.
 ## Inputs
 
 Required values are in the operator guide's
-[input catalogue](../deployment.md#3-fill-in-the-required-values);
-tool/provider requirements are in its [prerequisites](../deployment.md#prerequisites).
+[input catalogue](../01-04-deployment.md#3-fill-in-the-required-values);
+tool/provider requirements are in its [prerequisites](../01-04-deployment.md#prerequisites).
 
 | Input | Purpose and default |
 | --- | --- |
@@ -162,7 +162,7 @@ Deployment credentials need role-assignment permission at this scope.
 
 This can be added **after deployment** with the original state and complete
 inputs. Keep the approved ownership/access inputs and any post-profile endpoint
-exception on every plan, using [input composition](../deployment.md#compose-the-inputs).
+exception on every plan, using [input composition](../01-04-deployment.md#compose-the-inputs).
 Review the saved plan, then apply it. Keep map keys stable and retain entries on later plans;
 removing an entry removes its Terraform-managed role assignment. If an equivalent
 role already exists outside Terraform, import it at the intended address or keep
@@ -416,7 +416,7 @@ Switching the approval flag replaces the gateway endpoint, not the gateway
 service or model endpoint. Retain an existing healthy automatic endpoint only
 with the approved `-var=gateway_private_endpoint_manual_approval=false`
 exception after the profile on **every** plan. Use
-[input composition](../deployment.md#compose-the-inputs); never import a new
+[input composition](../01-04-deployment.md#compose-the-inputs); never import a new
 endpoint over old state without preserving state and accounting for the old
 cloud resource.
 
@@ -435,7 +435,7 @@ has disappeared.
 **Who:** the Terraform/Terragrunt platform maintainer. If the operator does not
 maintain that pipeline, ask its maintainer to adapt this section. Do not build a
 second deployment system. Without Terragrunt, retain the
-[direct input-file workflow](../deployment.md#compose-the-inputs).
+[direct input-file workflow](../01-04-deployment.md#compose-the-inputs).
 
 [terragrunt-existing.hcl.example](../examples/terragrunt-existing.hcl.example)
 consumes separate network and DNS dependencies and uses this **same standalone
@@ -487,7 +487,7 @@ gateway_subnet_id = dependency.network.outputs.subnet_ids["gateway-integration"]
 
 This is one field **inside** `inputs.existing_private_network`, not a new
 top-level Terraform variable. The four DNS keys still map to the exact zone
-names in the [ID lookup table](../deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
+names in the [ID lookup table](../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
 Missing output or `Unsupported attribute` means stop and correct the contract
 with its owner; do not fill deployment dependencies with fake `mock_outputs`.
 
@@ -497,7 +497,7 @@ Copy the supplied adapter into the approved workload unit as `terragrunt.hcl`
 **only if that file does not already exist**. For an existing file, the
 maintainer integrates the blocks through the usual review process instead of
 overwriting its settings. Create/select that unit's protected `workload.tfvars`
-using the [base input catalogue](../deployment.md#inputs-and-state), without
+using the [base input catalogue](../01-04-deployment.md#inputs-and-state), without
 copying another deployment's state.
 
 | Adapter field | What to set for the illustrative layout |
@@ -551,7 +551,7 @@ backends and execute inherited hooks even for a plan, so this is a
 **target-authorized pipeline operation**, not an offline syntax test.
 Do not run `--all`/`run-all` or apply the network/DNS units to install the gateway.
 
-Review the [same ownership/access checklist](../deployment.md#review-every-plan-before-apply).
+Review the [same ownership/access checklist](../01-04-deployment.md#review-every-plan-before-apply).
 Then use the normal approval and saved-plan apply job for **this workload**,
 preserving its exact source, backend and artifact. The platform maintainer owns
 the installed version's cache/artifact and
@@ -577,7 +577,7 @@ operator; this adapter is not a separate turnkey deployment system.
   Initialization without backend configuration uses local state; allow that only
   for an explicitly approved local PoC. For a new shared workload, obtain the
   platform's approved encrypted, access-controlled backend and locking procedure
-  before initialization. Follow [state ownership and initialization](../deployment.md#1-confirm-which-state-belongs-to-this-workload).
+  before initialization. Follow [state ownership and initialization](../01-04-deployment.md#1-confirm-which-state-belongs-to-this-workload).
 - **Existing workloads:** retain the authoritative backend, state and approved
   initialization procedure. `terraform init -migrate-state` is **not** a routine
   setup step; any migration or reconfiguration needs a separate reviewed plan.
@@ -809,7 +809,7 @@ Those failures and the October 23 product-group investigation are historical
 observations, not a current prohibition against `Disabled`. Their root cause
 is still unknown; do not attribute success to a timeout change or product fix.
 
-Use the explicit [private-only profile](../profiles/private-only.tfvars.json)
+Use the explicit [private-only profile](../01-04-profiles/private-only.tfvars.json)
 for the intended end state. Keep it as the final access var-file on all plans,
 including monitoring and drift checks, followed only by approved endpoint
 compatibility exceptions. The intermediate provisioning profile still sets `Enabled`.

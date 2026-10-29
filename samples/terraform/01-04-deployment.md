@@ -1,10 +1,10 @@
-# Deployment guide
+# Shared deployment guide: scenarios 01-04
 
 [Overview and architecture](README.md)
 
 ## Start here
 
-This is the **shared operator procedure** for the
+This is the **shared operator procedure for scenarios 01-04**. Use the
 [scenario selected in the overview](README.md). Prepare the approved inputs,
 then follow the ordered journey below for that scenario.
 Specialist guides are linked at their execution step, not extra deployments to
@@ -94,7 +94,7 @@ run beside direct Terraform.
 
 ## Update an existing gateway
 
-Use the [existing-gateway scenario](docs/scenarios/update-existing.md), not the
+Use the [existing-gateway scenario](docs/scenarios/04-update-existing.md), not the
 new-workload copy/bootstrap steps. A missing local state file does not make
 the gateway new.
 
@@ -186,7 +186,7 @@ From the repository root, enter the Terraform directory:
 Set-Location .\samples\terraform
 Get-Location
 Test-Path .\versions.tf
-Test-Path .\profiles\network-existing.tfvars.json
+Test-Path .\01-04-profiles\network-existing.tfvars.json
 git rev-parse HEAD
 ```
 
@@ -265,7 +265,7 @@ routine setup step.
 
 The tracked [.gitignore](.gitignore) excludes environment-specific `*.tfvars`,
 `*.tfvars.json`, state and plans in this directory. The shared profiles and
-`terraform.tfvars.example` are intentionally tracked. Ignoring a file does not
+`01-04-terraform.tfvars.example` are intentionally tracked. Ignoring a file does not
 encrypt it or protect a file already tracked by Git.
 
 For a **new workload with no existing input file**, run once:
@@ -274,11 +274,11 @@ For a **new workload with no existing input file**, run once:
 if (Test-Path -LiteralPath .\terraform.tfvars) {
     throw 'An input file already exists. Review it with its owner; do not overwrite it.'
 }
-Copy-Item -LiteralPath .\terraform.tfvars.example -Destination .\terraform.tfvars
+Copy-Item -LiteralPath .\01-04-terraform.tfvars.example -Destination .\terraform.tfvars
 ```
 
 In VS Code, choose **File > Open Folder**, open `samples\terraform`, then select
-the new **terraform.tfvars**, not `terraform.tfvars.example`. Fill the table
+the new **terraform.tfvars**, not `01-04-terraform.tfvars.example`. Fill the table
 below and save. Leave unneeded optional settings commented out.
 
 If an **approved input file already exists**, for either a new or an existing
@@ -431,10 +431,10 @@ selected in the appendix.
 
 | Approved ownership | Set the ownership file |
 | --- | --- |
-| Sample-managed foundation (`create`) | `$networkOwnershipFile = 'profiles\network-create.tfvars.json'` |
+| Sample-managed foundation (`create`) | `$networkOwnershipFile = '01-04-profiles\network-create.tfvars.json'` |
 | Existing platform, with complete network inputs | `$networkOwnershipFile = 'network-existing.environment.tfvars.json'` |
 
-For **create**, [network-create.tfvars.json](profiles/network-create.tfvars.json)
+For **create**, [network-create.tfvars.json](01-04-profiles/network-create.tfvars.json)
 keeps the existing sample names, Terraform addresses and address defaults. With
 private networking enabled, Terraform creates the gateway VNet/subnets, NSGs,
 private DNS zones and links. It does **not** create a corporate hub, firewall,
@@ -799,7 +799,7 @@ the deployment client. All aliases must answer; final plan exit `0` means no cha
 
 ## Private-only
 
-The final [private-only profile](profiles/private-only.tfvars.json) disables
+The final [private-only profile](01-04-profiles/private-only.tfvars.json) disables
 **both gateway and model public access**. Private clients reach the gateway's
 private endpoint; separate gateway outbound VNet integration reaches the model
 private endpoint. Private DNS, endpoint approval and working routes are all required.
@@ -1015,7 +1015,7 @@ $networkOwnershipFile = '.\network-existing.environment.tfvars.json'
 ```
 
 For a **new input file only**, copy
-[profiles\network-existing.tfvars.json](profiles/network-existing.tfvars.json).
+[01-04-profiles\network-existing.tfvars.json](01-04-profiles/network-existing.tfvars.json).
 Keep the shared example unchanged. If an approved file already exists, **skip
 the copy block** and edit that file, retaining its complete object and optional
 fields rather than replacing them with this minimal template.
@@ -1024,7 +1024,7 @@ fields rather than replacing them with this minimal template.
 if (Test-Path -LiteralPath $networkOwnershipFile) {
     throw 'Environment-specific network inputs already exist. Review that file instead of overwriting it.'
 }
-Copy-Item -LiteralPath .\profiles\network-existing.tfvars.json `
+Copy-Item -LiteralPath .\01-04-profiles\network-existing.tfvars.json `
     -Destination $networkOwnershipFile
 ```
 

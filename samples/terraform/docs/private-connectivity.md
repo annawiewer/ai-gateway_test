@@ -1,7 +1,7 @@
 # Private-only path
 
 This is the **canonical private-connectivity procedure** selected from the
-[shared operator guide](../deployment.md#private-only), not an extra step after
+[shared operator guide](../01-04-deployment.md#private-only), not an extra step after
 a public deployment. It uses the gateway resource type declared by this sample;
 see [resource type and lifecycle](reference.md#resource-type-and-lifecycle).
 
@@ -32,7 +32,7 @@ for staged provisioning and compatibility. Keep `private-only` as the final
 access var-file on every final-state plan, including drift/monitoring changes;
 retain approved endpoint compatibility exceptions after it. It overrides earlier
 var-files and `terraform.tfvars`. Also retain the selected
-[network-ownership profile](../deployment.md#network-foundation-create-or-existing)
+[network-ownership profile](../01-04-deployment.md#network-foundation-create-or-existing)
 before it: create a sample foundation, or reuse approved network/DNS IDs.
 Neither ownership profile changes public access. Reusing the intermediate
 profile can plan to reopen a disabled gateway.
@@ -41,7 +41,7 @@ The gateway endpoint requests manual approval. Workload-managed DNS waits for
 that approval; platform-managed associations require a separate readiness
 handoff. **Changing the approval flag can replace an existing gateway endpoint.**
 Preserve its approved mode and any
-[post-profile compatibility exception](../deployment.md#compose-the-inputs).
+[post-profile compatibility exception](../01-04-deployment.md#compose-the-inputs).
 The [legacy approval/cleanup reference](reference.md#legacy-gateway-private-endpoint-approval-and-cleanup)
 holds API details and historical repairs, not instructions to retry or recreate
 a failed endpoint automatically.
@@ -55,9 +55,9 @@ does not replace acceptance of the target environment.
 
 ## Prerequisites
 
-Complete the [guided prerequisites](../deployment.md#prerequisites),
-[input/state selection](../deployment.md#inputs-and-state) and
-[platform handoff](../deployment.md#platform-handoff-before-a-plan).
+Complete the [guided prerequisites](../01-04-deployment.md#prerequisites),
+[input/state selection](../01-04-deployment.md#inputs-and-state) and
+[platform handoff](../01-04-deployment.md#platform-handoff-before-a-plan).
 Use PowerShell 7 in the approved `samples\terraform` directory. Retain the
 workload's state/backend; the central network keeps its own owner/state.
 Do not run the public-path plan/apply. Additional requirements:
@@ -68,7 +68,7 @@ Do not run the public-path plan/apply. Additional requirements:
 - `Microsoft.Network` registered
 - For the test VM: `Microsoft.Compute`, regional VM quota, and permission to use VM Run Command
 
-Keep the variables selected in [Compose the inputs](../deployment.md#compose-the-inputs).
+Keep the variables selected in [Compose the inputs](../01-04-deployment.md#compose-the-inputs).
 The following checks their presence; it deliberately does **not** reset an
 existing-network selection to `create`:
 
@@ -82,7 +82,7 @@ foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputA
 ```
 
 For a new terminal, follow the main guide's
-[resume instructions](../deployment.md#if-something-fails-or-you-open-a-new-terminal).
+[resume instructions](../01-04-deployment.md#if-something-fails-or-you-open-a-new-terminal).
 Do not replace approved input files with templates.
 
 `create` is the default and preserves the sample's names, Terraform addresses and
@@ -379,7 +379,7 @@ private-from-first-create sequence separately; this staged guide is not that pro
 ```powershell
 $networkProfile = 'private-connectivity'
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
+    "-var-file=$networkOwnershipFile" "-var-file=01-04-profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs "-var=models_public_network_access=Enabled" `
     "-out=private-connectivity-stage1.tfplan"
 if ($LASTEXITCODE -ne 0) { throw 'Private staging plan failed.' }
@@ -735,7 +735,7 @@ intermediate profile; follow [existing private deployments](#existing-private-de
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" '-var-file=profiles\private-connectivity.tfvars.json' `
+    "-var-file=$networkOwnershipFile" '-var-file=01-04-profiles\private-connectivity.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-connectivity.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Model-private plan failed.' }
 terraform show private-connectivity.tfplan
@@ -766,7 +766,7 @@ For an existing gateway that is still public, plan the explicit final profile:
 ```powershell
 $networkProfile = 'private-only'
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
+    "-var-file=$networkOwnershipFile" "-var-file=01-04-profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs '-out=private-only.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Final private plan failed.' }
 terraform show private-only.tfplan
@@ -807,7 +807,7 @@ the sample VM. Then check drift with the required final profile:
 ```powershell
 $networkProfile = 'private-only'
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" "-var-file=profiles\$networkProfile.tfvars.json" `
+    "-var-file=$networkOwnershipFile" "-var-file=01-04-profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs -detailed-exitcode
 switch ($LASTEXITCODE) {
     0 { 'No pending Terraform changes.' }
@@ -868,7 +868,7 @@ incur their continuing charges.
 
 Preserve the authoritative state/backend and all approved environment and
 network-ownership inputs, runtime files and endpoint-approval exceptions.
-Use [input composition](../deployment.md#compose-the-inputs); do not create
+Use [input composition](../01-04-deployment.md#compose-the-inputs); do not create
 fresh base files or replay Step 2's Models-Public override. The shared profiles
 select manual approval, which can replace a healthy automatic endpoint unless
 its approved exception is retained.
@@ -898,7 +898,7 @@ For the already-disabled entry, a fresh full review plan is:
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
+    "-var-file=$networkOwnershipFile" '-var-file=01-04-profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-maintenance.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Private maintenance plan failed.' }
 terraform show private-maintenance.tfplan

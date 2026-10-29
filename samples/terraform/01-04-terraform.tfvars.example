@@ -1,5 +1,6 @@
+# Base template (01-04-terraform.tfvars.example), shared by scenarios 01-04.
 # New workload only: copy to terraform.tfvars; never overwrite existing inputs.
-# Follow deployment.md#inputs-and-state for each value and the approved backend.
+# Follow 01-04-deployment.md#inputs-and-state for each value and the approved backend.
 # HCL belongs in this file, not in PowerShell. Save after editing.
 # Replace the UUID, contact, regions and model choices with approved values.
 subscription_id  = "00000000-0000-0000-0000-000000000000"
@@ -18,14 +19,14 @@ publisher_email  = "platform@example.com"
 #   }
 # }
 
-# Public is the default; select profiles/private-only.tfvars.json for the final private posture.
-# profiles/private-connectivity.tfvars.json is an intermediate provisioning stage only.
-# See deployment.md before staging; never reopen an already-private endpoint.
+# Public is the default; select 01-04-profiles/private-only.tfvars.json for the final private posture.
+# 01-04-profiles/private-connectivity.tfvars.json is an intermediate provisioning stage only.
+# See 01-04-deployment.md before staging; never reopen an already-private endpoint.
 # enable_private_networking     = true
 #
 # Independently choose ONE network ownership profile on every plan:
-# profiles/network-create.tfvars.json: sample-created gateway network/DNS (default).
-# profiles/network-existing.tfvars.json: copy to an ignored environment file and replace ALL IDs.
+# 01-04-profiles/network-create.tfvars.json: sample-created gateway network/DNS (default).
+# 01-04-profiles/network-existing.tfvars.json: copy to an ignored environment file and replace ALL IDs.
 # Load workload inputs, then network ownership, then the private-access profile last.
 # Existing mode requires private networking; missing IDs never create a fallback network.
 # Keep ownership inputs in that selected file, rather than duplicating them here.

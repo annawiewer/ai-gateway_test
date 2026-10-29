@@ -11,20 +11,36 @@ Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Sa
 An existing network does not mean an existing gateway. Pick one entry; you do
 not need to work through the other scenarios.
 
-| Your starting situation | Entry page | Main inputs |
-| --- | --- | --- |
-| **New gateway; existing private network and central DNS** | [Reuse existing platform networking](docs/scenarios/existing-network.md) | New workload values, approved subnet/zone IDs and DNS-association owner |
-| **New gateway; create a private test network** | [New private lab](docs/scenarios/private-lab.md) | New workload values and approved, non-overlapping network ranges |
-| **New gateway; deliberately public test setup** | [New public lab](docs/scenarios/public-lab.md) | New workload values and approval for public access |
-| **Gateway already deployed; make an update** | [Update an existing gateway](docs/scenarios/update-existing.md) | Existing approved inputs, profiles and authoritative state |
+| Scenario | Your starting situation | Entry page | Main inputs |
+| --- | --- | --- | --- |
+| **01** | **New gateway; existing private network and central DNS** | [Reuse existing platform networking](docs/scenarios/01-existing-network.md) | New workload values, approved subnet/zone IDs and DNS-association owner |
+| **02** | **New gateway; create a private test network** | [New private lab](docs/scenarios/02-private-lab.md) | New workload values and approved, non-overlapping network ranges |
+| **03** | **New gateway; deliberately public test setup** | [New public lab](docs/scenarios/03-public-lab.md) | New workload values and approval for public access |
+| **04** | **Gateway already deployed; make an update** | [Update an existing gateway](docs/scenarios/04-update-existing.md) | Existing approved inputs, profiles and authoritative state |
+
+These are **scenario IDs, not an execution order**. The matching prefix on a
+scenario guide or filled-example folder identifies its scenario.
+**`01-04-` marks material shared across all four scenarios:**
+
+| Shared material | Purpose |
+| --- | --- |
+| [Base template (`01-04-terraform.tfvars.example`)](01-04-terraform.tfvars.example) | Starting template for a new workload; retain approved inputs when updating an existing workload. |
+| [01-04-deployment.md](01-04-deployment.md) | Shared runbook; follow only the branch selected by your scenario. |
+| [01-04-profiles](01-04-profiles/) | Shared library of network/access choices, not a set to load in full. Your scenario identifies the relevant files and approved stage. |
+
+For Scenario 01, the matching filled reference is
+[examples/filled/01-existing-network/README.md](examples/filled/01-existing-network/README.md).
+The working input file remains `terraform.tfvars`; the root `*.tf` implementation
+and README filenames keep their conventional names. No separate stacks or
+copies of the shared inputs are needed.
 
 **Just learning?** [Understand the sample without deploying](docs/understand-the-sample.md)
 explains the files, their relationships and optional editor help. No terminal,
 Azure login or deployment is needed.
 
 Each scenario identifies its files and leads to the
-[shared deployment procedure](deployment.md#runbook-order). The scenario folders
-contain documentation, **not separate Terraform stacks**. This page explains
+[shared deployment procedure](01-04-deployment.md#runbook-order). The numbered guides
+and example folders contain documentation, **not separate Terraform stacks**. This page explains
 scope and architecture; the deployment guide owns the command sequence.
 
 ## What gets deployed
@@ -87,7 +103,7 @@ An ownership profile alone does **not** enable private networking. Network and
 DNS foundations are created together or reused together; there is no mixed
 create-network/external-DNS option. In existing mode, the platform retains its
 network, resolver, zones and links. Select one
-[DNS-association owner](deployment.md#choose-the-dns-zone-group-owner) and wait
+[DNS-association owner](01-04-deployment.md#choose-the-dns-zone-group-owner) and wait
 for those associations before accepting connectivity.
 
 The `private-connectivity` profile is an **intermediate new-deployment stage**
@@ -109,9 +125,9 @@ requirements. Authentication does not provide a missing private network route.
 
 ## Before you deploy
 
-- Check [tools, region/quota, provider registration and permissions](deployment.md#prerequisites). Reusing platform networking requires approved inputs and scoped access, not ownership of its state.
-- Complete the [platform handoff and policy review](deployment.md#platform-team-policy-compatibility) **before a plan**. If public gateway/model access is prohibited even temporarily, do not use the new-deployment sequence unchanged. Required private access to supporting services must be designed explicitly.
-- For an [existing gateway](docs/scenarios/update-existing.md), keep its authoritative state, full approved inputs and current endpoint-approval mode. Changing foundation ownership, changing the DNS-association owner or upgrading the [former three-group layout](docs/reference.md#single-group-consolidation) requires a separately approved migration; it is not a routine flag change.
+- Check [tools, region/quota, provider registration and permissions](01-04-deployment.md#prerequisites). Reusing platform networking requires approved inputs and scoped access, not ownership of its state.
+- Complete the [platform handoff and policy review](01-04-deployment.md#platform-team-policy-compatibility) **before a plan**. If public gateway/model access is prohibited even temporarily, do not use the new-deployment sequence unchanged. Required private access to supporting services must be designed explicitly.
+- For an [existing gateway](docs/scenarios/04-update-existing.md), keep its authoritative state, full approved inputs and current endpoint-approval mode. Changing foundation ownership, changing the DNS-association owner or upgrading the [former three-group layout](docs/reference.md#single-group-consolidation) requires a separately approved migration; it is not a routine flag change.
 
 ## Architecture views
 
@@ -134,8 +150,8 @@ Private client -> gateway private endpoint -> AI Gateway
 AI Gateway -> outbound VNet integration -> model private endpoint -> Foundry model
 ```
 
-See [network and DNS](deployment.md#existing-network-connectivity-reference),
-[resource ownership](deployment.md#platform-handoff-before-a-plan) and the
+See [network and DNS](01-04-deployment.md#existing-network-connectivity-reference),
+[resource ownership](01-04-deployment.md#platform-handoff-before-a-plan) and the
 [end-to-end request flow](docs/architecture.md#end-to-end-private-request-flow).
 Historical rehearsals are not acceptance of another environment; their
 [verification scope](docs/reference.md#private-only-gateway-ingress-status)
@@ -174,15 +190,15 @@ Use the files named by your scenario. Commands run from `samples/terraform`;
 Terraform loads **all root `.tf` files together**. Profiles are explicitly
 selected inputs, not stacks or automatically active folders. Later assignments
 replace whole objects, not nested fields; follow the
-[input composition rules](deployment.md#compose-the-inputs). Keep approved
+[input composition rules](01-04-deployment.md#compose-the-inputs). Keep approved
 environment files and state out of public Git.
 
 | Task | Canonical guide |
 | --- | --- |
 | Understand which files to open or edit | [File-by-file explanation](docs/understand-the-sample.md#which-files-do-i-open-or-edit) |
-| Prepare inputs, agree ownership and review a saved plan | [Shared deployment procedure](deployment.md#runbook-order) |
-| <a id="private-connectivity-path"></a><a id="private-only-path"></a>Deploy or maintain private access | [Private-only branch](deployment.md#private-only); already-private gateways use the [existing-deployment procedure](docs/private-connectivity.md#existing-private-deployments) |
-| <a id="public-endpoint-path"></a>Deploy a deliberately public workload | [Public branch](deployment.md#public), not a bootstrap step for the private scenario |
+| Prepare inputs, agree ownership and review a saved plan | [Shared deployment procedure](01-04-deployment.md#runbook-order) |
+| <a id="private-connectivity-path"></a><a id="private-only-path"></a>Deploy or maintain private access | [Private-only branch](01-04-deployment.md#private-only); already-private gateways use the [existing-deployment procedure](docs/private-connectivity.md#existing-private-deployments) |
+| <a id="public-endpoint-path"></a>Deploy a deliberately public workload | [Public branch](01-04-deployment.md#public), not a bootstrap step for the private scenario |
 | <a id="additional-runtime-checks"></a>Accept the result from the intended client | [Common acceptance](docs/acceptance.md); use the [sample-VM runner](docs/end-to-end.md) only if you chose that optional client |
 | Understand components, request flows and identity boundaries | [Architecture explanation](docs/architecture.md) |
 | <a id="going-further"></a>Look up inputs, outputs, state, limits and implementation | [Technical reference](docs/reference.md), including the [repository-specific AzAPI implementation](docs/reference.md#terraform-implementation) |

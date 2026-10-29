@@ -1,6 +1,6 @@
 # Copy into the workload live unit as terragrunt.hcl, not into a second owner.
 # Adapt all paths and retain approved include labels, filenames and backend/state.
-# Follow deployment.md#optional-terragrunt-adapter for placement and output mapping.
+# Follow 01-04-deployment.md#optional-terragrunt-adapter for placement and output mapping.
 # Network/DNS units must already expose real outputs; do not deploy using mocks.
 include "platform" {
   path = find_in_parent_folders("root.hcl")
@@ -18,7 +18,7 @@ terraform {
     commands = get_terraform_commands_that_need_vars()
     arguments = [
       "-var-file=${get_terragrunt_dir()}\\workload.tfvars",
-      "-var-file=${local.sample_root}\\profiles\\private-only.tfvars.json",
+      "-var-file=${local.sample_root}\\01-04-profiles\\private-only.tfvars.json",
     ]
   }
 }

@@ -9,7 +9,7 @@
     "highlight.regexes": {
       "(?<![A-Za-z0-9_.@<>-])(00000000-0000-0000-0000-000000000000|(?:rg-example-(?:network|dns)|vnet-example-(?:gateway|models)|snet-example-(?:gateway-integration|private-endpoints))-replace|platform@example\\.com|<(?:managed-identity-or-service-principal-object-id|your-public-key|actual-runtime-object-id)>)(?![A-Za-z0-9_.@<>-])(?<=[:=][ \\t]*\"(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*)(?=(?:[^\"\\\\\\r\\n]|\\\\[^\\r\\n])*\")": {
         "regexFlags": "g",
-        "filterFileRegex": "(?:^|[\\\\/])samples[\\\\/]terraform[\\\\/](?!(?:[^\\\\/]+[\\\\/])*(?:\\.terraform|\\.git)[\\\\/])(?:[^\\\\/]+[\\\\/])*(?:terraform\\.tfvars\\.example|[^\\\\/]+\\.tfvars(?:\\.json)?)$",
+        "filterFileRegex": "(?:^|[\\\\/])samples[\\\\/]terraform[\\\\/](?!(?:[^\\\\/]+[\\\\/])*(?:\\.terraform|\\.git)[\\\\/])(?:[^\\\\/]+[\\\\/])*(?:01-04-terraform\\.tfvars\\.example|[^\\\\/]+\\.tfvars(?:\\.json)?)$",
         "decorations": [
           {
             "backgroundColor": "theme.badge.background",

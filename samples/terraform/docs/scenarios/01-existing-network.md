@@ -1,4 +1,4 @@
-# New gateway on existing private networking
+# Scenario 01: new gateway on existing private networking
 
 [All scenarios](../../README.md#choose-your-scenario)
 
@@ -6,7 +6,7 @@ Use this entry when **the gateway workload is new**, but the platform team
 already manages the network and central Private DNS. The target is private-only
 gateway/model access after approved staged setup.
 
-If the gateway is already deployed, use [Update an existing gateway](update-existing.md)
+If the gateway is already deployed, use [Scenario 04: update an existing gateway](04-update-existing.md)
 instead. Do not start a new state or replace its inputs with these examples.
 
 ## Before you start
@@ -23,24 +23,26 @@ instead. Do not start a new state or replace its inputs with these examples.
 
 Paths below are relative to `samples/terraform`; use your organization's
 approved filenames and input storage if already defined.
+The `01-04-` prefix marks shared material; select only the files and stages
+listed for this scenario, not every file in the profile library.
 
 | File | Action |
 | --- | --- |
-| [terraform.tfvars.example](../../terraform.tfvars.example) | If no approved workload input file exists, copy to a protected file such as `terraform.tfvars`. Fill in subscription, workload/gateway regions, publisher contact, model deployments and other approved workload values. |
-| [profiles/network-existing.tfvars.json](../../profiles/network-existing.tfvars.json) | Use the complete approved environment input file if one is already supplied. Otherwise copy the template to a protected file such as `network-existing.environment.tfvars.json`, replace all placeholder IDs and agree `private_dns_zone_group_management`. Keep the complete `existing_private_network` object. |
-| [profiles/private-connectivity.tfvars.json](../../profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; the gateway is still public in this profile. |
-| [profiles/private-only.tfvars.json](../../profiles/private-only.tfvars.json) | Select for the final gateway/model private-only stage after approval and connectivity checks. |
+| [Base template (`01-04-terraform.tfvars.example`)](../../01-04-terraform.tfvars.example) | If no approved workload input file exists, copy to a protected file such as `terraform.tfvars`. Fill in subscription, workload/gateway regions, publisher contact, model deployments and other approved workload values. |
+| [01-04-profiles/network-existing.tfvars.json](../../01-04-profiles/network-existing.tfvars.json) | Use the complete approved environment input file if one is already supplied. Otherwise copy the template to a protected file such as `network-existing.environment.tfvars.json`, replace all placeholder IDs and agree `private_dns_zone_group_management`. Keep the complete `existing_private_network` object. |
+| [01-04-profiles/private-connectivity.tfvars.json](../../01-04-profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; the gateway is still public in this profile. |
+| [01-04-profiles/private-only.tfvars.json](../../01-04-profiles/private-only.tfvars.json) | Select for the final gateway/model private-only stage after approval and connectivity checks. |
 | All root `*.tf` files | Use the shared implementation unchanged. Do not copy a subset into a new folder or import the platform network into workload state. |
 
 The existing-network copy selects **ownership**, not private access.
 The access profile selects a deployment stage, not network ownership. Follow
-the [input composition rules](../../deployment.md#compose-the-inputs) and the
+the [input composition rules](../../01-04-deployment.md#compose-the-inputs) and the
 approved procedure for any temporary override. A later object assignment
 replaces the whole object; it does not merge extra fields into an earlier one.
 Never place environment values, secrets or state in public Git.
 
 For an illustration of the completed inputs, see the
-[filled input reference](../../examples/filled/existing-network/README.md).
+[Scenario 01 filled input reference](../../examples/filled/01-existing-network/README.md).
 It includes fictional base and network values, a color key and guidance on
 which commented settings to leave alone. It supplements this scenario and the
 shared runbook; it is not a separate deployment procedure.
@@ -69,15 +71,15 @@ configuration create zone groups against the existing zones; `platform` leaves
 those associations to platform automation. Both require approved zone IDs.
 Neither transfers ownership of central zones, links or the resolver.
 
-See the [field-by-field input mapping](../../deployment.md#find-resource-ids-and-fill-in-the-network-input-file)
+See the [field-by-field input mapping](../../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file)
 for required metadata, Portal lookup and conditional inputs for agent, Storage
 or test-VM extensions. Complete the
-[platform handoff](../../deployment.md#platform-handoff-before-a-plan)
+[platform handoff](../../01-04-deployment.md#platform-handoff-before-a-plan)
 before a plan.
 
 ## Continue with the shared procedure
 
-Follow the [shared runbook order](../../deployment.md#runbook-order), using
+Follow the [shared runbook order](../../01-04-deployment.md#runbook-order), using
 existing ownership and the approved private stages. The canonical
 [private-connectivity procedure](../private-connectivity.md) includes endpoint
 approval, private-route checks and final closure of public access.

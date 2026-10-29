@@ -75,7 +75,7 @@ no credentialed cloud deployment workflow yet.
 
 For an existing deployment, preserve its backend/state, exact stable naming inputs
 and any migration revision. Never copy its state into a second active environment.
-For a genuinely new, eligible environment use `terraform.tfvars.example` plus the
+For a genuinely new, eligible environment use `01-04-terraform.tfvars.example` plus the
 chosen create/existing ownership inputs and private profile, not another
 developer's local migration overrides.
 Follow the [private guide](private-connectivity.md) for preflight and staged,
@@ -104,8 +104,8 @@ also needs Log Analytics and AMW Prometheus query access.
 
 **Where:** the configured workload's `samples\terraform` directory, not the
 separate clean checkout used for generic fixtures. Complete or restore the
-main guide's [Azure context](../deployment.md#inputs-and-state) and
-[full input selection](../deployment.md#compose-the-inputs) first. Do not copy
+main guide's [Azure context](../01-04-deployment.md#inputs-and-state) and
+[full input selection](../01-04-deployment.md#compose-the-inputs) first. Do not copy
 state between these directories.
 
 ```powershell
@@ -170,7 +170,7 @@ Do not create a second monitoring stack in the portal or assume ingestion delay
 repairs missing configuration. Actual API behavior, delivery and visible portal
 metrics still need runtime proof.
 
-Every drift plan includes `profiles\<NetworkProfile>.tfvars.json` last.
+Every drift plan includes `01-04-profiles\<NetworkProfile>.tfvars.json` last.
 For more approved nonautomatic inputs, add them to `$additionalVarFiles` in
 the main guide and rebuild `$parameters`; do not replace the complete list with
 just one runtime file. Existing automatic

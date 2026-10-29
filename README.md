@@ -18,9 +18,9 @@ not successive installation steps.
 | Build an application that uses an existing gateway | [Coding-agent plugin](#coding-agent-plugin) |
 
 **Already have platform networking and central DNS?** Start with
-[a new gateway on existing networking](samples/terraform/docs/scenarios/existing-network.md).
+[Scenario 01: a new gateway on existing networking](samples/terraform/docs/scenarios/01-existing-network.md).
 An existing *gateway* instead follows the
-[update scenario](samples/terraform/docs/scenarios/update-existing.md).
+[Scenario 04 update guide](samples/terraform/docs/scenarios/04-update-existing.md).
 All four scenarios use one shared Terraform implementation.
 
 > [!IMPORTANT]

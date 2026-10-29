@@ -1,4 +1,4 @@
-# New private lab with sample-managed networking
+# Scenario 02: new private lab with sample-managed networking
 
 [All scenarios](../../README.md#choose-your-scenario)
 
@@ -7,8 +7,8 @@ owned by this sample. The target is private-only gateway/model access after
 approved staged setup.
 
 If central network and DNS already exist, use
-[existing platform networking](existing-network.md). If the gateway already
-exists, use [the update entry](update-existing.md).
+[Scenario 01: existing platform networking](01-existing-network.md). If the gateway already
+exists, use [Scenario 04: the update entry](04-update-existing.md).
 
 ## Before you start
 
@@ -29,15 +29,15 @@ Paths are relative to `samples/terraform`.
 
 | File | Action |
 | --- | --- |
-| [terraform.tfvars.example](../../terraform.tfvars.example) | For a new workload without approved inputs, copy to a protected file such as `terraform.tfvars`. Set workload values and approved network ranges; review any optional extensions. |
-| [profiles/network-create.tfvars.json](../../profiles/network-create.tfvars.json) | Select as the ownership profile. It permits sample-managed foundation creation when private networking is enabled; it does not enable private networking on its own. |
-| [profiles/private-connectivity.tfvars.json](../../profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; this is not the final private-only state. |
-| [profiles/private-only.tfvars.json](../../profiles/private-only.tfvars.json) | Select for final gateway/model private-only access after endpoint approval and private-route verification. |
+| [Base template (`01-04-terraform.tfvars.example`)](../../01-04-terraform.tfvars.example) | For a new workload without approved inputs, copy to a protected file such as `terraform.tfvars`. Set workload values and approved network ranges; review any optional extensions. |
+| [01-04-profiles/network-create.tfvars.json](../../01-04-profiles/network-create.tfvars.json) | Select as the ownership profile. It permits sample-managed foundation creation when private networking is enabled; it does not enable private networking on its own. |
+| [01-04-profiles/private-connectivity.tfvars.json](../../01-04-profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; this is not the final private-only state. |
+| [01-04-profiles/private-only.tfvars.json](../../01-04-profiles/private-only.tfvars.json) | Select for final gateway/model private-only access after endpoint approval and private-route verification. |
 | All root `*.tf` files | Leave the shared implementation in place; there is no separate lab stack to copy or assemble. |
 
 Do not also load an existing-network profile or retain conflicting
 `existing_private_network` values. Follow the
-[complete input selection rules](../../deployment.md#compose-the-inputs);
+[complete input selection rules](../../01-04-deployment.md#compose-the-inputs);
 profiles are not automatically active because they are in the folder.
 Store environment-specific values outside public Git.
 
@@ -55,7 +55,7 @@ supporting services.
 
 ## Continue with the shared procedure
 
-Follow the [shared runbook order](../../deployment.md#runbook-order) and the
+Follow the [shared runbook order](../../01-04-deployment.md#runbook-order) and the
 canonical [private-connectivity procedure](../private-connectivity.md).
 Any initial Models-Public override belongs only to the explicitly approved
 new-deployment stage; do not infer private-from-first-create support.

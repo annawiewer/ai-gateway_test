@@ -1,7 +1,7 @@
 # Gateway OpenTelemetry setup
 
 This is the **canonical monitoring procedure** for the
-[shared deployment guide](../deployment.md#monitoring-setup) and approved updates.
+[shared deployment guide](../01-04-deployment.md#monitoring-setup) and approved updates.
 Run it once for the selected task; do not repeat setup from another guide.
 New workloads prepare the destination here, then return to their full deployment
 path. Existing workloads retain their complete approved inputs and current access.
@@ -41,8 +41,8 @@ not reader access.
 
 **Who/where:** the workload operator, in PowerShell 7 in the approved
 `samples\terraform` working directory. First complete the main guide's
-[input selection](../deployment.md#compose-the-inputs) and
-[platform handoff](../deployment.md#platform-handoff-before-a-plan).
+[input selection](../01-04-deployment.md#compose-the-inputs) and
+[platform handoff](../01-04-deployment.md#platform-handoff-before-a-plan).
 Keep those variables and the authoritative workload state/backend.
 
 Copy exactly one assignment into that same session. These arguments follow the
@@ -52,9 +52,9 @@ endpoint-compatibility arguments follow the access profile.
 | Current state or approved new-deployment stage | Set the monitoring plan arguments |
 | --- | --- |
 | Intentionally public, with approved `create` ownership | `$networkArgs = @()` |
-| Already Private-only | `$networkArgs = @('-var-file=profiles\private-only.tfvars.json')` |
-| Gateway still public, models already private | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json')` |
-| **New private gateway only**, with initial temporary public access explicitly approved | `$networkArgs = @('-var-file=profiles\private-connectivity.tfvars.json', '-var=models_public_network_access=Enabled')` |
+| Already Private-only | `$networkArgs = @('-var-file=01-04-profiles\private-only.tfvars.json')` |
+| Gateway still public, models already private | `$networkArgs = @('-var-file=01-04-profiles\private-connectivity.tfvars.json')` |
+| **New private gateway only**, with initial temporary public access explicitly approved | `$networkArgs = @('-var-file=01-04-profiles\private-connectivity.tfvars.json', '-var=models_public_network_access=Enabled')` |
 
 The final row is bounded to the [new-deployment staging procedure](private-connectivity.md#step-2-prepare-private-connectivity-with-models-temporarily-public).
 It is **not** repair/update advice for a deployed gateway, even if that gateway
@@ -118,7 +118,7 @@ explicitly eligible legacy deployment also creates prerequisite group/Log
 Analytics resources; review those separately. Targeting cannot bypass SKU
 creation restrictions.
 
-Review the [plan checklist](../deployment.md#review-every-plan-before-apply).
+Review the [plan checklist](../01-04-deployment.md#review-every-plan-before-apply).
 **Only after approval**, apply that saved file:
 
 ```powershell
@@ -156,7 +156,7 @@ investigating rather than repeatedly mutating the exporter.
 
 | Situation | Next action |
 | --- | --- |
-| New workload | Return to the main guide's selected [Public](../deployment.md#public) or [Private-only](../deployment.md#private-only) full deployment path. Do not run a targeted exporter repair as a second bootstrap. |
+| New workload | Return to the main guide's selected [Public](../01-04-deployment.md#public) or [Private-only](../01-04-deployment.md#private-only) full deployment path. Do not run a targeted exporter repair as a second bootstrap. |
 | Existing workload with a specifically approved exporter repair | Continue with [Stage B](#stage-b-repair-an-existing-exporter) using the same inputs and current access state. |
 | Destination not ready or permissions fail | Stop and involve the monitoring/platform owner. Generated IDs, state edits and public-access changes are not fixes. |
 

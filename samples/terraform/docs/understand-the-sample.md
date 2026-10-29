@@ -1,10 +1,11 @@
 # Understand the sample
 
-[Overview and scenario selection](../README.md) | [Operator procedure](../deployment.md#start-here) | [Service architecture](architecture.md)
+[Overview and scenario selection](../README.md) | [Operator procedure](../01-04-deployment.md#start-here) | [Service architecture](architecture.md)
 
 This is a **read-only explanation**, not a deployment procedure. Follow it on
 GitHub without a terminal. Its example is a **new gateway workload using an
-existing platform network and central DNS**. If the gateway already exists,
+existing platform network and central DNS**:
+[Scenario 01](scenarios/01-existing-network.md). If the gateway already exists,
 retain its approved inputs, ownership mode and authoritative state; do not
 create a second deployment.
 
@@ -20,7 +21,7 @@ configuration**. `main.tf` is not a script to run first, and
 `private-network.tf` or `private-endpoints.tf` is not a script to run afterward.
 Resource references and dependencies determine ordering, not filenames.
 The file separation does not create modules, independent deployments or new
-states. Files under `profiles` supply input values when selected; their presence
+states. Files under `01-04-profiles` supply input values when selected; their presence
 in a subfolder does not make Terraform execute or automatically load them.
 
 | Term in the files | Meaning |
@@ -44,10 +45,10 @@ than trying to read every file alphabetically.
 
 | File | Purpose | Normal environment-specific edit? |
 | --- | --- | --- |
-| [terraform.tfvars.example](../terraform.tfvars.example) | Template for subscription, naming, regions, model choices and optional features. | For a **new** workload only, copy to `terraform.tfvars` and edit the copy during approved input preparation. Retain an existing approved file instead of overwriting it. |
-| [profiles/network-existing.tfvars.json](../profiles/network-existing.tfvars.json) | Template selecting `existing` and supplying subnet/zone IDs. | For a new input set, copy to `network-existing.environment.tfvars.json` and replace every placeholder. Keep environment inputs protected and out of public Git. |
-| [profiles/network-create.tfvars.json](../profiles/network-create.tfvars.json) | Selects sample-managed network/DNS ownership. | Select it for the approved scenario; it does not by itself enable private networking. |
-| [profiles/private-connectivity.tfvars.json](../profiles/private-connectivity.tfvars.json) / [profiles/private-only.tfvars.json](../profiles/private-only.tfvars.json) | Intermediate and final private-access settings, independent of network ownership. | Select the correct shared file for the approved stage; do not customize the shared profile for one environment. |
+| [Base template (`01-04-terraform.tfvars.example`)](../01-04-terraform.tfvars.example) | Template for subscription, naming, regions, model choices and optional features. | For a **new** workload only, copy to `terraform.tfvars` and edit the copy during approved input preparation. Retain an existing approved file instead of overwriting it. |
+| [01-04-profiles/network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json) | Template selecting `existing` and supplying subnet/zone IDs. | For a new input set, copy to `network-existing.environment.tfvars.json` and replace every placeholder. Keep environment inputs protected and out of public Git. |
+| [01-04-profiles/network-create.tfvars.json](../01-04-profiles/network-create.tfvars.json) | Selects sample-managed network/DNS ownership. | Select it for the approved scenario; it does not by itself enable private networking. |
+| [01-04-profiles/private-connectivity.tfvars.json](../01-04-profiles/private-connectivity.tfvars.json) / [01-04-profiles/private-only.tfvars.json](../01-04-profiles/private-only.tfvars.json) | Intermediate and final private-access settings, independent of network ownership. | Select the correct shared file for the approved stage; do not customize the shared profile for one environment. |
 | [variables.tf](../variables.tf) | Input types, defaults and validation rules. | Read to understand inputs; normally leave the definitions unchanged. |
 | [private-network-context.tf](../private-network-context.tf) | Ownership switch, existing-resource lookups, checks and resolved subnet IDs. | Read; normally leave the implementation unchanged. |
 | [private-network.tf](../private-network.tf) | Conditional sample-managed VNet, subnet, NSG, private DNS-zone and VNet-link creation. | Read; do not delete or comment out blocks to reuse networking. |
@@ -110,7 +111,7 @@ JSON file; its syntax colors do not identify placeholders. **Do not insert emoji
 Markdown, HTML or comments into JSON.**
 
 When approved to prepare an environment copy of
-[network-existing.tfvars.json](../profiles/network-existing.tfvars.json):
+[network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json):
 
 | Label | What it means here |
 | --- | --- |
@@ -141,7 +142,7 @@ Each approved ID belongs **in full inside the existing quotes**, preserving JSON
 keys, nesting, commas and braces. Dotted paths above describe nesting; do not
 create dotted JSON keys. Resource-ID structure and the required DNS zone names
 are not arbitrary replacements. The operator's
-[resource-ID procedure](../deployment.md#find-resource-ids-and-fill-in-the-network-input-file)
+[resource-ID procedure](../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file)
 explains how to obtain them. Do not globally replace subscription UUIDs:
 central zones may use another subscription. Optional features need their
 additional inputs.
@@ -151,7 +152,7 @@ and `platform@example.com`. For the workload name, regions and model settings,
 🟦 **DECIDE WITH PLATFORM TEAM**: `aigateway` is a valid naming default;
 `eastus2` and the model settings are examples requiring approval, not automatic
 recommendations. The operator uses the
-[required-values table](../deployment.md#3-fill-in-the-required-values).
+[required-values table](../01-04-deployment.md#3-fill-in-the-required-values).
 
 ## Follow one input through the code
 
@@ -204,7 +205,7 @@ alternative) and network IDs go in the selected environment network file.
 Terraform automatically reads the standard `terraform.tfvars` and automatic
 var-files; arbitrary filenames and shared profiles require explicit selection.
 An alternative such as `workload.tfvars` is not automatically read just because
-it exists. The [input composition step](../deployment.md#compose-the-inputs)
+it exists. The [input composition step](../01-04-deployment.md#compose-the-inputs)
 supplies the `-var-file` arguments in the approved order.
 
 Later input values override earlier ones **for the whole variable**;
@@ -224,7 +225,7 @@ command environment, not a requirement.
 Enterprise platform teams often use an approved CI runner with the workload's
 existing state/backend, complete inputs and credentials. Retain that authoritative
 process; do not start a second state in Cloud Shell or on another machine.
-Confirm [Inputs and state](../deployment.md#inputs-and-state) before initialization
+Confirm [Inputs and state](../01-04-deployment.md#inputs-and-state) before initialization
 or planning.
 
 | File type | Language and purpose |
@@ -258,7 +259,7 @@ For a clean first-time setup, keep this order:
    `@id:fabiospampinato.vscode-highlight`, right-click **Highlight**, choose
    **Install Another Version**, and select **2.1.0** in this profile.
    Do not choose **Apply Extension to all Profiles**. Open
-   `terraform.tfvars.example` or your selected input copy to see the markings.
+   `01-04-terraform.tfvars.example` or your selected input copy to see the markings.
 
 **Why this order:** in 2.1.0, first activation with empty `highlight.regexes`
 writes default TODO rules to global/user settings. Highlight's own
@@ -287,7 +288,7 @@ Terraform state/backend; retain the existing authoritative state and pipeline.
 
 You do not run every script in the repository. For this walkthrough, run none.
 The actual commands and safety gates remain in the
-[operator procedure](../deployment.md#runbook-order).
+[operator procedure](../01-04-deployment.md#runbook-order).
 
 | Terraform command | What it does |
 | --- | --- |
@@ -320,8 +321,8 @@ separate interfaces; their installers are not Terraform deployment steps.
 
 You can now identify the input files, trace an existing subnet ID and explain
 which resources remain workload-owned. Before a real plan, the operator obtains
-the [platform handoff](../deployment.md#platform-handoff-before-a-plan) and follows
-the [selected scenario](../deployment.md#first-decide-what-already-exists).
+the [platform handoff](../01-04-deployment.md#platform-handoff-before-a-plan) and follows
+the [selected scenario](../01-04-deployment.md#first-decide-what-already-exists).
 
 For a new existing-mode workload, new workload resources and private endpoints
 are expected; changes to the central VNet/subnet/NSG/zone/link foundation are not.

@@ -86,7 +86,7 @@ resource "azapi_resource" "telemetry_exporter" {
           local.gateway_monitoring.traces_endpoint
         ] : can(regex("^https://[^/?#]+/[^?#]+$", endpoint))
       ])
-      error_message = "Gateway OTLP endpoints are incomplete. Enable gateway Insights first, run scripts/Get-GatewayMonitoring.ps1, then create a fresh plan; see deployment.md#monitoring-setup."
+      error_message = "Gateway OTLP endpoints are incomplete. Enable gateway Insights first, run scripts/Get-GatewayMonitoring.ps1, then create a fresh plan; see 01-04-deployment.md#monitoring-setup."
     }
   }
   depends_on = [azapi_resource.role_assignment["gateway-monitoring-publisher"]]

@@ -48,7 +48,7 @@ resources. Inference is billable.
 
 ## 1. Confirm the target and read live resource identities
 
-Restore the main guide's [approved context and complete inputs](../deployment.md#compose-the-inputs)
+Restore the main guide's [approved context and complete inputs](../01-04-deployment.md#compose-the-inputs)
 first, including any runtime files and endpoint compatibility arguments.
 The operator needs
 resource/role-assignment read access and permission to query the gateway's
@@ -236,7 +236,7 @@ gateway must match the explicitly selected profile. Both private endpoints must 
 
 ```powershell
 $networkProfile = 'private-only'
-$selectedProfile = Get-Content -LiteralPath (Join-Path $sampleDirectory "profiles\$networkProfile.tfvars.json") -Raw | ConvertFrom-Json
+$selectedProfile = Get-Content -LiteralPath (Join-Path $sampleDirectory "01-04-profiles\$networkProfile.tfvars.json") -Raw | ConvertFrom-Json
 if ($models.properties.publicNetworkAccess -ne 'Disabled' -or
     $models.properties.networkAcls.defaultAction -ne 'Deny' -or
     $gateway.properties.publicNetworkAccess -ne $selectedProfile.gateway_public_network_access -or
@@ -872,7 +872,7 @@ Run this on **A**, not B. With plain Terraform:
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" "-var-file=$sampleDirectory\profiles\$networkProfile.tfvars.json" `
+    "-var-file=$networkOwnershipFile" "-var-file=$sampleDirectory\01-04-profiles\$networkProfile.tfvars.json" `
     @endpointCompatibilityArgs -detailed-exitcode
 switch ($LASTEXITCODE) {
     0 { 'No pending Terraform changes.' }

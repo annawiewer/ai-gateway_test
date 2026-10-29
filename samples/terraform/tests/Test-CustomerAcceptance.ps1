@@ -319,7 +319,7 @@ function terraform {
     }
     if ('plan' -in $args) {
         $f.planArguments = @($args)
-        if ($args[-1] -cne "-var-file=profiles/$($f.profile).tfvars.json") { throw 'Selected private profile must be last.' }
+        if ($args[-1] -cne "-var-file=01-04-profiles/$($f.profile).tfvars.json") { throw 'Selected private profile must be last.' }
         $effectiveAccess = $null
         foreach ($argument in $args) {
             if ($argument -like '-var-file=*') {
@@ -621,7 +621,7 @@ try {
         $expectedCheck = $cases[$case][1]
         $expectedStatus = if ($cases[$case][0] -eq 'PASS') { 'PASS' } elseif ($case -in @('readonly', 'private-only-readonly', 'existing-readonly')) { 'NOT RUN' } else { 'FAIL' }
         if ($result.checks.$expectedCheck.status -ne $expectedStatus) { throw "Wrong failure boundary in $case." }
-        if ($result.profile -cne "profiles/$($f.profile).tfvars.json") { throw "Wrong reported profile in $case." }
+        if ($result.profile -cne "01-04-profiles/$($f.profile).tfvars.json") { throw "Wrong reported profile in $case." }
         if ($result.checks.'private-network'.status -eq 'PASS') {
             $network = $result.checks.'private-network'.evidence
             if ($network.gatewayPublicAccess -cne $f.resources[$gateway].properties.publicNetworkAccess -or

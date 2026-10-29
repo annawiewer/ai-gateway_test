@@ -1,7 +1,7 @@
 # Private hosted-agent deployment reference
 
 **Optional, not a prerequisite for the gateway.** Follow the
-[step-by-step deployment guide](../deployment.md#start-here) first. Use this guide
+[step-by-step deployment guide](../01-04-deployment.md#start-here) first. Use this guide
 only when an application owner has approved a new private agent account and its
 separate application deployment. HCL/JSON blocks are file contents; PowerShell
 commands run in the approved workload directory.
@@ -128,7 +128,7 @@ repository-local state. For source-only preparation use a clean snapshot without
 Any plan against a deployed workload uses its approved backend and identity;
 do not make a second active state copy.
 
-Complete the main guide's [input selection](../deployment.md#compose-the-inputs).
+Complete the main guide's [input selection](../01-04-deployment.md#compose-the-inputs).
 In the existing approved base input file, enable the new extension and save:
 
 ```hcl
@@ -154,7 +154,7 @@ foreach ($name in @('workloadVarFile', 'networkOwnershipFile', 'additionalInputA
     }
 }
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
+    "-var-file=$networkOwnershipFile" '-var-file=01-04-profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs '-out=private-agent.tfplan'
 if ($LASTEXITCODE -ne 0) { throw 'Private-agent plan failed.' }
 terraform show private-agent.tfplan
@@ -268,7 +268,7 @@ key-reader binding, not broad access or replacements. Then, for subsequent drift
 
 ```powershell
 terraform plan -input=false "-var-file=$workloadVarFile" @additionalInputArgs `
-    "-var-file=$networkOwnershipFile" '-var-file=profiles\private-only.tfvars.json' `
+    "-var-file=$networkOwnershipFile" '-var-file=01-04-profiles\private-only.tfvars.json' `
     @endpointCompatibilityArgs -detailed-exitcode
 if ($LASTEXITCODE -eq 1) { throw 'Terraform plan failed; drift is unknown.' }
 if ($LASTEXITCODE -eq 2) { throw 'Changes require review; do not auto-apply.' }

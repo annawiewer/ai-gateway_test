@@ -5,15 +5,15 @@ the request, and the model generates the answer. This guide explains that core
 path, its transport and identity boundaries, and the optional agent extension.
 The gateway is neither the model host nor the agent runtime.
 
-For execution, use the [shared operator procedure](../deployment.md#runbook-order);
+For execution, use the [shared operator procedure](../01-04-deployment.md#runbook-order);
 for file-role basics, use [Understand the sample](understand-the-sample.md).
 The [preview and resource constraints](reference.md#resource-type-and-lifecycle)
 still apply. Architecture is not evidence that a particular deployment is ready.
 
 **Illustrations:**
 [Overall architecture](../README.md#existing-network-reference-architecture) |
-[Network and DNS](../deployment.md#existing-network-connectivity-reference) |
-[Resource ownership](../deployment.md#platform-handoff-before-a-plan).
+[Network and DNS](../01-04-deployment.md#existing-network-connectivity-reference) |
+[Resource ownership](../01-04-deployment.md#platform-handoff-before-a-plan).
 
 <a id="1-base-sample-architecture"></a>
 
@@ -59,7 +59,7 @@ resources or make Terraform run an agent.
 gateway public access while disabling model public access. It is not a final
 private state or an already-private maintenance profile. Ownership and access
 files must be composed explicitly; later object values replace whole objects,
-not individual nested fields. See [input composition](../deployment.md#compose-the-inputs).
+not individual nested fields. See [input composition](../01-04-deployment.md#compose-the-inputs).
 
 <a id="a-few-terms-before-reading-the-diagrams"></a>
 
@@ -114,7 +114,7 @@ and registry remain publicly enabled; Storage defaults to public access unless
 an approved restriction is configured. The ingress profiles do not add agent
 injection or a Blob private endpoint. Required supporting-service restrictions
 need working connectivity for every consumer, as described in the
-[Policy handoff](../deployment.md#platform-team-policy-compatibility).
+[Policy handoff](../01-04-deployment.md#platform-team-policy-compatibility).
 Use [private connectivity](private-connectivity.md) for the actual staged procedure.
 
 ### End-to-end private request flow
@@ -177,7 +177,7 @@ and refresh may use caches rather than a new round trip for every prompt.
 
 For optional caller inputs, object-ID lookup, exact audiences/roles and
 delegated-user consent, use [Access](reference.md#access). Existing gateways use
-the [update preflight](../deployment.md#update-an-existing-gateway), not bootstrap
+the [update preflight](../01-04-deployment.md#update-an-existing-gateway), not bootstrap
 or an automatic key-removal migration.
 
 <a id="policy-and-monitoring-behavior"></a>
@@ -227,7 +227,7 @@ Fresh correlated traces and the portal metrics comparison remain acceptance gate
 
 | Stage | Owner | Result |
 | --- | --- | --- |
-| Policy, permissions and networking review | Platform team | Approved regions, resource types, identity permissions and reachable dependencies; recorded in the [pre-plan handoff](../deployment.md#platform-handoff-before-a-plan). |
+| Policy, permissions and networking review | Platform team | Approved regions, resource types, identity permissions and reachable dependencies; recorded in the [pre-plan handoff](../01-04-deployment.md#platform-handoff-before-a-plan). |
 | Terraform infrastructure and monitoring setup | Platform team | Gateway, model deployments and aliases, base Foundry account/project, Storage, registry, roles and monitoring; private routing when explicitly selected. |
 | Agent image and application deployment, if needed | Application team | A running hosted agent using the prepared infrastructure, separate from Terraform. |
 | Runtime identity binding, if needed | Platform and application teams | Discovered runtime principal has gateway key-read and registry pull access; binding inputs are retained for future plans. |
@@ -296,7 +296,7 @@ Historical results are scoped observations, not generic customer readiness:
 | [Entra caller results](reference.md#access) | Managed-identity calls and negative controls; not custom delegated-user verification or an agent authentication migration. |
 | [Private-agent proof](private-hosted-agent.md#observed-deployment-and-proof) | The recorded private agent version/image and gateway/backend trace; not every alias, runtime dependency or preview ingress surface. |
 
-Deploy or maintain through the [operator runbook](../deployment.md#runbook-order).
+Deploy or maintain through the [operator runbook](../01-04-deployment.md#runbook-order).
 Select [manual acceptance](acceptance.md) for an approved existing client, or the
 [optional sample-VM runner](end-to-end.md) only when that VM exists. The runner
 reads Azure, plans and writes reports; explicit runtime checks can start the VM,
@@ -310,7 +310,7 @@ a model response alone is not complete acceptance.
 
 The architecture and request flows are documented directly in these guides.
 The illustrations embedded in the [overview](../README.md) and
-[deployment guide](../deployment.md) are included as self-contained SVGs, with
+[deployment guide](../01-04-deployment.md) are included as self-contained SVGs, with
 links to the full-size images. Additional image exports, editable diagram
 sources and rendering tools remain local and are not required for deployment
 or its verification. The illustrations use official service artwork under the

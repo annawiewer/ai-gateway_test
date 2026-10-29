@@ -5,10 +5,10 @@
 *.tfplan
 *.tfvars
 *.tfvars.json
-!profiles/private-connectivity.tfvars.json
-!profiles/private-only.tfvars.json
-!profiles/network-create.tfvars.json
-!profiles/network-existing.tfvars.json
+!01-04-profiles/private-connectivity.tfvars.json
+!01-04-profiles/private-only.tfvars.json
+!01-04-profiles/network-create.tfvars.json
+!01-04-profiles/network-existing.tfvars.json
 crash.log
 crash.*.log
 override.tf

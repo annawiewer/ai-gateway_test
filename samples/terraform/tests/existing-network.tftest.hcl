@@ -135,10 +135,10 @@ variables {
 run "reuse_central_dns_and_distinct_service_subnets" {
   command = plan
   variables {
-    private_network_mode              = jsondecode(file("profiles/network-existing.tfvars.json")).private_network_mode
-    private_dns_zone_group_management = jsondecode(file("profiles/network-existing.tfvars.json")).private_dns_zone_group_management
+    private_network_mode              = jsondecode(file("01-04-profiles/network-existing.tfvars.json")).private_network_mode
+    private_dns_zone_group_management = jsondecode(file("01-04-profiles/network-existing.tfvars.json")).private_dns_zone_group_management
     existing_private_network = jsondecode(replace(
-      file("profiles/network-existing.tfvars.json"),
+      file("01-04-profiles/network-existing.tfvars.json"),
       "00000000-0000-0000-0000-000000000000",
       var.subscription_id
     )).existing_private_network

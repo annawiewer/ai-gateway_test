@@ -240,7 +240,7 @@ run "reject_empty_models" {
 run "private_gateway_and_model_paths" {
   command = plan
   variables {
-    private_network_mode               = jsondecode(file("profiles/network-create.tfvars.json")).private_network_mode
+    private_network_mode               = jsondecode(file("01-04-profiles/network-create.tfvars.json")).private_network_mode
     enable_private_networking          = true
     gateway_public_network_access      = "Disabled"
     models_public_network_access       = "Disabled"
@@ -315,10 +315,10 @@ run "private_gateway_and_model_paths" {
 run "private_connectivity_poc_profile" {
   command = plan
   variables {
-    enable_private_networking                = jsondecode(file("profiles/private-connectivity.tfvars.json")).enable_private_networking
-    gateway_private_endpoint_manual_approval = jsondecode(file("profiles/private-connectivity.tfvars.json")).gateway_private_endpoint_manual_approval
-    gateway_public_network_access            = jsondecode(file("profiles/private-connectivity.tfvars.json")).gateway_public_network_access
-    models_public_network_access             = jsondecode(file("profiles/private-connectivity.tfvars.json")).models_public_network_access
+    enable_private_networking                = jsondecode(file("01-04-profiles/private-connectivity.tfvars.json")).enable_private_networking
+    gateway_private_endpoint_manual_approval = jsondecode(file("01-04-profiles/private-connectivity.tfvars.json")).gateway_private_endpoint_manual_approval
+    gateway_public_network_access            = jsondecode(file("01-04-profiles/private-connectivity.tfvars.json")).gateway_public_network_access
+    models_public_network_access             = jsondecode(file("01-04-profiles/private-connectivity.tfvars.json")).models_public_network_access
   }
 
   override_resource {
@@ -427,10 +427,10 @@ run "private_connectivity_poc_profile" {
 run "private_only_profile" {
   command = plan
   variables {
-    enable_private_networking                = jsondecode(file("profiles/private-only.tfvars.json")).enable_private_networking
-    gateway_private_endpoint_manual_approval = jsondecode(file("profiles/private-only.tfvars.json")).gateway_private_endpoint_manual_approval
-    gateway_public_network_access            = jsondecode(file("profiles/private-only.tfvars.json")).gateway_public_network_access
-    models_public_network_access             = jsondecode(file("profiles/private-only.tfvars.json")).models_public_network_access
+    enable_private_networking                = jsondecode(file("01-04-profiles/private-only.tfvars.json")).enable_private_networking
+    gateway_private_endpoint_manual_approval = jsondecode(file("01-04-profiles/private-only.tfvars.json")).gateway_private_endpoint_manual_approval
+    gateway_public_network_access            = jsondecode(file("01-04-profiles/private-only.tfvars.json")).gateway_public_network_access
+    models_public_network_access             = jsondecode(file("01-04-profiles/private-only.tfvars.json")).models_public_network_access
   }
 
   assert {
