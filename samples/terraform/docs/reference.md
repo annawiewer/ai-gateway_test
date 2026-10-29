@@ -57,7 +57,7 @@ deployment steps.
 
 | File | What it controls |
 | --- | --- |
-| [examples/filled/01-existing-network/01-terraform.tfvars.example](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Active base/model, Entra caller and private-feature inputs for the [filled Scenario 01 variant](../examples/filled/01-existing-network/README.md); use a protected copy and its complete network input |
+| [examples/filled/01-existing-network/01-terraform.tfvars.example](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Active base/model, empty Entra caller map for API-key clients and private-feature inputs for the [filled Scenario 01 variant](../examples/filled/01-existing-network/README.md); use a protected copy and its complete network input, never a secret API-key value |
 | [01-04-terraform.tfvars.example](../01-04-terraform.tfvars.example) | Generic alternative base template for an ignored `terraform.tfvars`; do not load both base examples |
 | [01-04-profiles/private-connectivity.tfvars.json](../01-04-profiles/private-connectivity.tfvars.json) | Four private-connectivity settings, including explicit gateway endpoint approval (no secrets) |
 | [01-04-profiles/private-only.tfvars.json](../01-04-profiles/private-only.tfvars.json) | Explicit private-only gateway end state after staged private connectivity (no secrets) |
@@ -116,6 +116,10 @@ tool/provider requirements are in its [prerequisites](../01-04-deployment.md#pre
 - `token_limit` is the gateway's tokens-per-minute limit per identity.
 - They are independent. Do not convert one to the other.
 
+Terraform already creates the corresponding `tokenLimit` policy on each catalog
+model. This is not a monthly quota or currency budget, nor a complete
+application-specific governance configuration.
+
 Optional fields: `model_format`, `sku_name`, `api_format`, `endpoints`, `description`. Match the API format and endpoints to the model. See [variables.tf](../variables.tf) for types and validation.
 
 ## Access
@@ -123,6 +127,57 @@ Optional fields: `model_format`, `sku_name`, `api_format`, `endpoints`, `descrip
 Choose **Microsoft Entra ID** or **API keys** independently of Public/Private-only.
 Authentication does not create the required network/DNS route. Optional identity
 fields are not required merely to complete this reference.
+
+### API-key clients
+
+The [filled Scenario 01 variant](../examples/filled/01-existing-network/README.md#api-key-client-authentication)
+selects this mode for **client-to-gateway calls only**. The gateway's existing
+`runtime_api_key` resource creates its `default` key resource, labelled
+`All APIs subscription`; the base input keeps `gateway_access_principals = {}`.
+No Entra caller grant is added for the new workload, and no secret key value is
+passed as a Terraform variable. This does not disable the gateway's separate
+managed-identity authentication to Foundry or change networking.
+
+The client sends the **gateway key** in `Api-Key`, not a model-account key or an
+Entra token. For the sample's chat-completion aliases, the request shape is:
+
+```http
+POST <gateway_endpoint>/default/models/openai/v1/chat/completions
+Api-Key: <gateway-api-key-from-approved-secret-store>
+Content-Type: application/json
+
+{"model":"gpt-mini","messages":[{"role":"user","content":"Say hello."}]}
+```
+
+These are placeholders, not runnable credentials. Use the deployed gateway URL
+and an approved alias. Real model calls are billable and require the selected
+network route. The Terraform sample does not configure an external application's
+HTTP client or secret store.
+
+Agree key ownership, scope, secure delivery, storage and rotation/revocation
+before use. Do not place keys in Git, Terraform inputs, browser-delivered code,
+command-line literals, logs, email or screenshots. Supply them to trusted
+application code through the approved secret-management mechanism. The sample
+does not create a separate key per application or automate rotation; a shared
+key does not establish per-user identity.
+
+There is no application input map here that provisions per-application keys,
+model allowlists and monthly budgets. Those controls need a separate approved
+design and verification; the model's per-minute `token_limit` does not provide
+them. The `gateway_api_key_id` output is only the key resource's ARM ID, not a
+secret value ready to distribute.
+
+The [API-key test helper](#verify-the-selected-client) reads the key through
+Azure Resource Manager using the signed-in Azure CLI identity and its scoped
+key-read permission. This management-plane login is **not** the authentication
+of the inference request. A client supplied with a key through approved secret
+delivery needs no Azure CLI login or Entra invocation grant to send that request.
+Existing VM/agent key-read and other service permissions remain separate.
+
+Selecting API-key clients is not an API-key-only enforcement policy. Existing
+Entra grants may remain valid. On an already deployed gateway, do not clear
+approved caller inputs blindly: review any Terraform-managed grant removal and
+client migration through [Scenario 04](scenarios/04-update-existing.md).
 
 ### Find optional principal IDs
 
@@ -196,11 +251,26 @@ separate reviewed migration, not part of this additive configuration.
 
 ### Verify the selected client
 
+Choose **one** authentication mode after approved deployment, from a client with
+the selected network/DNS route. Both modes make billable model requests.
+
+**API-key client (the filled Scenario 01 selection):**
+
 ```powershell
-# Run only after deployment, from a client with the selected route.
-.\scripts\Test-ModelAliases.ps1 -Authentication EntraId
-# Existing default:
 .\scripts\Test-ModelAliases.ps1 -Authentication ApiKey
+```
+
+Run from `samples\terraform` with access to the authoritative Terraform outputs
+and an Azure CLI identity allowed to read the gateway key. The helper retrieves
+the key into process memory, sends `Api-Key`, and clears its credential variables
+afterward. It does not acquire a gateway Entra token for the model request.
+Its success does not configure another application or prove that application's
+secret delivery and private route; verify the intended client separately.
+
+**Optional Entra client (other approved selections, not the filled variant):**
+
+```powershell
+.\scripts\Test-ModelAliases.ps1 -Authentication EntraId
 ```
 
 The Entra probe uses the current Azure CLI identity; it does not read keys or

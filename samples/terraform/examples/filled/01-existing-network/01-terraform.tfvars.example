@@ -30,14 +30,9 @@ model_deployments = {
   }
 }
 
-# Use an existing identity's object/principal ID, not its application/client ID.
-# This grants model-invocation rights; it does not create an identity or disable keys.
-gateway_access_principals = {
-  demo_application = {
-    principal_id   = "22222222-3333-4444-8555-666666666666"
-    principal_type = "ServicePrincipal"
-  }
-}
+# Clients use the gateway API key; no Entra caller grants are selected.
+# Deliver the key through approved secret handling, never through this input file.
+gateway_access_principals = {}
 
 storage_public_network_access   = "Disabled"
 enable_storage_private_endpoint = true

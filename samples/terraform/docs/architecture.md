@@ -139,8 +139,10 @@ runtime reference, not a deployment sequence or target-environment acceptance.
 | 12 | Foundry model to AI Gateway | Return the model response or stream after backend authorization. |
 | 13 | AI Gateway to application | Return the response or stream over the established client connection. |
 
-With **API-key client authentication**, skip the initial token exchange (steps
-1 and 2). The gateway still uses its **separate managed identity** for the model
+With **API-key client authentication**, as selected in the
+[filled Scenario 01 variant](../examples/filled/01-existing-network/README.md#api-key-client-authentication),
+skip the initial token exchange (steps 1 and 2).
+The gateway still uses its **separate managed identity** for the model
 call. Private endpoints and VNet integration provide transport; they are not
 extra application services processing the prompt.
 

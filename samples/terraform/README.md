@@ -33,12 +33,13 @@ scenario guide or filled-example folder identifies its scenario.
 | Read in this order | What you find |
 | --- | --- |
 | [1. Scenario and file checklist](docs/scenarios/01-existing-network.md#files-for-this-scenario) | Which inputs belong together, what the platform team supplies, and what stays unchanged. |
-| [2. Filled input walkthrough](examples/filled/01-existing-network/README.md) | The [active base example](examples/filled/01-existing-network/01-terraform.tfvars.example), complete network JSON, Entra caller access and selected private features. |
+| [2. Filled input walkthrough](examples/filled/01-existing-network/README.md) | The [active base example](examples/filled/01-existing-network/01-terraform.tfvars.example), complete network JSON, API-key client authentication and selected private features. |
 | [3. Shared operator procedure](01-04-deployment.md#runbook-order) | Approved input preparation, state and platform handoffs, staged deployment and acceptance. This is the only command sequence. |
 
-The filled variant selects Entra caller roles, private Blob connectivity,
+The filled variant selects API-key client authentication, private Blob connectivity,
 private Hosted Agent infrastructure and a new test VM; these are not defaults
-for every Scenario 01 deployment. Its base example and the generic template
+for every Scenario 01 deployment. Gateway-to-model managed identity is unchanged.
+Its base example and the generic template
 are **alternatives**, not extra input layers. Working copies remain protected
 inputs such as `terraform.tfvars`; example folders are not separate stacks.
 

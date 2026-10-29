@@ -5,11 +5,12 @@
 Use this reference to understand how the inputs fit together when the **gateway
 workload is new**, but networking and central Private DNS already belong to the
 platform team. The intended end state is private gateway/model access after the
-approved deployment stages. This filled variant selects **Entra caller access
-with Terraform-managed role assignments, private Blob connectivity, private
+approved deployment stages. This filled variant selects **API-key client
+authentication, private Blob connectivity, private
 Hosted Agent infrastructure and a new private test VM**. These choices belong
 to this walkthrough; they are not mandatory defaults for every Scenario 01
-deployment.
+deployment. Only client-to-gateway authentication uses the API key; the gateway's
+managed-identity authentication to the model backend remains unchanged.
 
 > [!CAUTION]
 > Subscription/object IDs, resource names, contacts and capacity values below are
@@ -19,7 +20,7 @@ deployment.
 **Quick links:** [Base file and values](#filled-base-inputs) |
 [Complete network JSON](#filled-existing-network-inputs) |
 [Access-stage profiles](#required-values-supplied-by-profiles) |
-[Entra caller roles](#required-entra-caller-access) |
+[API-key client authentication](#api-key-client-authentication) |
 [Selected private features](#selected-private-features).
 
 Use **one base file, one complete network input and the approved access stage**
@@ -41,7 +42,7 @@ The labels carry the meaning even when colors are unavailable.
 In HCL, `#` starts a comment. **Never remove every `#`**: explanation text must
 remain commented. The selected assignments in the
 [Scenario 01 base example (`01-terraform.tfvars.example`)](./01-terraform.tfvars.example)
-are already active, including the complete Entra block and selected private
+are already active, including the client-access setting and selected private
 features; no further uncommenting is needed in that file. The
 [shared base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
 still comments out these
@@ -53,7 +54,7 @@ extensions because it supports other scenarios; its defaults are unchanged.
 Use the
 [Scenario 01 base example (`01-terraform.tfvars.example`)](./01-terraform.tfvars.example)
 for this walkthrough. It already combines the base values below, the
-[required Entra caller access](#required-entra-caller-access) and the
+[API-key client authentication setting](#api-key-client-authentication) and the
 [selected private features](#selected-private-features) in one file.
 The sections below explain those assignments; **do not append them a second
 time** to the example.
@@ -108,7 +109,11 @@ quota confirmation**. `sku_name` is the model deployment SKU; it does not change
 the sample's gateway SKU.
 `GlobalStandard` does not guarantee processing only in Sweden.
 `capacity` is model-deployment capacity, not a price or the gateway caller limit;
-`token_limit` is a separate gateway token limit.
+`token_limit` creates a gateway `tokenLimit` policy for each catalog model,
+with a **per-minute** period and the `identity` counter. These policies are
+already deployed by Terraform; they are not monthly token or currency budgets.
+Application-specific model access, keys and budgets require a separate
+[governance configuration](../../../docs/reference.md#api-key-clients).
 
 **The base file does not supply network ownership or the gateway/model access
 stage.** The complete network input file and the approved stage-specific access
@@ -162,6 +167,23 @@ readiness confirmation from the platform owner using the
 [field-by-field mapping and Portal lookup](../../../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
 DNS zone IDs are not Private DNS Resolver IDs.
 
+### Subnet IDs versus Private Endpoint IDs
+
+**Every `endpoint_subnet_ids.*` value is an existing subnet ID, not a Private
+Endpoint or Private Link connection ID.** In the example,
+`snet-gateway-private-links` is simply the name of a subnet. The resource-ID
+suffix is `/virtualNetworks/<vnet>/subnets/<subnet>`, not
+`/privateEndpoints/<endpoint>`. The words `private-links` in a subnet name do
+not change its resource type.
+
+Supply the approved subnet IDs **before deployment**, even though the gateway
+and its Private Endpoint do not exist yet. Terraform creates the workload
+service and then its Private Endpoint in the supplied subnet, with Azure
+creating the endpoint's NIC/private IP. It references the new service's ID
+automatically; you do not supply that generated endpoint ID as an input.
+**Do not leave required subnet fields empty:** missing IDs cause validation
+errors; they do not trigger automatic discovery or subnet creation.
+
 | Setting in this walkthrough | Required platform agreement or verification |
 | --- | --- |
 | Eight subnet-ID fields, five existing subnets | All eight fields are included in the JSON above and mapped below. The platform must approve the five subnets and their use, including shared endpoint placement. Existing does not mean available or compatible. |
@@ -186,11 +208,11 @@ list, not just the gateway/model core:
 | `gateway_subnet_id` | Gateway outbound VNet integration, used to reach private backends. | `snet-gateway-outbound` |
 | `agent_subnet_id` | Separate outbound VNet integration for the private Hosted Agent infrastructure. | `snet-agents-outbound` |
 | `client_subnet_id` | Subnet for the new private test VM, not automatically the production application's subnet. | `snet-test-clients` |
-| `endpoint_subnet_ids.gateway` | Gateway private endpoint: the private entry point used by callers. | `snet-gateway-private-links` |
-| `endpoint_subnet_ids.models` | Model-service private endpoint, reached by the gateway. | `snet-model-private-links` |
-| `endpoint_subnet_ids.storage` | Blob Storage private endpoint. | `snet-model-private-links` |
-| `endpoint_subnet_ids.agents` | Private endpoint for the additional private Hosted Agent infrastructure. | `snet-model-private-links` |
-| `endpoint_subnet_ids.registry` | Container registry private endpoint. | `snet-model-private-links` |
+| `endpoint_subnet_ids.gateway` | Existing subnet in which Terraform creates the gateway's inbound private endpoint. | `snet-gateway-private-links` |
+| `endpoint_subnet_ids.models` | Existing subnet for the new model-service private endpoint, reached by the gateway. | `snet-model-private-links` |
+| `endpoint_subnet_ids.storage` | Existing subnet for the new Blob Storage private endpoint. | `snet-model-private-links` |
+| `endpoint_subnet_ids.agents` | Existing subnet for the new private Hosted Agent endpoint. | `snet-model-private-links` |
+| `endpoint_subnet_ids.registry` | Existing subnet for the new container registry private endpoint. | `snet-model-private-links` |
 
 **Why eight fields but five subnets?** The model, Blob, agent and registry
 endpoint fields all reference the same `snet-model-private-links` subnet.
@@ -298,50 +320,65 @@ Profiles are **not loaded automatically** merely because they exist in a folder.
 Use the [input composition rules](../../../01-04-deployment.md#compose-the-inputs)
 and the approved staged procedure; do not jump directly to the final profile.
 
+### Endpoint creation, approval and DNS are separate
+
+| Setting | What it controls |
+| --- | --- |
+| `enable_private_networking` | Enables the sample's private networking and gateway/model endpoints; feature flags add the selected extra endpoints. In `existing` mode, their subnets still come from the platform. |
+| `gateway_private_endpoint_manual_approval` | The gateway connection-request/approval path, **not whether its endpoint is created**. The selected profiles use `true`: a manual request followed by an explicit Terraform approval action, requiring approval permissions. |
+| `private_dns_zone_group_management` | Only ownership of endpoint DNS zone groups: workload Terraform or platform Policy/automation. **Both values still create the workload Private Endpoints.** |
+
+Setting the approval flag to `false` selects an automatic connection request;
+it does not mean "create the endpoint with a script." It does not guarantee
+approval or connectivity. **Changing this flag can replace an existing gateway
+endpoint**: retain the approved profile/mode instead of changing it to request
+endpoint creation. See the [approval reference](../../../docs/reference.md#legacy-gateway-private-endpoint-approval-and-cleanup).
+The platform DNS choice does not transfer ownership of the endpoints, central
+zones, VNet links or resolver.
+
 <a id="optional-additions-left-off-in-this-example"></a>
+<a id="required-entra-caller-access"></a>
 
-### Required Entra caller access
+### API-key client authentication
 
-**Application-to-gateway calls must use Entra ID in this walkthrough.** The
-selected owner of the caller role assignments is this Terraform deployment.
-This is a requirement of the chosen example, not an interchangeable optional
-authentication choice.
+**Client-to-gateway calls use the gateway API key in this walkthrough.** The
+client sends it in the `Api-Key` request header, not as an Entra bearer token.
+That key-authenticated call needs no caller object ID or **AI Gateway Models User**
+assignment. Use a gateway key, not a Foundry model-account key.
 
-&#x1F7E2; **ACTIVE** - this complete block is already active in the Scenario 01
-base example. Keep one copy in the protected base inputs and replace the
-fictional principal with an approved existing Entra identity:
+&#x1F7E2; **ACTIVE** - this assignment is already active in the Scenario 01
+base example. Keep the caller map empty for this new-workload selection:
 
 ```hcl
-gateway_access_principals = {
-  demo_application = {
-    principal_id   = "22222222-3333-4444-8555-666666666666"
-    principal_type = "ServicePrincipal"
-  }
-}
+gateway_access_principals = {}
 ```
 
-`demo_application` is a stable Terraform map label, not a new application.
-`principal_id` must be the existing service principal or managed identity's
-**object/principal ID** in the gateway subscription's tenant, not its client ID
-or the app registration's object ID. `ServicePrincipal` also covers managed
-identities. See [where to find the correct identity](../../../docs/reference.md#find-optional-principal-ids).
+The empty map means Terraform adds no Entra caller grants. It is not a switch
+that generates a key: the existing
+[gateway key resource](../../../ai-gateway.tf) already creates the default
+gateway API key. **Do not put its secret value in this example, Terraform inputs,
+Git, email or screenshots.** Agree the key owner, scope, approved secret store,
+delivery and rotation process; see the [API-key client contract](../../../docs/reference.md#api-key-clients).
+The sample does not automatically create a separate key for every application.
 
-Terraform grants **AI Gateway Models User at gateway scope**, covering all its
-models, not management or key retrieval. Confirm that scope and the deployment
-identity's role-assignment permissions. If an equivalent grant is already
-platform-managed, agree its ownership/import rather than creating a duplicate;
-selecting Terraform in this example does not transfer existing IAM ownership.
+**Unchanged:** gateway-to-model managed identity and its backend role, deployment
+permissions, private networking, and the selected VM/agent key-reader mechanisms.
+The application must still be configured to send the key and use the approved
+private route. Terraform does not configure an external client application.
+After approved deployment, use the
+[API-key probe](../../../docs/reference.md#verify-the-selected-client)
+(`-Authentication ApiKey`) and verify the actual application's private route.
+The helper's Azure login is for retrieving the key, not Entra authentication
+of the model request.
 
 > [!IMPORTANT]
-> **A caller role assignment is not an authentication switch.** The application
-> must actually acquire and send an Entra token using the
-> [token and consent contract](../../../docs/reference.md#token-and-consent-contract).
-> This block creates no application/identity, disables no API key and does not
-> convert the existing test-VM or hosted-agent reference calls from keys to Entra.
-> Their key-based success is not proof of this requirement. Verify the intended
-> caller with the [Entra probe](../../../docs/reference.md#verify-the-selected-client)
-> and its approved private route; that probe uses the signed-in Azure CLI identity,
-> not automatically the `demo_application` entry.
+> **This selects API-key clients; it does not enforce API-key-only access.**
+> An empty map does not remove externally managed Entra grants. On an existing
+> deployment, clearing a populated map would propose removal of its
+> Terraform-managed grants. Do not replace approved inputs with this new-workload
+> example; use [Scenario 04](../../../docs/scenarios/04-update-existing.md)
+> and review any caller migration separately. Entra client configuration remains
+> available for [other approved selections](../../../docs/reference.md#add-caller-roles-without-replacing-existing-inputs).
 
 ### Selected private features
 
@@ -363,20 +400,24 @@ private_test_client_ssh_public_key = "ssh-ed25519 <approved-public-SSH-key>"
 | --- | --- |
 | Private Blob connectivity | Disables Storage public-network access and adds the Blob private endpoint. Its subnet and central DNS zone are included above. Follow the [Blob connectivity checks](../../../docs/private-connectivity.md#optional-policy-restricted-blob-storage); this is not proof of hosted-agent access to Storage. |
 | Private Hosted Agent infrastructure | Adds a separate VNet-injected Basic Foundry account/project and agent/registry endpoints; it does not convert the original account or deploy an agent application. Configure injection when the new account is created, verify its delegated subnet and region/capacity, and follow the [separate application and acceptance gates](../../../docs/private-hosted-agent.md#deployment-and-acceptance-gates). |
-| New private test VM | Creates an additional billable VM without a public IP in the supplied client subnet. Replace the deliberately unusable SSH placeholder with an approved OpenSSH **public** key before validation/planning. Check VM quota, platform egress and the [test-client permissions](../../../docs/private-connectivity.md#test-client-permissions), including custom role-definition permissions; caller-role assignment rights alone do not cover them. |
+| New private test VM | Creates an additional billable VM without a public IP in the supplied client subnet. Replace the deliberately unusable SSH placeholder with an approved OpenSSH **public** key before validation/planning. Check VM quota, platform egress and the [test-client permissions](../../../docs/private-connectivity.md#test-client-permissions), including custom role-definition and key-reader role-assignment permissions. API-key client authentication does not remove these operator/VM permissions. |
 
-The SSH key configures VM access; it is not the application's Entra identity or
-a gateway API key. The test helper uses Run Command. Do not copy a private SSH
+The SSH key configures VM access; it is not a gateway API key.
+The test helper uses Run Command. Do not copy a private SSH
 key into any input file.
 
 **These selections are not a claim that every resource or traffic flow is
 private-only.** The private-agent extension retains the original agent
 account/project and does not change ACR's public-access setting. Agent
-application deployment, its caller authentication and runtime identity remain
-separate work. Review these boundaries in the
+application deployment, access to its own Foundry invocation interface and
+runtime identity remain separate work. Review these boundaries in the
 [private-agent reference](../../../docs/private-hosted-agent.md#resource-changes).
 Storage, Premium ACR and monitoring are already core supporting resources;
 the selected flags do not replace their scope, cost or access review.
+Turning off `enable_private_hosted_agent` does **not** remove the original
+agent account/project, Storage, ACR or core agent monitoring. A smaller
+gateway-and-model-only stack needs a separately reviewed scope/code change;
+it is not produced simply by omitting the private-agent option.
 
 ### Settings that do not belong to this scenario
 

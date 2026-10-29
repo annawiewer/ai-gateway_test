@@ -17,7 +17,7 @@ help is separate from the explanation and does not authorize deployment.
 **Looking for the selected filled example?** Open the
 [Scenario 01 file checklist](scenarios/01-existing-network.md#files-for-this-scenario)
 and [filled input walkthrough](../examples/filled/01-existing-network/README.md).
-They include the active base example and complete inputs for Entra caller roles,
+They include the active base example and complete inputs for API-key clients,
 private Blob connectivity, private agents and the test VM. The generic
 core-template explanations below are background, not that variant's full checklist.
 
@@ -52,7 +52,7 @@ not additional files to edit or run in sequence.
 
 | File | Purpose | Normal environment-specific edit? |
 | --- | --- | --- |
-| [Filled Scenario 01 base example (`01-terraform.tfvars.example`)](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Base/model values, Entra caller roles and selected private features already active together. | For that variant, use one protected working copy, replace fictional values and retain the [complete network inputs](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs). Do not append duplicate blocks or overwrite approved inputs. |
+| [Filled Scenario 01 base example (`01-terraform.tfvars.example`)](../examples/filled/01-existing-network/01-terraform.tfvars.example) | Base/model values, an empty Entra caller map for API-key clients and selected private features already active together. No secret key value belongs in the file. | For that variant, use one protected working copy, replace fictional values and retain the [complete network inputs](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs). Do not append duplicate blocks or overwrite approved inputs. |
 | [Generic base template (`01-04-terraform.tfvars.example`)](../01-04-terraform.tfvars.example) | Alternative starting template for other feature selections. | For a **new** workload only, select this or the filled base example, not both. The [base-file step](../01-04-deployment.md#2-create-or-select-a-base-input-file) prepares the protected copy. |
 | [01-04-profiles/network-existing.tfvars.json](../01-04-profiles/network-existing.tfvars.json) | Core-only template selecting `existing` and supplying subnet/zone IDs. | A protected copy needs all inputs for the selected features. The filled variant uses the larger [complete JSON block](../examples/filled/01-existing-network/README.md#filled-existing-network-inputs), not this core-only object unchanged. |
 | [01-04-profiles/network-create.tfvars.json](../01-04-profiles/network-create.tfvars.json) | Selects sample-managed network/DNS ownership. | Select it for the approved scenario; it does not by itself enable private networking. |

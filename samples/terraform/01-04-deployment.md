@@ -274,7 +274,7 @@ templates, not files to load together:
 
 | Approved selection | Set the base template source |
 | --- | --- |
-| [Filled Scenario 01 variant](examples/filled/01-existing-network/README.md), including Entra caller roles and selected private features | `$baseTemplateFile = '.\examples\filled\01-existing-network\01-terraform.tfvars.example'` |
+| [Filled Scenario 01 variant](examples/filled/01-existing-network/README.md), using API-key clients and selected private features | `$baseTemplateFile = '.\examples\filled\01-existing-network\01-terraform.tfvars.example'` |
 | [Generic template](01-04-terraform.tfvars.example) for other new-workload selections | `$baseTemplateFile = '.\01-04-terraform.tfvars.example'` |
 
 Then run this copy block **once**:
@@ -292,7 +292,8 @@ Copy-Item -LiteralPath $baseTemplateFile -Destination .\terraform.tfvars
 In VS Code, choose **File > Open Folder**, open `samples\terraform`, then select
 the new **terraform.tfvars**, not its source example. Replace all illustrative
 values, fill the table below and save. The filled Scenario 01 source already
-includes its Entra/private-feature blocks; do not append them again. In the
+includes its empty caller map and private-feature blocks; do not append them again
+or place the gateway secret key in that file. In the
 generic template, leave unneeded optional settings commented out.
 
 If an **approved input file already exists**, for either a new or an existing
@@ -612,20 +613,28 @@ another owner.
 ## Access
 
 Before the plan, confirm the approved caller-authentication choice. The
-[filled Scenario 01 walkthrough requires Entra callers](examples/filled/01-existing-network/README.md#required-entra-caller-access)
-and Terraform-managed invocation roles; its base example already contains the
-caller block. Do not treat that requirement as undecided or append it again.
+[filled Scenario 01 walkthrough selects API-key clients](examples/filled/01-existing-network/README.md#api-key-client-authentication).
+Its base example keeps `gateway_access_principals = {}`: no Entra caller
+invocation grants are selected for this new workload. The gateway API key is
+already created by the sample; its secret value does not belong in Terraform
+inputs. Agree approved key storage, scope, distribution and rotation using the
+[API-key client contract](docs/reference.md#api-key-clients).
 
-Other configurations can select Entra callers or retain the default API-key
-callers. The [Access reference](docs/reference.md#access)
-owns object-ID lookup, complete inputs, token/consent requirements and billable
-post-deployment probes. Optional Entra configuration is not a prerequisite for
-an API-key client.
+The client sends the gateway key in `Api-Key`. It does not need an Entra
+invocation role for that request. The gateway's managed identity and backend
+permissions remain unchanged, as do Azure administration and VM/agent key-read
+permissions. After approved deployment, select the
+[API-key probe](docs/reference.md#verify-the-selected-client) and the correct
+private route; configuring infrastructure does not configure the application.
 
+Other configurations can select Entra callers through the
+[Access reference](docs/reference.md#access).
 Adding Entra is additive: it does not disable keys, remove existing role bindings
-or supply a private network route. The gateway's separate backend identity stays
-unchanged. For an existing gateway, use the [update preflight](#update-an-existing-gateway)
-and extend approved inputs without replacing other settings, state or endpoint exceptions.
+or supply a private network route. Conversely, clearing a populated caller map
+proposes removal of its Terraform-managed grants, not externally managed roles.
+For an existing gateway, use the [update preflight](#update-an-existing-gateway)
+and review a caller migration without replacing other settings, state or endpoint
+exceptions. Selecting API-key clients does not enforce API-key-only access.
 
 ## Platform handoff before a plan
 
@@ -653,6 +662,7 @@ The same infrastructure team may operate both platform and workload roles.
 | Central private DNS zones and VNet links | DNS team retains zones, links and their state. The workload references zone IDs, not ownership of those resources. | Exact required zone IDs and the approved resolution design; a direct zone link to every spoke is not required when central resolution is used. |
 | Private endpoint DNS zone groups | **One owner:** workload Terraform with `workload`, or central Policy/automation with `platform`. This does not transfer ownership of the zones. | Agree who finishes associations/records after endpoint creation and verifies resolver results. Use the [DNS ownership choice](#choose-the-dns-zone-group-owner); never let both processes own the same group. |
 | Deployment permissions | Identity/platform administrator grants scoped access; knowing a resource ID does not grant access. | Effective deploy/read/join/endpoint/approval and role-management permissions, PIM duration and deny assignments. Workload-managed zone groups also need access to the specified central zones. |
+| Gateway client credentials | Application/security team owns key scope, secret storage, delivery and rotation. The filled variant uses API-key clients. | Approve [gateway key handling and client configuration](docs/reference.md#api-key-clients). Do not supply secret key values in Terraform inputs or confuse client authentication with Azure administration permissions. |
 | Models | Model owner approves model selection and allocation; the sample creates its workload model deployments. | Exact model names/versions, deployment geography, quota/capacity and a billable test allowance. |
 | Policy and access sequence | Security/platform owner approves the deployment; this sample does not relax central policy. | Region/type/tag policy and the entire access sequence. Temporary public access needs explicit approval, not just approval of the final private design. |
 | Testing and operation | Test/operations owner selects the clients and owns evidence, cleanup and ongoing operation. The sample VM is optional. | Existing private client or approved test VM; for final private-only acceptance, also arrange [outside-network client C](docs/acceptance.md#prove-public-network-denial-with-a-valid-gateway-key). Confirm each client's own identity/permissions, evidence location and cleanup/monitoring responsibility. |
@@ -1082,6 +1092,18 @@ The dotted field names describe nested JSON; replace existing string values,
 not the keys. Keep quotes, commas and braces intact and remove all example IDs.
 The gateway and model endpoints may share an approved endpoint subnet, but
 neither may use the delegated integration subnet.
+
+**Enter existing subnet IDs, not Private Endpoint IDs.** For example,
+`snet-gateway-private-links` is a subnet name in the filled example, not an
+already-created endpoint. Required IDs must be supplied before deployment;
+Terraform creates the new workload endpoints in those subnets after their
+target services exist. Leaving required IDs empty fails validation. See the
+[subnet/endpoint distinction](examples/filled/01-existing-network/README.md#subnet-ids-versus-private-endpoint-ids).
+
+Do not use the approval or DNS-owner settings as endpoint-creation switches.
+The [three separate controls](examples/filled/01-existing-network/README.md#endpoint-creation-approval-and-dns-are-separate)
+govern deployment, gateway connection approval and DNS association ownership.
+Changing an existing gateway's approval mode can replace its endpoint.
 
 The starter file covers gateway/models only. If storage endpoints, private hosted
 agents or the test VM are selected, include their

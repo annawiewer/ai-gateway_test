@@ -20,6 +20,9 @@ implementation file first.
   keep their current owners, deployment process and state.
 - Obtain approved subnet/zone IDs, routing and DNS readiness, deployment
   permissions and a reachable private test client.
+- Agree the [gateway API-key handling](../../examples/filled/01-existing-network/README.md#api-key-client-authentication)
+  for the filled variant: owner, scope, secret storage, delivery and rotation.
+  The application needs no Entra caller grant for its key-authenticated gateway calls.
 - Confirm policy and cost approval for the [full sample scope](../../README.md#what-gets-deployed),
   including supporting services and the temporary public access required by the
   documented new-deployment stages. This is not a private-from-first-create promise.
@@ -32,14 +35,14 @@ The `01-04-` prefix marks shared material; select only the files and stages
 listed for this scenario, not every file in the profile library.
 
 The table follows the [filled variant](../../examples/filled/01-existing-network/README.md):
-Entra caller roles, private Blob connectivity, private Hosted Agent
+API-key client authentication, private Blob connectivity, private Hosted Agent
 infrastructure and a new private test VM. Approve that scope before using it.
 If complete approved workload/network files already exist, retain them instead
 of copying either template.
 
 | File or input section | Action for the filled variant |
 | --- | --- |
-| [Active base example (`01-terraform.tfvars.example`)](../../examples/filled/01-existing-network/01-terraform.tfvars.example) | Source for a protected working copy such as `terraform.tfvars`. Base/model values, Entra caller roles and the selected private features are already active in one file. Replace fictional values and the SSH public-key placeholder; do not append those blocks again. |
+| [Active base example (`01-terraform.tfvars.example`)](../../examples/filled/01-existing-network/01-terraform.tfvars.example) | Source for a protected working copy such as `terraform.tfvars`. Base/model values, an empty Entra caller map for API-key clients and the selected private features are already active in one file. Replace fictional values and the SSH public-key placeholder; do not add a secret API key or append those blocks again. |
 | [Complete existing-network JSON](../../examples/filled/01-existing-network/README.md#filled-existing-network-inputs) | The JSON block, not the Markdown page, is the reference for `network-existing.environment.tfvars.json`. It includes all eight subnet-ID fields and six zone IDs for the selected features. Replace every fictional ID and agree `private_dns_zone_group_management`; keep the whole object in one input source. |
 | [01-04-profiles/private-connectivity.tfvars.json](../../01-04-profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; the gateway is still public in this profile. |
 | [01-04-profiles/private-only.tfvars.json](../../01-04-profiles/private-only.tfvars.json) | Select for the final gateway/model private-only stage after approval and connectivity checks. |
