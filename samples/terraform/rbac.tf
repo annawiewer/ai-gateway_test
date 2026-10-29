@@ -12,12 +12,6 @@ locals {
         principal_type = "ServicePrincipal"
         role_id        = "53ca6127-db72-4b80-b1b0-d745d6d5456d"
       }
-      gateway-monitoring-publisher = {
-        scope          = local.gateway_monitoring.dcr_id
-        principal_id   = azapi_resource.gateway.identity[0].principal_id
-        principal_type = "ServicePrincipal"
-        role_id        = "3913510d-42f4-4e42-8a64-420c390055eb"
-      }
       project-storage = {
         scope          = azapi_resource.storage.id
         principal_id   = azapi_resource.project.identity[0].principal_id
@@ -29,6 +23,14 @@ locals {
         principal_id   = azapi_resource.project.identity[0].principal_id
         principal_type = "ServicePrincipal"
         role_id        = "7f951dda-4ed3-4680-a7ca-43fe172d538d"
+      }
+    },
+    local.gateway_is_2026 ? {} : {
+      gateway-monitoring-publisher = {
+        scope          = local.gateway_monitoring.dcr_id
+        principal_id   = azapi_resource.gateway.identity[0].principal_id
+        principal_type = "ServicePrincipal"
+        role_id        = "3913510d-42f4-4e42-8a64-420c390055eb"
       }
     },
     { for key, principal in var.gateway_access_principals : "gateway-models-user-${key}" => {

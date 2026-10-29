@@ -19,6 +19,9 @@ function New-TestOutputs {
 
 function terraform {
     $global:LASTEXITCODE = $global:modelScriptTest.terraformExit
+    if ($global:modelScriptTest.expectedRoot -and $args[0] -ne "-chdir=$($global:modelScriptTest.expectedRoot)") {
+        throw 'The alias probe read the wrong Terraform state directory.'
+    }
     $global:modelScriptTest.outputs | ConvertTo-Json -Depth 10
 }
 
@@ -50,7 +53,8 @@ function az {
         $global:modelScriptTest.scriptPath = $path
         return (@{ value = @(@{ message = '{"passed":true}' }) } | ConvertTo-Json -Depth 5)
     }
-    'test-key-must-not-appear'
+    $global:modelScriptTest.keyUrl = $args[[Array]::IndexOf($args, '--url') + 1]
+    $global:modelScriptTest.keyEnvelope | ConvertTo-Json -Depth 10
 }
 
 function Invoke-RestMethod {
@@ -81,6 +85,9 @@ function Reset-Test {
     $global:modelScriptTest.token = 'test-token-must-not-appear'
     $global:modelScriptTest.restFailure = $null
     $global:modelScriptTest.models = [System.Collections.Generic.List[string]]::new()
+    $global:modelScriptTest.keyEnvelope = @{ primaryKey = 'test-key-must-not-appear' }
+    $global:modelScriptTest.keyUrl = $null
+    $global:modelScriptTest.expectedRoot = $null
 }
 
 function Assert-Rejected {
@@ -171,5 +178,83 @@ Assert-Rejected 'Test-ModelAliases.ps1' 'Gateway API key resource ID is missing'
 
 Reset-Test
 Assert-Rejected 'Test-ModelAliases.ps1' 'Authentication|ValidateSet' 0 @{ Authentication = 'Invalid' }
+
+function Set-NewContractOutputs {
+    $outputs = $global:modelScriptTest.outputs
+    $outputs.gateway_api_key_id.value = '/subscriptions/test/providers/Microsoft.ApiManagement/aigateways/test/apiKeys/default'
+    $outputs.gateway_api_versions = @{ value = @{ api_keys = '2026-09-01-preview' } }
+    $outputs.model_deployment_ids.value.third = 'third-id'
+    $outputs.model_alias_configuration = @{ value = @{
+        'primary-router' = @{
+            alias_name = 'gpt-latest'
+            api_format = 'OpenAIChatCompletions'
+            endpoints = @('/openai/v1/chat/completions', '/openai/v1/responses')
+        }
+        'mini-router' = @{
+            alias_name = 'gpt-mini-latest'
+            api_format = 'OpenAIChatCompletions'
+            endpoints = @('/openai/v1/chat/completions')
+        }
+    } }
+}
+
+Reset-Test
+Set-NewContractOutputs
+$global:modelScriptTest.expectedRoot = Join-Path (Split-Path $scripts -Parent) 'api2026gateway'
+$result = (& (Join-Path $scripts 'Test-ModelAliases.ps1') -TerraformDirectory $global:modelScriptTest.expectedRoot) -join "`n"
+if ($global:modelScriptTest.models.Count -ne 2 -or
+    'gpt-latest' -notin $global:modelScriptTest.models -or 'gpt-mini-latest' -notin $global:modelScriptTest.models -or
+    $global:modelScriptTest.keyUrl -notlike '*/aigateways/*/listSecrets?api-version=2026-09-01-preview' -or
+    $result -match 'test-key-must-not-appear') {
+    throw 'The new profile must test two callable aliases, not three deployments, using its own state and API version.'
+}
+
+Reset-Test
+Set-NewContractOutputs
+$global:modelScriptTest.expectedRoot = Join-Path (Split-Path $scripts -Parent) 'api2026gateway'
+$processDirectory = [Environment]::CurrentDirectory
+Push-Location -LiteralPath (Split-Path $scripts -Parent)
+try {
+    [Environment]::CurrentDirectory = $PSScriptRoot
+    & (Join-Path $scripts 'Test-ModelAliases.ps1') -TerraformDirectory '.\api2026gateway' | Out-Null
+    if ($global:modelScriptTest.models.Count -ne 2) { throw 'The relative state-directory probe did not reach both aliases.' }
+}
+finally {
+    [Environment]::CurrentDirectory = $processDirectory
+    Pop-Location
+}
+
+foreach ($case in @('missing-version', 'invalid-version', 'missing-aliases', 'duplicate-aliases', 'unsupported-route')) {
+    Reset-Test
+    Set-NewContractOutputs
+    switch ($case) {
+        'missing-version' { $global:modelScriptTest.outputs.Remove('gateway_api_versions') }
+        'invalid-version' { $global:modelScriptTest.outputs.gateway_api_versions.value.api_keys = '' }
+        'missing-aliases' { $global:modelScriptTest.outputs.Remove('model_alias_configuration') }
+        'duplicate-aliases' { $global:modelScriptTest.outputs.model_alias_configuration.value.'mini-router'.alias_name = 'gpt-latest' }
+        'unsupported-route' { $global:modelScriptTest.outputs.model_alias_configuration.value.'primary-router'.endpoints = @('/openai/v1/responses') }
+    }
+    Assert-Rejected 'Test-ModelAliases.ps1' 'gateway_api_versions|model_alias_configuration|duplicated|Unsupported probe API'
+}
+
+foreach ($envelope in @(
+    @{ properties = @{ primaryValue = 'test-key-must-not-appear' } },
+    @{ target = 'Primary'; value = 'test-key-must-not-appear' },
+    @{ properties = @{ secondaryKey = 'test-key-must-not-appear' } },
+    @{ target = 'Secondary'; value = 'test-key-must-not-appear' }
+)) {
+    Reset-Test
+    Set-NewContractOutputs
+    $global:modelScriptTest.keyEnvelope = $envelope
+    $result = (& (Join-Path $scripts 'Test-ModelAliases.ps1')) -join "`n"
+    if ($global:modelScriptTest.models.Count -ne 2 -or $result -match 'test-key-must-not-appear') {
+        throw 'A supported new-family key envelope was not handled safely.'
+    }
+}
+
+Reset-Test
+Set-NewContractOutputs
+$global:modelScriptTest.keyEnvelope = @{ target = 'Unexpected'; value = 'test-key-must-not-appear' }
+Assert-Rejected 'Test-ModelAliases.ps1' 'no supported secret value' 1
 
 "Model-script checks passed ($caseCount cases; no Azure or model calls)."

@@ -1,7 +1,7 @@
 resource "azapi_resource" "agents" {
   type      = "Microsoft.CognitiveServices/accounts@2025-04-01-preview"
   name      = local.names.agents
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = azapi_resource.resource_group[local.resource_group_keys["agents"]].id
   location  = var.location
   tags      = local.tags
   identity { type = "SystemAssigned" }
@@ -25,7 +25,7 @@ resource "azapi_resource" "agents" {
 resource "azapi_resource" "storage" {
   type      = "Microsoft.Storage/storageAccounts@2024-01-01"
   name      = local.names.storage
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = azapi_resource.resource_group[local.resource_group_keys["agents"]].id
   location  = var.location
   tags      = local.tags
   body = {
@@ -49,7 +49,7 @@ resource "azapi_resource" "storage" {
 resource "azapi_resource" "registry" {
   type      = "Microsoft.ContainerRegistry/registries@2023-07-01"
   name      = local.names.registry
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = azapi_resource.resource_group[local.resource_group_keys["agents"]].id
   location  = var.location
   tags      = local.tags
   identity { type = "SystemAssigned" }
@@ -107,7 +107,7 @@ resource "azapi_resource" "registry_connection" {
       category      = "ContainerRegistry"
       target        = azapi_resource.registry.output.properties.loginServer
       authType      = "ManagedIdentity"
-      isSharedToAll = false
+      isSharedToAll = local.gateway_is_2026
       credentials = {
         clientId   = azapi_resource.project.identity[0].principal_id
         resourceId = azapi_resource.registry.id
@@ -126,7 +126,7 @@ resource "azapi_resource" "insights_connection" {
     properties = {
       category      = "AppInsights"
       authType      = "ApiKey"
-      isSharedToAll = true
+      isSharedToAll = !local.gateway_is_2026
       target        = azapi_resource.insights["agents"].id
       credentials   = { key = azapi_resource.insights["agents"].output.properties.ConnectionString }
       metadata = {

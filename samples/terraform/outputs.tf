@@ -1,21 +1,41 @@
 output "resource_group_name" {
-  description = "Shared application group; excludes linked Azure-managed OTLP helper groups and the DCR-scoped publisher assignment."
+  description = "Gateway application group. Legacy shares it across workloads; use resource_groups for the separate 2026 layout."
   value       = azapi_resource.resource_group["gateway"].name
 }
 
 output "resource_groups" {
-  description = "Compatibility aliases: gateway, models and agents all refer to the same shared resource group."
-  value       = { for key in ["gateway", "models", "agents"] : key => azapi_resource.resource_group["gateway"].name }
+  description = "Actual group names for gateway, models and agents. Legacy shares one group; 2026 separates the three workloads like Bicep."
+  value       = { for key, group in local.resource_group_keys : key => azapi_resource.resource_group[group].name }
 }
 
 output "gateway_id" {
-  description = "ARM resource ID of the AIGateway service."
+  description = "ARM resource ID of the selected gateway resource family."
   value       = azapi_resource.gateway.id
 }
 
 output "gateway_endpoint" {
   description = "Runtime endpoint returned by the gateway service."
-  value       = azapi_resource.gateway.output.properties.gatewayUrl
+  value       = local.gateway_endpoint
+}
+
+output "gateway_api_versions" {
+  description = "Exact management API versions. The 2026 variant intentionally retains the Bicep 2025 telemetry exporter contract."
+  value = {
+    gateway   = local.gateway_api_version
+    catalog   = local.gateway_api_version
+    aliases   = local.gateway_api_version
+    api_keys  = local.gateway_api_version
+    telemetry = local.gateway_telemetry_api_version
+  }
+}
+
+output "gateway_contract" {
+  description = "Selected contract, resource type and outbound subnet; not proof of live API or private ingress availability."
+  value = {
+    name              = var.gateway_contract
+    resource_type     = local.gateway_type
+    backend_subnet_id = var.gateway_backend_subnet_id == "" ? null : var.gateway_backend_subnet_id
+  }
 }
 
 output "gateway_api_key_id" {
@@ -33,6 +53,18 @@ output "model_api_configuration" {
   value = { for key, model in var.model_deployments : key => {
     api_format = model.api_format
     endpoints  = model.endpoints
+  } }
+}
+
+output "model_alias_configuration" {
+  description = "Callable aliases, catalog routes and common API metadata. Alias ARM names and deployment names need not be the same."
+  value = { for key, alias in local.gateway_aliases : key => {
+    alias_name = alias.alias_name
+    api_format = try(var.model_deployments[alias.backend_models[0].deployment].api_format, null)
+    endpoints = try(sort(tolist(setintersection([
+      for backend in alias.backend_models : toset(var.model_deployments[backend.deployment].endpoints)
+    ]...))), [])
+    backend_models = alias.backend_models
   } }
 }
 
@@ -67,8 +99,9 @@ output "application_insights_ids" {
 }
 
 output "gateway_monitoring" {
-  description = "Nonsecret OTLP metadata returned by gateway Insights; use Get-GatewayMonitoring.ps1 to verify readiness and linked managed resources."
-  value = merge(local.gateway_monitoring, {
+  description = "Nonsecret exporter metadata. Legacy uses OTLP/DCR; 2026 matches Bicep applicationInsights and does not create an OTLP publisher role."
+  value = merge(local.gateway_is_2026 ? {} : local.gateway_monitoring, {
+    kind             = local.gateway_is_2026 ? "applicationInsights" : "OpenTelemetry"
     insights_id      = azapi_resource.insights["gateway"].id
     log_analytics_id = azapi_resource.logs["gateway"].id
   })
@@ -104,7 +137,7 @@ output "private_hosted_agent" {
     project_endpoint               = "https://${local.private_agent_name}.services.ai.azure.com/api/projects/${local.private_project_name}"
     project_principal_id           = azapi_resource.private_project[0].identity[0].principal_id
     subnet_id                      = local.private_agent_subnet_id
-    gateway_endpoint               = azapi_resource.gateway.output.properties.gatewayUrl
+    gateway_endpoint               = local.gateway_endpoint
     registry_endpoint              = azapi_resource.registry.output.properties.loginServer
     key_reader_role_definition_id  = var.enable_private_test_client ? azapi_resource.private_test_key_role[0].id : azapi_resource.private_agent_key_role[0].id
     runtime_key_binding_configured = var.private_hosted_agent_runtime_principal_id != ""
@@ -119,7 +152,7 @@ output "private_probe_configuration" {
   description = "Non-secret inputs for scripts/private-path-probe.py on the optional test VM."
   value = var.enable_private_test_client ? merge({
     gateway_id               = azapi_resource.gateway.id
-    gateway_endpoint         = azapi_resource.gateway.output.properties.gatewayUrl
+    gateway_endpoint         = local.gateway_endpoint
     model_endpoint           = azapi_resource.models.output.properties.endpoint
     model_names              = keys(var.model_deployments)
     private_endpoint_subnet  = var.private_network_mode == "create" ? local.private_subnets["endpoints"] : null

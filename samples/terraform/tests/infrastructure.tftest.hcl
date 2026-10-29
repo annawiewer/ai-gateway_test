@@ -56,7 +56,7 @@ run "models_and_access_without_developer" {
       alltrue([for name in values(output.resource_groups) : name == output.resource_group_name]) &&
       alltrue([for parent in concat([
         azapi_resource.gateway.parent_id,
-        azapi_resource.connector_gateway.parent_id,
+        azapi_resource.connector_gateway[0].parent_id,
         azapi_resource.models.parent_id,
         azapi_resource.agents.parent_id,
         azapi_resource.storage.parent_id,
@@ -66,7 +66,10 @@ run "models_and_access_without_developer" {
       ) : parent == azapi_resource.resource_group["gateway"].id]) &&
       length(azapi_resource.logs) == 2 &&
       length(azapi_resource.insights) == 2 &&
-      azapi_resource.gateway.body.sku.name == "AIGateway"
+      azapi_resource.gateway.body.sku.name == "AIGateway" &&
+      azapi_resource.gateway.body.sku.capacity == 1 &&
+      azapi_resource.gateway.type == "Microsoft.ApiManagement/service@2025-09-01-preview" &&
+      local.resource_token == substr(sha256("${var.subscription_id}:${var.environment_name}:${var.location}"), 0, 12)
     )
     error_message = "All building blocks must share the retained gateway group without changing its name/address, AIGateway SKU, monitoring stacks or compatibility output keys."
   }
@@ -86,6 +89,7 @@ run "models_and_access_without_developer" {
       azapi_resource.model_deployment["test-model"].body.sku.capacity == 7 &&
       azapi_resource.catalog_model["test-model"].body.properties.deployment.modelName == "test-model" &&
       azapi_resource.catalog_model["test-model"].body.properties.policies[0].count == 2300 &&
+      length(azapi_resource.catalog_model["test-model"].body.properties.policies) == 1 &&
       jsonencode(azapi_resource.catalog_model["test-model"].body.properties.policies[0].counterKey) == jsonencode(["identity"]) &&
       azapi_resource.catalog_model["test-model"].body.properties.supportedEndpoints[0] == "/openai/v1/responses"
     )
@@ -104,6 +108,7 @@ run "models_and_access_without_developer" {
     condition = (
       length(azapi_resource.model_alias) == length(var.model_deployments) &&
       azapi_resource.model_alias["test-model"].body.properties.aliasName == "test-model" &&
+      jsonencode(keys(azapi_resource.model_alias["test-model"].body.properties.backendModels[0])) == jsonencode(["resourceId"]) &&
       azapi_resource.model_alias["test-model"].body.properties.backendModels[0].resourceId == azapi_resource.catalog_model["test-model"].id
     )
     error_message = "Every runtime model alias must route the configured deployment name to its provider catalog entry."
@@ -141,9 +146,11 @@ run "models_and_access_without_developer" {
       !azapi_resource.storage.body.properties.allowSharedKeyAccess &&
       !azapi_resource.storage.body.properties.allowBlobPublicAccess &&
       !azapi_resource.registry.body.properties.adminUserEnabled &&
+      !azapi_resource.registry_connection.body.properties.isSharedToAll &&
+      azapi_resource.insights_connection.body.properties.isSharedToAll &&
       !azapi_resource.telemetry_exporter.body.properties.payloadCapture
     )
-    error_message = "The sample must preserve identity-based backend access and avoid storage keys, public blobs, registry admin credentials, and payload capture."
+    error_message = "Preserve legacy connection sharing and identity-based access without storage keys, public blobs, registry admin credentials or payload capture."
   }
 }
 
