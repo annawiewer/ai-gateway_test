@@ -5,7 +5,11 @@
 Use this reference to understand how the inputs fit together when the **gateway
 workload is new**, but networking and central Private DNS already belong to the
 platform team. The intended end state is private gateway/model access after the
-approved deployment stages.
+approved deployment stages. This filled variant selects **Entra caller access
+with Terraform-managed role assignments, private Blob connectivity, private
+Hosted Agent infrastructure and a new private test VM**. These choices belong
+to this walkthrough; they are not mandatory defaults for every Scenario 01
+deployment.
 
 > [!CAUTION]
 > Subscription/object IDs, resource names, contacts and capacity values below are
@@ -18,14 +22,15 @@ The labels carry the meaning even when colors are unavailable.
 
 | Marker | What to do |
 | --- | --- |
-| &#x1F7E2; **ACTIVE** | The base assignment already has no `#`. Replace the illustrative value; leave explanatory comments alone. |
+| &#x1F7E2; **ACTIVE** | The assignment is active in this reference. Use it without `#` in the protected working inputs, replacing illustrative values and leaving explanatory comments alone. |
 | &#x1F535; **PROFILE** | Set the value through the selected network or access input file, not through a duplicate assignment in the base file. |
-| &#x1F7E1; **OPTIONAL - OFF** | Leave the setting commented out for this example. Enable only after agreeing the need, prerequisites and scope. |
 | &#x1F534; **NOT THIS SCENARIO** | Do not activate settings that create a parallel network/DNS foundation. |
 
 In HCL, `#` starts a comment. **Never remove every `#`**: explanation text must
-remain commented. When deliberately enabling an optional object, uncomment and
-fill the entire block, including its closing brace.
+remain commented. When activating a selected object in the working input file,
+uncomment and fill the entire block, including its closing brace. The shared
+Base template (`01-04-terraform.tfvars.example`) still comments out these
+extensions because it supports other scenarios; its defaults are unchanged.
 
 ## Filled base inputs
 
@@ -33,6 +38,9 @@ fill the entire block, including its closing brace.
 Use the
 [Base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
 as the editable starting point if no approved workload input file exists.
+Also include the [required Entra caller access](#required-entra-caller-access)
+and [selected private features](#selected-private-features) shown below in
+that same protected base input file.
 
 ```hcl
 subscription_id = "11111111-2222-4333-8444-555555555555"
@@ -97,15 +105,22 @@ explicitly selected.
   "private_dns_zone_group_management": "workload",
   "existing_private_network": {
     "gateway_subnet_id": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-gateway/subnets/snet-gateway-outbound",
+    "agent_subnet_id": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-agents-outbound",
+    "client_subnet_id": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-gateway/subnets/snet-test-clients",
     "endpoint_subnet_ids": {
       "gateway": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-gateway/subnets/snet-gateway-private-links",
-      "models": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-model-private-links"
+      "models": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-model-private-links",
+      "storage": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-model-private-links",
+      "agents": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-model-private-links",
+      "registry": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-network/providers/Microsoft.Network/virtualNetworks/vnet-demo-models/subnets/snet-model-private-links"
     },
     "private_dns_zone_ids": {
       "gateway": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.azure-api.net",
       "cognitiveservices": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.cognitiveservices.azure.com",
       "openai": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.openai.azure.com",
-      "services": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.services.ai.azure.com"
+      "services": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.services.ai.azure.com",
+      "storage": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net",
+      "registry": "/subscriptions/11111111-2222-4333-8444-555555555555/resourceGroups/rg-demo-dns/providers/Microsoft.Network/privateDnsZones/privatelink.azurecr.io"
     }
   }
 }
@@ -119,20 +134,21 @@ DNS zone IDs are not Private DNS Resolver IDs.
 
 | Example choice | What must be agreed or verified |
 | --- | --- |
-| Three base subnet fields | These represent three roles, not necessarily three distinct subnets; see the breakdown below. Existing does not mean available or compatible. |
+| Three core subnet fields plus selected extensions | The basic gateway/model path needs three fields; this expanded example includes eight subnet-ID fields referring to five distinct subnets. See the breakdown below. Existing does not mean available or compatible. |
 | Subscription in subnet IDs | The example uses the same fictional subscription as the base file. The sample requires endpoint subnets in the workload subscription. |
-| Four central DNS zones | The names are real technical zone names; their subscription/group IDs must be replaced. Central zones may be in another subscription with the required permissions. Four zones do not mean four private endpoints. |
+| Six central DNS zones | Four core zones plus `storage` and `registry` are required for the selected features. The agent endpoint reuses the core Cognitive Services/OpenAI/services zones; there is no separate `agents` DNS-map key. Zone count is not endpoint count. Replace the subscription/group IDs; central zones may be in another subscription with the required permissions. |
 | `"private_dns_zone_group_management": "workload"` | This is an illustrative ownership choice, not a customer decision. Use `workload` only when the workload may create endpoint-to-zone associations; use `platform` when platform automation owns them. Neither transfers ownership of central zones, VNet links or the resolver. |
 
 The network file chooses **ownership**, not an access stage. Keep the complete
 `existing_private_network` object: a later assignment replaces the whole object,
 not just its changed fields.
 
-### Three input fields, two or three actual subnets
+### Three core input fields, two or three core subnets
 
 The two entries named `gateway` and `models` inside `endpoint_subnet_ids` are
 **not the complete set of subnet inputs**. There is also `gateway_subnet_id`.
-All three fields below belong to `existing_private_network`:
+All three core fields below belong to `existing_private_network`; the selected
+extensions add the fields described in the next subsection:
 
 | Field | Purpose | Subnet in the filled example |
 | --- | --- | --- |
@@ -140,7 +156,8 @@ All three fields below belong to `existing_private_network`:
 | `endpoint_subnet_ids.gateway` | Gateway private endpoint: the private entry point used by callers. | `snet-gateway-private-links` |
 | `endpoint_subnet_ids.models` | Model-service private endpoint, reached by the gateway. | `snet-model-private-links` |
 
-This example deliberately shows **three distinct subnets**. The gateway and
+The core gateway/model part of this example shows **three distinct subnets**.
+The gateway and
 model endpoint fields may instead contain the **same suitable, platform-approved
 subnet ID**. The basic setup then uses **two distinct subnets but still three
 input fields**. Gateway integration must remain separate from every private
@@ -171,13 +188,23 @@ A fourth subnet, `agents`, is added only with
 automatically enable this option.
 
 **In this `existing` scenario, Terraform creates none of these subnets.** The
-platform must supply compatible existing subnets for any enabled additions.
-Neither optional feature below is enabled in the filled example:
+platform must supply compatible existing subnets for the selected additions.
+**Private Blob connectivity, private Hosted Agent infrastructure and the new
+test VM are all selected here**, so their additional inputs are included in
+the complete network object above:
 
-| Optional feature | Additional field inside `existing_private_network` | Purpose |
+| Selected feature | Additional fields inside `existing_private_network` | Placement in this example |
 | --- | --- | --- |
-| `enable_private_test_client = true` | `client_subnet_id` | Subnet for the sample's optional private test VM, not automatically the production application's subnet. |
-| `enable_private_hosted_agent = true` | `agent_subnet_id` | Separate integration subnet for private Hosted Agents; required endpoint/DNS inputs must also be supplied. |
+| Private Blob connectivity | `endpoint_subnet_ids.storage`, `private_dns_zone_ids.storage` | Blob endpoint in `snet-model-private-links`, using the central Blob zone. |
+| Private Hosted Agent outbound integration | `agent_subnet_id` | Separate `snet-agents-outbound` integration subnet, delegated to `Microsoft.App/environments`. |
+| Private Hosted Agent and registry endpoints | `endpoint_subnet_ids.agents`, `endpoint_subnet_ids.registry`, `private_dns_zone_ids.registry` | Both endpoints share `snet-model-private-links`; registry uses the central ACR zone. |
+| New private test VM | `client_subnet_id` | `snet-test-clients`, not automatically the production application's subnet. |
+
+This makes **eight subnet-ID fields, but five distinct subnets** in the filled
+example: gateway integration, gateway endpoints, shared model/Blob/agent/registry
+endpoints, agent integration and the test client. Endpoint-subnet sharing still
+requires platform approval and sufficient free IP capacity; it is not a request
+to create a separate subnet for every map entry.
 
 **The test VM is a test computer, not an intermediary for application traffic.**
 From it, you can check private DNS resolution, gateway reachability and an
@@ -186,8 +213,9 @@ a gateway client, but it can remain in its own existing network if routing,
 private DNS resolution and authentication are in place. It does not have to run
 in the sample's `client` subnet or send requests through the test VM.
 An approved existing private client can be used instead of creating this
-additional, billable VM; in that case, leave the test-VM feature off and omit
-`client_subnet_id`.
+additional, billable VM in a different selection; in that case, leave the
+test-VM feature off and omit `client_subnet_id` before deploying a new workload.
+This walkthrough explicitly selects the new VM.
 
 For private Hosted Agents, the supplied integration subnet must be separate from
 gateway integration and all private endpoint subnets. Supplying `agent_subnet_id`
@@ -196,7 +224,7 @@ endpoint and DNS inputs must also be agreed. Existing mode never creates a
 missing agent subnet automatically, and its total subnet count is **not always
 four**; it depends on the enabled features and approved endpoint-subnet sharing.
 
-## Which commented settings stay commented?
+## Access settings for this walkthrough
 
 ### Required values supplied by profiles
 
@@ -225,37 +253,83 @@ Profiles are **not loaded automatically** merely because they exist in a folder.
 Use the [input composition rules](../../../01-04-deployment.md#compose-the-inputs)
 and the approved staged procedure; do not jump directly to the final profile.
 
-### Optional additions left off in this example
+<a id="optional-additions-left-off-in-this-example"></a>
 
-&#x1F7E1; **OPTIONAL - OFF** - all assignment lines below remain commented.
+### Required Entra caller access
+
+**Application-to-gateway calls must use Entra ID in this walkthrough.** The
+selected owner of the caller role assignments is this Terraform deployment.
+This is a requirement of the chosen example, not an interchangeable optional
+authentication choice.
+
+&#x1F7E2; **ACTIVE** - include this complete block in the protected base inputs.
+Replace the fictional principal with an approved existing Entra identity:
 
 ```hcl
-# gateway_access_principals = {
-#   demo_application = {
-#     principal_id   = "22222222-3333-4444-8555-666666666666"
-#     principal_type = "ServicePrincipal"
-#   }
-# }
-
-# storage_public_network_access   = "Disabled"
-# enable_storage_private_endpoint = true
-
-# enable_private_hosted_agent = true
-
-# enable_private_test_client         = true
-# private_test_client_ssh_public_key = "ssh-ed25519 <approved-public-SSH-key>"
+gateway_access_principals = {
+  demo_application = {
+    principal_id   = "22222222-3333-4444-8555-666666666666"
+    principal_type = "ServicePrincipal"
+  }
+}
 ```
 
-| Optional block | Before enabling it |
-| --- | --- |
-| `gateway_access_principals` | Obtain approved Entra **object** IDs, not client/application IDs. The grant covers all gateway models and does not disable existing API keys. |
-| Private Blob Storage | Agree the staged setup and add `endpoint_subnet_ids.storage` and `private_dns_zone_ids.storage` to the complete network object. Gateway/model private access alone does not make Storage private; leaving this block off retains the Storage public-network default. |
-| Private hosted-agent extension | Agree the extra scope and agent/registry subnet and DNS inputs. It is not required for a basic model call through the gateway. |
-| New private test VM | Agree cost/scope, supply `client_subnet_id` and an approved public SSH key. The shown key is deliberately not usable. An approved existing private client can be used instead. |
+`demo_application` is a stable Terraform map label, not a new application.
+`principal_id` must be the existing service principal or managed identity's
+**object/principal ID** in the gateway subscription's tenant, not its client ID
+or the app registration's object ID. `ServicePrincipal` also covers managed
+identities. See [where to find the correct identity](../../../docs/reference.md#find-optional-principal-ids).
 
-Leaving optional additions off **does not remove core supporting resources**:
-the base module still includes the agent account/project, Storage, Premium ACR
-and monitoring. Review their scope, access posture and costs separately.
+Terraform grants **AI Gateway Models User at gateway scope**, covering all its
+models, not management or key retrieval. Confirm that scope and the deployment
+identity's role-assignment permissions. If an equivalent grant is already
+platform-managed, agree its ownership/import rather than creating a duplicate;
+selecting Terraform in this example does not transfer existing IAM ownership.
+
+> [!IMPORTANT]
+> **A caller role assignment is not an authentication switch.** The application
+> must actually acquire and send an Entra token using the
+> [token and consent contract](../../../docs/reference.md#token-and-consent-contract).
+> This block creates no application/identity, disables no API key and does not
+> convert the existing test-VM or hosted-agent reference calls from keys to Entra.
+> Their key-based success is not proof of this requirement. Verify the intended
+> caller with the [Entra probe](../../../docs/reference.md#verify-the-selected-client)
+> and its approved private route; that probe uses the signed-in Azure CLI identity,
+> not automatically the `demo_application` entry.
+
+### Selected private features
+
+&#x1F7E2; **ACTIVE** - these features are part of this walkthrough, not left
+off. Include these assignments in the same protected base input file:
+
+```hcl
+storage_public_network_access   = "Disabled"
+enable_storage_private_endpoint = true
+
+enable_private_hosted_agent = true
+
+enable_private_test_client         = true
+private_test_client_ssh_public_key = "ssh-ed25519 <approved-public-SSH-key>"
+```
+
+| Selected component | Effect and remaining prerequisites |
+| --- | --- |
+| Private Blob connectivity | Disables Storage public-network access and adds the Blob private endpoint. Its subnet and central DNS zone are included above. Follow the [Blob connectivity checks](../../../docs/private-connectivity.md#optional-policy-restricted-blob-storage); this is not proof of hosted-agent access to Storage. |
+| Private Hosted Agent infrastructure | Adds a separate VNet-injected Basic Foundry account/project and agent/registry endpoints; it does not convert the original account or deploy an agent application. Configure injection when the new account is created, verify its delegated subnet and region/capacity, and follow the [separate application and acceptance gates](../../../docs/private-hosted-agent.md#deployment-and-acceptance-gates). |
+| New private test VM | Creates an additional billable VM without a public IP in the supplied client subnet. Replace the deliberately unusable SSH placeholder with an approved OpenSSH **public** key before validation/planning. Check VM quota, platform egress and the [test-client permissions](../../../docs/private-connectivity.md#test-client-permissions), including custom role-definition permissions; caller-role assignment rights alone do not cover them. |
+
+The SSH key configures VM access; it is not the application's Entra identity or
+a gateway API key. The test helper uses Run Command. Do not copy a private SSH
+key into any input file.
+
+**These selections are not a claim that every resource or traffic flow is
+private-only.** The private-agent extension retains the original agent
+account/project and does not change ACR's public-access setting. Agent
+application deployment, its caller authentication and runtime identity remain
+separate work. Review these boundaries in the
+[private-agent reference](../../../docs/private-hosted-agent.md#resource-changes).
+Storage, Premium ACR and monitoring are already core supporting resources;
+the selected flags do not replace their scope, cost or access review.
 
 ### Settings that do not belong to this scenario
 
@@ -275,7 +349,7 @@ new workload state.
 Start from the linked editable templates, or keep the complete approved input
 files supplied by your organization. Never overwrite an existing approved input
 file with fictional examples. Replace the illustrative values and agree the
-network/DNS contract, policy, permissions, regions, quota and optional scope
+network/DNS contract, policy, permissions, regions, quota and selected feature scope
 before planning. Keep real inputs and state out of public Git.
 
 Continue with the [scenario prerequisites](../../../docs/scenarios/01-existing-network.md#before-you-start)
