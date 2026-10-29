@@ -146,6 +146,20 @@ subnet ID**. The basic setup then uses **two distinct subnets but still three
 input fields**. Gateway integration must remain separate from every private
 endpoint subnet.
 
+> [!IMPORTANT]
+> **Confirm subnet suitability and authorized use through the platform process
+> before deployment.** Existing does not automatically mean compatible or available.
+>
+> **Where to check:** in the Azure portal, open
+> **Virtual networks > your VNet > Subnets > your subnet** for the address range,
+> delegation and attached NSG, and the VNet's **Overview** for region/subscription.
+> Use the [subnet and permission prerequisites](../../../docs/private-connectivity.md#existing-network-prerequisites)
+> as the checklist. The platform owner must also confirm free IP capacity,
+> existing service bindings/reservations, routing, firewall/NSG rules and private
+> DNS resolution; these checks extend beyond the subnet pane.
+>
+> **A successful Terraform plan is not a full readiness or connectivity check.**
+
 ### How `client` and `agents` fit
 
 When `enable_private_networking = true` and `private_network_mode = "create"`,
