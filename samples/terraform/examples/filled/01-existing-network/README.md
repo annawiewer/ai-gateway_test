@@ -119,7 +119,7 @@ DNS zone IDs are not Private DNS Resolver IDs.
 
 | Example choice | What must be agreed or verified |
 | --- | --- |
-| Three subnet fields | Outbound integration is separate from private endpoints. The gateway/model endpoint fields may share one approved endpoint subnet; this illustration uses two. Existing does not mean available or compatible. |
+| Three base subnet fields | These represent three roles, not necessarily three distinct subnets; see the breakdown below. Existing does not mean available or compatible. |
 | Subscription in subnet IDs | The example uses the same fictional subscription as the base file. The sample requires endpoint subnets in the workload subscription. |
 | Four central DNS zones | The names are real technical zone names; their subscription/group IDs must be replaced. Central zones may be in another subscription with the required permissions. Four zones do not mean four private endpoints. |
 | `"private_dns_zone_group_management": "workload"` | This is an illustrative ownership choice, not a customer decision. Use `workload` only when the workload may create endpoint-to-zone associations; use `platform` when platform automation owns them. Neither transfers ownership of central zones, VNet links or the resolver. |
@@ -127,6 +127,60 @@ DNS zone IDs are not Private DNS Resolver IDs.
 The network file chooses **ownership**, not an access stage. Keep the complete
 `existing_private_network` object: a later assignment replaces the whole object,
 not just its changed fields.
+
+### Three input fields, two or three actual subnets
+
+The two entries named `gateway` and `models` inside `endpoint_subnet_ids` are
+**not the complete set of subnet inputs**. There is also `gateway_subnet_id`.
+All three fields below belong to `existing_private_network`:
+
+| Field | Purpose | Subnet in the filled example |
+| --- | --- | --- |
+| `gateway_subnet_id` | Gateway outbound VNet integration, used to reach private backends. | `snet-gateway-outbound` |
+| `endpoint_subnet_ids.gateway` | Gateway private endpoint: the private entry point used by callers. | `snet-gateway-private-links` |
+| `endpoint_subnet_ids.models` | Model-service private endpoint, reached by the gateway. | `snet-model-private-links` |
+
+This example deliberately shows **three distinct subnets**. The gateway and
+model endpoint fields may instead contain the **same suitable, platform-approved
+subnet ID**. The basic setup then uses **two distinct subnets but still three
+input fields**. Gateway integration must remain separate from every private
+endpoint subnet.
+
+### How `client` and `agents` fit
+
+When `enable_private_networking = true` and `private_network_mode = "create"`,
+`private-network.tf` creates the three subnet roles `gateway`, `endpoints` and
+`client`. Gateway/model private endpoints share the created `endpoints` subnet.
+The `client` subnet is created even when the optional test VM is not enabled.
+A fourth subnet, `agents`, is added only with
+`enable_private_hosted_agent = true`; deploying an arbitrary agent does not
+automatically enable this option.
+
+**In this `existing` scenario, Terraform creates none of these subnets.** The
+platform must supply compatible existing subnets for any enabled additions.
+Neither optional feature below is enabled in the filled example:
+
+| Optional feature | Additional field inside `existing_private_network` | Purpose |
+| --- | --- | --- |
+| `enable_private_test_client = true` | `client_subnet_id` | Subnet for the sample's optional private test VM, not automatically the production application's subnet. |
+| `enable_private_hosted_agent = true` | `agent_subnet_id` | Separate integration subnet for private Hosted Agents; required endpoint/DNS inputs must also be supplied. |
+
+**The test VM is a test computer, not an intermediary for application traffic.**
+From it, you can check private DNS resolution, gateway reachability and an
+authenticated model call through the gateway. A production application is also
+a gateway client, but it can remain in its own existing network if routing,
+private DNS resolution and authentication are in place. It does not have to run
+in the sample's `client` subnet or send requests through the test VM.
+An approved existing private client can be used instead of creating this
+additional, billable VM; in that case, leave the test-VM feature off and omit
+`client_subnet_id`.
+
+For private Hosted Agents, the supplied integration subnet must be separate from
+gateway integration and all private endpoint subnets. Supplying `agent_subnet_id`
+alone is not the complete feature configuration: the required agent/registry
+endpoint and DNS inputs must also be agreed. Existing mode never creates a
+missing agent subnet automatically, and its total subnet count is **not always
+four**; it depends on the enabled features and approved endpoint-subnet sharing.
 
 ## Which commented settings stay commented?
 
