@@ -4,15 +4,16 @@
 Management. It puts model APIs and MCP tools behind one governed endpoint, with
 access policies, networking and observability.
 
-This repository contains **Terraform deployment guidance**, an **Azure CLI
-extension** and a **coding-agent plugin**. These are separate entry points,
-not successive installation steps.
+This repository contains **Terraform deployment guidance**, a complete
+**Bicep/Python agent sample**, an **Azure CLI extension** and a **coding-agent
+plugin**. These are separate entry points, not successive installation steps.
 
 ## Pick your task
 
 | Task | Start here |
 | --- | --- |
 | Deploy or update gateway infrastructure with Terraform | [Choose one of four scenarios](samples/terraform/README.md#choose-your-scenario) |
+| Try the separate Bicep/Python end-to-end sample | [Bicep sample and upstream snapshot](samples/bicep/README.md#snapshot-in-this-test-repository) |
 | Understand the Terraform sample without running anything | [Beginner explanation](samples/terraform/docs/understand-the-sample.md) |
 | Manage gateways, models, tools and policies with the CLI | [Azure CLI](#azure-cli) |
 | Build an application that uses an existing gateway | [Coding-agent plugin](#coding-agent-plugin) |
@@ -24,6 +25,12 @@ links the active base example, complete network inputs and shared procedure.
 An existing *gateway* instead follows the
 [Scenario 04 update guide](samples/terraform/docs/scenarios/04-update-existing.md).
 All four scenarios use one shared Terraform implementation.
+
+The [Bicep example](samples/bicep/README.md) is a separate deployment alternative,
+not an extra Terraform step. It uses the newer `aigateways/Consumption` contract
+and includes explicitly identified, unmerged upstream changes. It does not
+update the Terraform sample or its customer-specific inputs. Do not use both
+deployment tools to manage the same Azure resources.
 
 > [!IMPORTANT]
 > **Preview does not mean a free sample deployment.** Model calls, Premium
