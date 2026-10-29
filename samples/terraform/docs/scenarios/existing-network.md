@@ -27,7 +27,7 @@ approved filenames and input storage if already defined.
 | File | Action |
 | --- | --- |
 | [terraform.tfvars.example](../../terraform.tfvars.example) | If no approved workload input file exists, copy to a protected file such as `terraform.tfvars`. Fill in subscription, workload/gateway regions, publisher contact, model deployments and other approved workload values. |
-| [profiles/network-existing.tfvars.json](../../profiles/network-existing.tfvars.json) | Copy to a protected file such as `network-existing.environment.tfvars.json`. Replace all placeholder IDs and agree `private_dns_zone_group_management`. Keep the complete `existing_private_network` object. |
+| [profiles/network-existing.tfvars.json](../../profiles/network-existing.tfvars.json) | Use the complete approved environment input file if one is already supplied. Otherwise copy the template to a protected file such as `network-existing.environment.tfvars.json`, replace all placeholder IDs and agree `private_dns_zone_group_management`. Keep the complete `existing_private_network` object. |
 | [profiles/private-connectivity.tfvars.json](../../profiles/private-connectivity.tfvars.json) | Select only for the approved intermediate private setup stage; the gateway is still public in this profile. |
 | [profiles/private-only.tfvars.json](../../profiles/private-only.tfvars.json) | Select for the final gateway/model private-only stage after approval and connectivity checks. |
 | All root `*.tf` files | Use the shared implementation unchanged. Do not copy a subset into a new folder or import the platform network into workload state. |

@@ -80,7 +80,9 @@ responsibilities, not modules, resource addresses or states.
 
 ## Inputs
 
-Required values are in the [shared setup](../README.md#shared-setup).
+Required values are in the operator guide's
+[input catalogue](../deployment.md#3-fill-in-the-required-values);
+tool/provider requirements are in its [prerequisites](../deployment.md#prerequisites).
 
 | Input | Purpose and default |
 | --- | --- |
@@ -113,7 +115,29 @@ Optional fields: `model_format`, `sku_name`, `api_format`, `endpoints`, `descrip
 ## Access
 
 Choose **Microsoft Entra ID** or **API keys** independently of Public/Private-only.
-To add Entra callers, extend your existing ignored input file:
+Authentication does not create the required network/DNS route. Optional identity
+fields are not required merely to complete this reference.
+
+### Find optional principal IDs
+
+Use an **object/principal ID** in the gateway subscription's tenant, not an
+application/client ID. Ask the identity owner for the approved object and scope;
+resource visibility or a copied ID is not a permission grant.
+
+| Optional identity | Portal location or source |
+| --- | --- |
+| User or group in `gateway_access_principals` | **Microsoft Entra ID > Users / Groups > selected object > Overview > Object ID**. |
+| Application service principal | **Microsoft Entra ID > Enterprise applications > selected application > Properties > Object ID**, not the app registration's Application (client) ID. |
+| System-assigned managed identity | The actual Azure resource's **Identity > System assigned > Object (principal) ID**. |
+| User-assigned managed identity | **Managed Identities > approved identity > Overview > Principal ID**, not Client ID. |
+| Private hosted-agent runtime identity | Discover from the **deployed agent runtime/version**, not the project identity; follow the [agent deployment gates](private-hosted-agent.md#deployment-and-acceptance-gates). Leave its optional input unset until that identity exists. |
+
+Do not add Entra callers or agent runtime bindings when the feature has not been
+selected. Runtime key-read and image-pull grants are distinct from caller invocation.
+
+### Add caller roles without replacing existing inputs
+
+To add Entra callers, extend the existing ignored input file:
 
 ```hcl
 gateway_access_principals = {
@@ -144,6 +168,8 @@ removing an entry removes its Terraform-managed role assignment. If an equivalen
 role already exists outside Terraform, import it at the intended address or keep
 it externally managed rather than creating a duplicate.
 
+### Token and consent contract
+
 For a client calling as itself, request a token for audience
 `https://azure-api.net/aigateway` (SDK scope
 `https://azure-api.net/aigateway/.default`). Custom apps signing in users need
@@ -152,6 +178,17 @@ invocation role. That custom-app consent setup does not apply to managed
 identities, client credentials or built-in Azure CLI/PowerShell clients.
 Send `Authorization: Bearer <token>`, not the ARM or model-backend token.
 See the [portal security and identity guide](https://ai.gateway.azure.com/docs/security-identity).
+
+For custom delegated-user clients, that guide identifies the **Azure AI Gateway
+Dataplane** application as `18550318-e177-4205-a743-6816d6fcdc3f`.
+An Entra client uses the authorization header instead of `api-key`; gateway
+keys remain available to other clients. For a workload calling as itself, use
+its supported token flow and bind the invocation role to that workload.
+Confirm preview availability, token acquisition, role propagation and client
+compatibility before changing production authentication. Key revocation is a
+separate reviewed migration, not part of this additive configuration.
+
+### Verify the selected client
 
 ```powershell
 # Run only after deployment, from a client with the selected route.
@@ -175,8 +212,10 @@ not validate custom delegated-user clients or migrate the hosted agent.
 
 **Additive, not Entra-only:** no API key is disabled or deleted. The existing
 agent and private VM retain their key-reader roles and API-key calls. The gateway's
-backend Foundry User binding is unchanged. Neither adding callers nor leaving the
-map empty certifies that other externally managed invocation roles are absent.
+backend **Foundry User** binding (`53ca6127-db72-4b80-b1b0-d745d6d5456d`) remains
+scoped to the model account; it is not a caller invocation grant. Neither adding
+callers nor leaving the map empty certifies that other externally managed
+invocation roles are absent.
 
 ## Outputs
 

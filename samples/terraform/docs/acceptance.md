@@ -30,9 +30,12 @@ verification.
 For an **existing private client**, use the
 [two-terminal handoff](private-connectivity.md#test-from-an-existing-private-client):
 **A** runs Steps 1-3, Step 4's control-plane checks and Steps 6-8; **B** runs only
-the trace-aware requests, Step 5 and the sanitized evidence export. Keep A's full
-`$o` outputs in A. B receives a small metadata subset, never Terraform/backend
-access. Staging calls alone do not complete final private-only acceptance.
+the trace-aware requests, Step 5's private authentication checks and the sanitized
+evidence export. A accepts B's final report, then coordinates the
+[public-boundary test on C](#prove-public-network-denial-with-a-valid-gateway-key)
+before continuing to Steps 6-8. Keep A's full `$o` outputs in A. B receives a
+small metadata subset, never Terraform/backend access. Staging calls alone do
+not complete final private-only acceptance.
 The [manual portal review in Step 8](#8-record-the-manual-portal-review) is
 required too; omitting the sample VM does not waive portal evidence.
 
@@ -261,8 +264,10 @@ foreach ($name in @('gateway', 'models')) {
 For the VM path, set `$testStartUtc = [DateTimeOffset]::UtcNow` immediately before
 its power-cycle/probe block and `$testEndUtc = [DateTimeOffset]::UtcNow` after it.
 Require `"passed": true`, every alias HTTP `200`/`OK`, same-route negative checks
-and confirmed deallocation. Retain the report's per-call trace IDs, then skip
-to Step 6. Failure still requires the
+and confirmed deallocation. Retain the report's per-call trace IDs and skip the
+remaining private request blocks. For final private-only acceptance, complete
+the [public-boundary test](#prove-public-network-denial-with-a-valid-gateway-key)
+before Step 6. Failure still requires the
 [VM cleanup procedure](private-connectivity.md#step-6-stop-the-vm-when-you-are-done).
 
 ### Trace-aware calls from the selected existing client
@@ -535,13 +540,172 @@ if ($testStartUtc -lt $handoffTime.AddMinutes(-1) -or
     $testEndUtc -gt [DateTimeOffset]::UtcNow.AddMinutes(1)) {
     throw 'Invalid or stale client test window.'
 }
-'Client evidence matched. Continue live telemetry and drift verification on A.'
+'Client evidence matched. Complete the public-boundary test before telemetry and drift verification.'
 ```
 
 The report is **not** a substitute for Azure telemetry or a public-boundary
 test. The live rehearsal used an independent Windows PowerShell 5.1/managed-
 identity client. These documented blocks use PowerShell 7/Azure CLI; the exact
 snippets were not live-executed in that rehearsal.
+
+### Prove public-network denial with a valid gateway key
+
+This is required for **final private-only** acceptance, including after a
+successful VM runner. It is not the missing/invalid-key test from Step 5.
+Do not run it as a pass criterion for an intentionally public deployment.
+Run it **immediately after the final fresh private evidence**, before telemetry
+queries, drift plans or the portal review consume the metadata's 30-minute
+freshness window. Have the prearranged outside-network client ready.
+
+1. **A first confirms** both live public-access settings are `Disabled` and
+   the latest private call succeeded for every alias after that closure.
+   Keep that private evidence. Do not open access to create a public control.
+2. Ask the network owner for **C: an approved Windows client with PowerShell 7
+   and Azure CLI, outside the private route**. A can serve as C only if its
+   actual route qualifies. A VPN, private DNS override or proxy that forwards
+   into the private network disqualifies that route. Do not disable mandatory
+   corporate security controls; use an approved external test host instead.
+3. The owner signs C in with **C's own approved identity**, in the same tenant/
+   subscription, with the gateway-scoped
+   `Microsoft.ApiManagement/service/apiKeys/listSecrets/action` grant.
+   C needs ARM/sign-in and public gateway HTTPS reachability, **not**
+   Terraform, backend access, copied tokens or a transported runtime key.
+   Confirm the actual public egress with the network owner; DNS alone cannot
+   prove how a VPN/proxy routes HTTPS.
+4. Transfer A's final `private-only` metadata file/hash using the approved
+   channel. For the existing-client path use the **same run** just accepted
+   from B. For a VM run, A uses the
+   [same metadata export](private-connectivity.md#test-from-an-existing-private-client)
+   after confirming the successful final VM evidence. Finish within the
+   metadata's 30-minute freshness window. If it expires or anything is
+   redeployed, obtain fresh metadata and repeat the private controls first.
+5. On C, open a **separate** PowerShell 7 session. Run only
+   [Load the approved client metadata](private-connectivity.md#load-the-approved-client-metadata).
+   Enter `private-only` at its stage prompt. **Do not run B's private DNS
+   block, positive calls, or Steps 1-3 from this guide on C.**
+6. Still on C, run the following block. It makes **one** bounded request to an
+   alias that already passed privately. A misconfigured open gateway can make
+   that request billable; no load test or automatic retry is performed.
+
+```powershell
+$publicBoundaryEvidence = $null
+if (-not $clientHandoff -or $clientHandoff.stage -cne 'private-only' -or
+    ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($clientHandoff.capturedAtUtc)).TotalMinutes -gt 30) {
+    throw 'A fresh final-stage metadata import and successful private controls are required.'
+}
+$gatewayUrl = ([string]$o.gateway_endpoint.value).TrimEnd('/')
+$gatewayUri = [uri]$gatewayUrl
+$gatewayTarget = @($clientHandoff.dnsTargets | Where-Object name -eq 'gateway')
+if ($gatewayUri.Scheme -cne 'https' -or $gatewayUri.Port -ne 443 -or
+    $gatewayUri.UserInfo -or $gatewayUri.Query -or $gatewayUri.Fragment -or
+    $gatewayUri.AbsolutePath -ne '/' -or $gatewayTarget.Count -ne 1 -or
+    ([string]$gatewayTarget[0].url).TrimEnd('/') -cne $gatewayUrl -or
+    @($gatewayTarget[0].expectedIps).Count -eq 0) {
+    throw 'Gateway URL or selected endpoint metadata does not match the approved handoff.'
+}
+$publicIps = @(Resolve-DnsName -Name $gatewayUri.DnsSafeHost -Type A -DnsOnly -NoHostsFile -ErrorAction Stop |
+    Where-Object Type -eq 'A' | Select-Object -ExpandProperty IPAddress -Unique)
+if ($publicIps.Count -eq 0) { throw 'No public-route DNS result; network rejection is not verified.' }
+foreach ($ip in $publicIps) {
+    $address = [Net.IPAddress]::Parse($ip)
+    $bytes = $address.GetAddressBytes()
+    if ($bytes.Length -ne 4 -or $ip -in @($gatewayTarget[0].expectedIps) -or
+        $bytes[0] -in @(0, 10, 127) -or $bytes[0] -ge 224 -or
+        ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
+        ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or
+        ($bytes[0] -eq 169 -and $bytes[1] -eq 254) -or
+        ($bytes[0] -eq 100 -and $bytes[1] -ge 64 -and $bytes[1] -le 127)) {
+        throw 'DNS indicates a private/nonpublic route; choose an approved external client.'
+    }
+}
+$publicContext = (Read-Host 'Record the approved public client/egress context, without credentials').Trim()
+if (-not $publicContext) { throw 'Record the network-owner-confirmed public route first.' }
+$alias = @($o.model_deployment_ids.value.PSObject.Properties.Name)[0]
+$api = $o.model_api_configuration.value.PSObject.Properties[$alias].Value
+if (-not $alias -or $api.api_format -cne 'OpenAIChatCompletions' -or
+    @($api.endpoints) -cnotcontains '/openai/v1/chat/completions') {
+    throw 'Choose the approved chat-completions alias that passed privately.'
+}
+$apiKey = $null
+$headers = $null
+$response = $null
+try {
+    $keyId = [string]$o.gateway_api_key_id.value
+    $apiKey = az rest --subscription $subscription --method post `
+        --url "https://management.azure.com${keyId}/listSecrets?api-version=2025-09-01-preview" `
+        --query primaryKey --output tsv --only-show-errors
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiKey)) {
+        throw 'Cannot retrieve the current gateway key; public rejection is not verified.'
+    }
+    $publicTraceId = [guid]::NewGuid().ToString('N')
+    $spanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
+    $headers = @{ 'Api-Key' = $apiKey; traceparent = "00-$publicTraceId-$spanId-01" }
+    $body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_tokens = 8; temperature = 0 } |
+        ConvertTo-Json -Depth 5
+    $response = Invoke-WebRequest -Method Post `
+        -Uri "$gatewayUrl/default/models/openai/v1/chat/completions" `
+        -Headers $headers -ContentType 'application/json' -Body $body `
+        -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 90
+    $status = [int]$response.StatusCode
+    $networkSpecific = [string]$response.Content -match 'public[\s_-]*network[\s_-]*access(?:\s+is)?[\s_:=.-]*(?:disabled|denied|blocked)'
+    $authenticationSpecific = [string]$response.Content -match 'api[- _]?key|subscription.?key|unauthori[sz]ed|authentication|credentials'
+    if ($status -ne 403 -or -not $networkSpecific -or $authenticationSpecific) {
+        throw "Explicit public-network rejection not verified, HTTP $status. Do not classify an authentication error as a pass."
+    }
+    $publicBoundaryEvidence = [ordered]@{
+        runId = $clientHandoff.runId
+        stage = $clientHandoff.stage
+        gatewayId = $o.gateway_id.value
+        metadataSha256 = (Get-FileHash -LiteralPath $handoffFile -Algorithm SHA256).Hash
+        testedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        networkContext = $publicContext
+        hostname = $gatewayUri.DnsSafeHost
+        dnsAddresses = $publicIps
+        alias = $alias
+        traceId = $publicTraceId
+        httpStatus = $status
+        networkSpecific = $networkSpecific
+        authenticationSpecific = $authenticationSpecific
+    }
+}
+finally {
+    $apiKey = $null
+    $headers = $null
+    $response = $null
+}
+$evidenceDirectory = Read-Host 'Absolute path to C''s existing restricted evidence folder outside the checkout'
+if (-not [IO.Path]::IsPathFullyQualified($evidenceDirectory) -or
+    -not (Test-Path -LiteralPath $evidenceDirectory -PathType Container)) {
+    throw 'Use an existing, approved restricted folder.'
+}
+$publicResultFile = Join-Path $evidenceDirectory "public-boundary-$publicTraceId.json"
+$publicBoundaryEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $publicResultFile -Encoding utf8NoBOM
+Get-FileHash -LiteralPath $publicResultFile -Algorithm SHA256
+```
+
+7. **Expected:** a sanitized report with HTTP `403`, `networkSpecific: true`,
+   `authenticationSpecific: false`, the public DNS addresses and the current
+   metadata/run identity. Return **only that report and its separately confirmed
+   hash** to A. Do not save raw response bodies, headers, keys or tokens.
+8. **A compares** the file hash, gateway ID, metadata hash/run ID, timestamp and
+   alias with the accepted final private evidence, and retains both records.
+   For a VM run, also retain its report/run ID and UTC window beside the metadata
+   export; it is not the same report schema as B's handoff.
+   Confirm the recorded network context with the network owner.
+   A DNS failure, TLS error, timeout, redirect, `401`, authentication-specific
+   `403`, generic/proxy-firewall `403` or ambiguous response is **not verified**,
+   not a pass. The block requires an explicit public-network-access denial;
+   investigate different service wording without weakening it to any `403`.
+   Never reopen the gateway to bypass this check.
+
+This proves only the tested gateway ingress boundary. It does not certify
+direct model, Foundry-agent or storage ingress with unrelated credentials.
+Those separately required tests need their own approved identity and evidence;
+never reuse a gateway key against a backend service.
+
+For the manual route, continue with [Step 6](#6-verify-telemetry-delivery-not-just-exporter-existence)
+on A after matching both reports. Keep their original request timestamps for
+telemetry queries; do not repeat inference just because ingestion is delayed.
 
 ## 6. Verify telemetry delivery, not just exporter existence
 
@@ -730,168 +894,31 @@ For an intentionally public deployment, omit **only** the private `-var-file`
 argument, retaining all its usual approved inputs/backend. Never omit it for a
 private deployment. Keep plan output protected because it can contain secrets.
 
-### Prove public-network denial with a valid gateway key
-
-This is required for **final private-only** acceptance, including after a
-successful VM runner. It is not the missing/invalid-key test from Step 5.
-Do not run it as a pass criterion for an intentionally public deployment.
-
-1. **A first confirms** both live public-access settings are `Disabled` and
-   the latest private call succeeded for every alias after that closure.
-   Keep that private evidence. Do not open access to create a public control.
-2. Ask the network owner for **C: an approved Windows client with PowerShell 7
-   and Azure CLI, outside the private route**. A can serve as C only if its
-   actual route qualifies. A VPN, private DNS override or proxy that forwards
-   into the private network disqualifies that route. Do not disable mandatory
-   corporate security controls; use an approved external test host instead.
-3. The owner signs C in with **C's own approved identity**, in the same tenant/
-   subscription, with the gateway-scoped
-   `Microsoft.ApiManagement/service/apiKeys/listSecrets/action` grant.
-   C needs ARM/sign-in and public gateway HTTPS reachability, **not**
-   Terraform, backend access, copied tokens or a transported runtime key.
-   Confirm the actual public egress with the network owner; DNS alone cannot
-   prove how a VPN/proxy routes HTTPS.
-4. Transfer A's final `private-only` metadata file/hash using the approved
-   channel. For the existing-client path use the **same run** just accepted
-   from B. For a VM run, A uses the
-   [same metadata export](private-connectivity.md#test-from-an-existing-private-client)
-   after confirming the successful final VM evidence. Finish within the
-   metadata's 30-minute freshness window. If it expires or anything is
-   redeployed, obtain fresh metadata and repeat the private controls first.
-5. On C, open a **separate** PowerShell 7 session. Run only
-   [Load the approved client metadata](private-connectivity.md#load-the-approved-client-metadata).
-   Enter `private-only` at its stage prompt. **Do not run B's private DNS
-   block, positive calls, or Steps 1-3 from this guide on C.**
-6. Still on C, run the following block. It makes **one** bounded request to an
-   alias that already passed privately. A misconfigured open gateway can make
-   that request billable; no load test or automatic retry is performed.
-
-```powershell
-$publicBoundaryEvidence = $null
-if (-not $clientHandoff -or $clientHandoff.stage -cne 'private-only' -or
-    ([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse($clientHandoff.capturedAtUtc)).TotalMinutes -gt 30) {
-    throw 'A fresh final-stage metadata import and successful private controls are required.'
-}
-$gatewayUrl = ([string]$o.gateway_endpoint.value).TrimEnd('/')
-$gatewayUri = [uri]$gatewayUrl
-$gatewayTarget = @($clientHandoff.dnsTargets | Where-Object name -eq 'gateway')
-if ($gatewayUri.Scheme -cne 'https' -or $gatewayUri.Port -ne 443 -or
-    $gatewayUri.UserInfo -or $gatewayUri.Query -or $gatewayUri.Fragment -or
-    $gatewayUri.AbsolutePath -ne '/' -or $gatewayTarget.Count -ne 1 -or
-    ([string]$gatewayTarget[0].url).TrimEnd('/') -cne $gatewayUrl -or
-    @($gatewayTarget[0].expectedIps).Count -eq 0) {
-    throw 'Gateway URL or selected endpoint metadata does not match the approved handoff.'
-}
-$publicIps = @(Resolve-DnsName -Name $gatewayUri.DnsSafeHost -Type A -DnsOnly -NoHostsFile -ErrorAction Stop |
-    Where-Object Type -eq 'A' | Select-Object -ExpandProperty IPAddress -Unique)
-if ($publicIps.Count -eq 0) { throw 'No public-route DNS result; network rejection is not verified.' }
-foreach ($ip in $publicIps) {
-    $address = [Net.IPAddress]::Parse($ip)
-    $bytes = $address.GetAddressBytes()
-    if ($bytes.Length -ne 4 -or $ip -in @($gatewayTarget[0].expectedIps) -or
-        $bytes[0] -in @(0, 10, 127) -or $bytes[0] -ge 224 -or
-        ($bytes[0] -eq 172 -and $bytes[1] -ge 16 -and $bytes[1] -le 31) -or
-        ($bytes[0] -eq 192 -and $bytes[1] -eq 168) -or
-        ($bytes[0] -eq 169 -and $bytes[1] -eq 254) -or
-        ($bytes[0] -eq 100 -and $bytes[1] -ge 64 -and $bytes[1] -le 127)) {
-        throw 'DNS indicates a private/nonpublic route; choose an approved external client.'
-    }
-}
-$publicContext = (Read-Host 'Record the approved public client/egress context, without credentials').Trim()
-if (-not $publicContext) { throw 'Record the network-owner-confirmed public route first.' }
-$alias = @($o.model_deployment_ids.value.PSObject.Properties.Name)[0]
-$api = $o.model_api_configuration.value.PSObject.Properties[$alias].Value
-if (-not $alias -or $api.api_format -cne 'OpenAIChatCompletions' -or
-    @($api.endpoints) -cnotcontains '/openai/v1/chat/completions') {
-    throw 'Choose the approved chat-completions alias that passed privately.'
-}
-$apiKey = $null
-$headers = $null
-$response = $null
-try {
-    $keyId = [string]$o.gateway_api_key_id.value
-    $apiKey = az rest --subscription $subscription --method post `
-        --url "https://management.azure.com${keyId}/listSecrets?api-version=2025-09-01-preview" `
-        --query primaryKey --output tsv --only-show-errors
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($apiKey)) {
-        throw 'Cannot retrieve the current gateway key; public rejection is not verified.'
-    }
-    $publicTraceId = [guid]::NewGuid().ToString('N')
-    $spanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
-    $headers = @{ 'Api-Key' = $apiKey; traceparent = "00-$publicTraceId-$spanId-01" }
-    $body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_tokens = 8; temperature = 0 } |
-        ConvertTo-Json -Depth 5
-    $response = Invoke-WebRequest -Method Post `
-        -Uri "$gatewayUrl/default/models/openai/v1/chat/completions" `
-        -Headers $headers -ContentType 'application/json' -Body $body `
-        -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 90
-    $status = [int]$response.StatusCode
-    $networkSpecific = [string]$response.Content -match 'public[\s_-]*network[\s_-]*access(?:\s+is)?[\s_:=.-]*(?:disabled|denied|blocked)'
-    $authenticationSpecific = [string]$response.Content -match 'api[- _]?key|subscription.?key|unauthori[sz]ed|authentication|credentials'
-    if ($status -ne 403 -or -not $networkSpecific -or $authenticationSpecific) {
-        throw "Explicit public-network rejection not verified, HTTP $status. Do not classify an authentication error as a pass."
-    }
-    $publicBoundaryEvidence = [ordered]@{
-        runId = $clientHandoff.runId
-        stage = $clientHandoff.stage
-        gatewayId = $o.gateway_id.value
-        metadataSha256 = (Get-FileHash -LiteralPath $handoffFile -Algorithm SHA256).Hash
-        testedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
-        networkContext = $publicContext
-        hostname = $gatewayUri.DnsSafeHost
-        dnsAddresses = $publicIps
-        alias = $alias
-        traceId = $publicTraceId
-        httpStatus = $status
-        networkSpecific = $networkSpecific
-        authenticationSpecific = $authenticationSpecific
-    }
-}
-finally {
-    $apiKey = $null
-    $headers = $null
-    $response = $null
-}
-$evidenceDirectory = Read-Host 'Absolute path to C''s existing restricted evidence folder outside the checkout'
-if (-not [IO.Path]::IsPathFullyQualified($evidenceDirectory) -or
-    -not (Test-Path -LiteralPath $evidenceDirectory -PathType Container)) {
-    throw 'Use an existing, approved restricted folder.'
-}
-$publicResultFile = Join-Path $evidenceDirectory "public-boundary-$publicTraceId.json"
-$publicBoundaryEvidence | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $publicResultFile -Encoding utf8NoBOM
-Get-FileHash -LiteralPath $publicResultFile -Algorithm SHA256
-```
-
-7. **Expected:** a sanitized report with HTTP `403`, `networkSpecific: true`,
-   `authenticationSpecific: false`, the public DNS addresses and the current
-   metadata/run identity. Return **only that report and its separately confirmed
-   hash** to A. Do not save raw response bodies, headers, keys or tokens.
-8. **A compares** the file hash, gateway ID, metadata hash/run ID, timestamp and
-   alias with the accepted final private evidence, and retains both records.
-   For a VM run, also retain its report/run ID and UTC window beside the metadata
-   export; it is not the same report schema as B's handoff.
-   Confirm the recorded network context with the network owner.
-   A DNS failure, TLS error, timeout, redirect, `401`, authentication-specific
-   `403`, generic/proxy-firewall `403` or ambiguous response is **not verified**,
-   not a pass. The block requires an explicit public-network-access denial;
-   investigate different service wording without weakening it to any `403`.
-   Never reopen the gateway to bypass this check.
-
-This proves only the tested gateway ingress boundary. It does not certify
-direct model, Foundry-agent or storage ingress with unrelated credentials.
-Those separately required tests need their own approved identity and evidence;
-never reuse a gateway key against a backend service.
-
 ### Complete the acceptance record
 
-Prepare this record now, then attach the required [Step 8 portal review](#8-record-the-manual-portal-review)
-before final sign-off. Backend checks alone do not complete manual acceptance.
+Use this as the **shared operational handover record** for the selected route,
+in an approved access-restricted evidence location. For manual acceptance, attach
+the [Step 8 portal review](#8-record-the-manual-portal-review) before final sign-off.
+For the optional sample-VM route, retain the actual
+[backend report and completed portal manifest](end-to-end.md#validate-the-sample-vm-portal-manifest)
+instead; do not repeat manual tests or manufacture a runner report.
 
-Record subscription/tenant, resource IDs, timestamp, Git revision, selected
-profile, aliases tested, six service bindings plus the DCR publishing role, connection metadata, authentication
-statuses, telemetry evidence, drift exit code and VM power state if a sample VM
-was deployed (otherwise record `not deployed`). Mark every required check
-**passed**, **failed** or **not verified**; do not include keys or raw state.
+| Record | Required evidence or accountable owner |
+| --- | --- |
+| Source and target | Exact approved Git revision, subscription/tenant, workload resource IDs, selected profile and UTC test window. A historical result or reviewed source alone is not target-environment acceptance. |
+| Workload, state and input responsibility | Workload/deployment owner and operating contact; authoritative backend/state location without copying state; owners and locations of all base, additional/runtime, ownership and access inputs, including endpoint-approval compatibility exceptions. |
+| Platform network and central DNS approval | For a selected private route: named network/DNS owners and their approval; the one endpoint zone-group owner; actual endpoint provisioning/approval, required zone IDs and DNS/routing readiness. Platform-managed associations must be delivered against the exact supplied zone IDs; group names and Terraform ownership do not matter. Manual DNS records alone are outside the automated runner's certification contract. |
+| Runtime and authorization | Aliases tested, per-call timestamps/trace IDs and response classification; same-route positive and negative authentication controls; six exact service bindings, the DCR publishing role and connection metadata. Retain the selected clients' evidence without credentials. |
+| Observed access posture | Expected and observed gateway/model public-access settings and any required private Foundry settings; for Private-only, authenticated public-network denial with its [outside-client context](#prove-public-network-denial-with-a-valid-gateway-key). |
+| Monitoring and portal | Fresh correlated gateway/backend telemetry; all six UI checks and a matched numeric metrics comparison through the actual VM manifest or manual portal record. UI observations remain operator-attested, not independent browser automation. |
+| Optional workload paths | Separate required agent/image/registry, artifact and Storage results, including the actual consumers tested. For an agent, use a fresh session/version and correlate its response with successful intended gateway/backend spans in `OTelSpans` by `TraceId` and time. A direct model call does not certify these paths. |
+| Drift, Policy and open issues | Full fresh plan with every approved input/exception and exit `0`; observed posture and DNS/connectivity/authentication/telemetry checks after Policy remediation. Record the exact outstanding difference, failed gate or unverified requirement rather than undoing enforced settings blindly. |
+| Cleanup and continuing costs | Named cleanup and cost owners; sample VM confirmed **deallocated**, or `not deployed`; temporary job-created roles removed while retained bindings remain. Record continuing model, registry, Storage, disk, endpoint and monitoring costs and any retained service-managed resources. |
+
+Mark every required check **passed**, **failed** or **not verified**. Preserve
+`NOT RUN` and `BLOCKED` outcomes as open requirements, not passes or proof that
+the gateway itself is broken. Never include keys, raw state or unrestricted
+plan/response dumps. Keep protected evidence with the responsible operating team.
 
 Acceptance remains limited to the demonstrated gateway/model route. Explicitly
 record the expected/observed gateway public access, not a hardcoded public

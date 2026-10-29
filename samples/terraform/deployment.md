@@ -5,8 +5,8 @@
 ## Start here
 
 This is the **shared operator procedure** for the
-[four deployment scenarios](README.md). Select the starting situation
-below, prepare the approved inputs, then follow only the applicable procedure.
+[scenario selected in the overview](README.md). Prepare the approved inputs,
+then follow the ordered journey below for that scenario.
 Specialist guides are linked at their execution step, not extra deployments to
 run afterward.
 
@@ -32,15 +32,18 @@ pipeline; Azure Portal and editor steps are labeled separately.
 
 ### First decide what already exists
 
-| Starting situation | Ownership and access | Workload state and next action |
-| --- | --- | --- |
-| [New gateway on an existing private platform](docs/scenarios/existing-network.md) | `existing` plus the approved private-access stage | Use approved subnet/zone IDs and the backend for the **new gateway workload**, not the network team's state. Follow the [runbook order](#runbook-order). |
-| [New private lab with sample-managed networking](docs/scenarios/private-lab.md) | `create` plus the approved private-access stage | Confirm a new workload backend and non-overlapping address range. The sample creates a network foundation, not a corporate landing zone. Follow the [runbook order](#runbook-order). |
-| [Deliberate new public lab](docs/scenarios/public-lab.md) | `create`, without a private-access profile | Obtain explicit public-access and cost approval. Ownership alone does not activate private networking. Follow the [runbook order](#runbook-order). |
-| [Update an existing gateway](docs/scenarios/update-existing.md) | Retain its approved ownership, access and exceptions | Keep complete inputs and authoritative state/backend. Use [Update an existing gateway](#update-an-existing-gateway), not new-deployment bootstrap. |
+- **New gateway:** follow the [runbook order](#runbook-order) using the ownership
+  and access choices from your selected scenario.
+- **Gateway already deployed:** use [Update an existing gateway](#update-an-existing-gateway).
+  Retain its complete approved inputs and authoritative state; do not repeat bootstrap.
+
+<a id="existing-network-integration-at-a-glance"></a>
 
 An **existing network** is not the same as an **existing gateway deployment**.
-If you do not know which row applies, stop and ask the platform/deployment owner.
+For a new gateway on an existing platform, the
+[network-input step](#network-foundation-create-or-existing) consumes approved
+IDs without adopting platform state. If you do not know which gateway branch
+applies, stop and ask the platform/deployment owner.
 The sample creates its own workload resource group; it does not automatically
 adopt an existing group, private endpoint, Foundry account or model deployment.
 
@@ -51,34 +54,6 @@ approved temporary-public stages described below. If even temporary public
 access is prohibited, **stop before deployment**: this guide does not establish
 a private-from-first-create procedure. An already-private deployment never
 repeats those stages.
-
-### Existing-network integration at a glance
-
-For a **new gateway workload using centrally managed network and DNS**, prepare
-the following inputs and owner confirmations. This is a map to the detailed
-steps, not a second runbook or permission to skip their checks.
-
-| Prepare | Who supplies it | File or next step |
-| --- | --- | --- |
-| Approved source, workload subscription/tenant, naming, regions, model choices and workload state/backend | Workload owner, with the model/platform owners | Use the [approved checkout](#2-open-the-approved-source-revision). Keep base inputs in `terraform.tfvars` or the already-approved input file; follow [Inputs and state](#inputs-and-state). |
-| Integration subnet, gateway/model endpoint subnets and the four core private DNS zones | Network/DNS team, through its existing provisioning process | Fill **`network-existing.environment.tfvars.json`**, copied from the shared [existing-network template](profiles/network-existing.tfvars.json), using the [field-by-field ID guide](#find-resource-ids-and-fill-in-the-network-input-file). |
-| One owner for endpoint DNS associations, plus permissions, routing, access-policy and test-client approval | Platform and workload owners together | Complete the [ownership and approval table](#platform-handoff-before-a-plan), then follow the [runbook order](#runbook-order), including the approved access path. |
-
-The filenames below are examples. Retain existing approved filenames and use
-their actual paths consistently; no file rename or state migration is required.
-
-Keep both input files in the organization's protected configuration, not in Git
-or unapproved sharing channels. Do not edit the shared profiles or copy the
-network team's state. If required subnets or zones are missing, the platform
-team provides them through its normal process; do not select `create` as a
-workaround. Optional services need their additional inputs too.
-
-The existing-network file selects **ownership**, not Private-only access.
-Select the final access posture separately; a new private deployment still
-needs the approved staged procedure. For an **already deployed gateway**, retain
-its current source, complete inputs and authoritative state instead of creating
-these files again. An existing Terragrunt pipeline can use the
-[adapter](#optional-terragrunt-adapter) **instead of** the copied network file.
 
 ### How to read a step
 
@@ -106,8 +81,8 @@ replace its complete inputs with a new base file.
 | --- | --- | --- |
 | 1 | [Prepare tools and the approved checkout](#prerequisites). | Versions and the working directory are correct. |
 | 2 | [Prepare or retain the workload input file and state](#inputs-and-state). | The state owner is known, values are saved and the Azure context matches. |
-| 3 | [Select create or existing networking](#network-foundation-create-or-existing). | One ownership file is selected; existing-mode IDs and the DNS owner are confirmed. |
-| 4 | Complete the [platform handoff](#platform-handoff-before-a-plan). Select [test client](docs/private-connectivity.md#step-1-choose-your-test-client) and any [agent extension](#optional-private-hosted-agent) **before** the full plan. | Permissions, routes, policy, quota and optional inputs are approved. Do not run runtime tests yet. |
+| 3 | [Select the network file](#network-foundation-create-or-existing), confirm the [DNS owner](#choose-the-dns-zone-group-owner), then [compose all inputs](#compose-the-inputs). | Approved existing-mode inputs are complete; use the conditional ID appendix only if they are missing. |
+| 4 | Confirm [caller access](#access) and the [platform handoff, including Policy](#platform-handoff-before-a-plan). Select the private [test client](docs/private-connectivity.md#step-1-choose-your-test-client) and any [agent extension](#optional-private-hosted-agent) **before** the full plan. | Permissions, routes, policy, quota and optional inputs are approved. Do not run runtime tests yet. |
 | 5 | Read [how to review a plan](#review-every-plan-before-apply), then prepare [monitoring](#monitoring-setup). | The destination is ready; the approved network posture was preserved. |
 | 6 | Follow **one** path: [Private-only](#private-only) or [Public](#public). | The selected path's deployment and runtime gates pass. |
 | 7 | If selected, deploy the [agent application](#optional-private-hosted-agent) separately. | Its own runtime identity, image pull and invocation have been checked. Otherwise skip this step. |
@@ -126,7 +101,9 @@ the gateway new.
 1. Confirm the current approved source revision, authoritative backend/state,
    stable naming and all input-file locations with the deployment owner. Use
    the existing initialization and identity process; do not create a second state.
-2. Restore the [complete input selection](#compose-the-inputs), including
+2. Select the [existing approved base file](#2-create-or-select-a-base-input-file),
+   restore the [verified Azure context](#4-sign-in-and-verify-the-target), and
+   restore the [complete input selection](#compose-the-inputs), including
    optional/runtime inputs, ownership, current access and approved exceptions.
    Later object values replace whole objects, not individual nested fields.
 3. Preserve disabled gateway/model public access and the existing endpoint
@@ -143,7 +120,8 @@ the gateway new.
    | Add an approved Entra caller | [Access](#access), retaining existing keys and other bindings |
    | Other approved change, including an existing public deployment | The workload's existing pipeline and [full plan review](#review-every-plan-before-apply), preserving its approved configuration; not the new public-lab bootstrap |
 
-5. Review a fresh plan, apply only approved changes and complete the selected
+5. Reconfirm [platform and Policy approval](#platform-handoff-before-a-plan) for
+   the change. Review a fresh plan, apply only approved changes and complete the selected
    [acceptance path](#acceptance-and-maintenance). No changes means no apply.
 
 **Stop:** unexpected deletion/replacement, public reopening, missing inputs or
@@ -222,7 +200,8 @@ download. Environment-specific deployment input files remain ignored.
 
 Approve the full core scope: gateway, model deployments, **base agent account
 and project, Storage, Premium registry and monitoring**, even without the
-optional hosted-agent extension. Private-only closes gateway/model public access;
+optional hosted-agent extension. Approve their costs; the gateway preview has
+no SLA. Private-only closes gateway/model public access;
 it does not make every supporting service private. Review the
 [resource scope and boundaries](docs/architecture.md#1-base-sample-architecture).
 
@@ -254,6 +233,10 @@ identity for backend model calls. Adding Entra does not remove existing keys or
 supply a missing private network route.
 
 ## Inputs and state
+
+Filenames below are examples. Retain approved filenames and use their actual
+paths consistently; no rename or state migration is required. Keep complete
+environment inputs in protected configuration, not Git or unapproved channels.
 
 ### 1. Confirm which state belongs to this workload
 
@@ -298,8 +281,12 @@ In VS Code, choose **File > Open Folder**, open `samples\terraform`, then select
 the new **terraform.tfvars**, not `terraform.tfvars.example`. Fill the table
 below and save. Leave unneeded optional settings commented out.
 
-For an **existing workload**, open its approved file instead; do not execute
-the copy block. Point the session variable at that file:
+If an **approved input file already exists**, for either a new or an existing
+workload, open that file instead; do not execute the copy block or recreate its
+approved values.
+
+For **both new and existing workloads**, point the session variable at the
+selected, saved base input file:
 
 ```powershell
 $workloadVarFile = (Resolve-Path -LiteralPath '.\terraform.tfvars').Path
@@ -342,18 +329,10 @@ The **tenant ID** is needed for login/acceptance, not as another base tfvars
 variable: in Azure Portal open **Microsoft Entra ID > Overview > Tenant ID**.
 Ask the tenant administrator if it is not visible.
 
-For optional identity fields, use an **object/principal ID**, not a client ID:
-
-| Optional identity | Portal location or source |
-| --- | --- |
-| User or group in `gateway_access_principals` | **Microsoft Entra ID > Users / Groups > selected object > Overview > Object ID**. |
-| Application service principal | **Microsoft Entra ID > Enterprise applications > selected application > Properties > Object ID**, not the app registration's Application (client) ID. |
-| System-assigned managed identity | The actual Azure resource's **Identity > System assigned > Object (principal) ID**. |
-| User-assigned managed identity | **Managed Identities > approved identity > Overview > Principal ID**, not Client ID. |
-| Private hosted-agent runtime identity | Discover from the **deployed agent runtime/version** using the agent deployment process, not the project identity. Leave its optional input unset until that identity exists. |
-
-Do not add Entra callers or agent runtime bindings merely to complete this
-table. If the optional feature is not selected, its input is not required.
+Optional identity inputs are not prerequisites for an API-key client. If Entra
+callers are selected, use the [Access reference's object-ID lookup and input contract](docs/reference.md#access).
+The [private-agent deployment gates](docs/private-hosted-agent.md#deployment-and-acceptance-gates)
+separately explain when its real runtime identity becomes available.
 
 ### 4. Sign in and verify the target
 
@@ -436,14 +415,24 @@ old saved plan into a new session.
 
 ## Network foundation: create or existing
 
-Choose **one** row and set its variable in the same PowerShell session used below.
+Use the ownership chosen for this workload; do not repeat scenario selection.
+An existing gateway retains its current ownership and approved file.
 The ownership profile does not select public access or enable private networking.
 `create` is the compatibility default; `existing` requires a private-access profile.
 
-| Starting point | Set the ownership file |
+**For existing networking:** if the platform already supplied a complete approved
+input file, select it below and skip ID lookup. If inputs are missing, use the
+[conditional resource-ID appendix](#find-resource-ids-and-fill-in-the-network-input-file),
+then return here with the completed file. Do not copy a template over approved inputs.
+
+Set **one** variable in the same PowerShell session; replace the example
+environment filename with its actual approved path, retaining a path already
+selected in the appendix.
+
+| Approved ownership | Set the ownership file |
 | --- | --- |
-| No gateway network/DNS foundation | `$networkOwnershipFile = 'profiles\network-create.tfvars.json'` |
-| Approved, centrally managed subnets and DNS zones | `$networkOwnershipFile = 'network-existing.environment.tfvars.json'` |
+| Sample-managed foundation (`create`) | `$networkOwnershipFile = 'profiles\network-create.tfvars.json'` |
+| Existing platform, with complete network inputs | `$networkOwnershipFile = 'network-existing.environment.tfvars.json'` |
 
 For **create**, [network-create.tfvars.json](profiles/network-create.tfvars.json)
 keeps the existing sample names, Terraform addresses and address defaults. With
@@ -451,18 +440,11 @@ private networking enabled, Terraform creates the gateway VNet/subnets, NSGs,
 private DNS zones and links. It does **not** create a corporate hub, firewall,
 resolver or landing zone.
 
-For **existing**, first make a new, untracked copy of
-[network-existing.tfvars.json](profiles/network-existing.tfvars.json) named
-`network-existing.environment.tfvars.json`. Replace **every complete example
-resource-ID value** with its approved ID; use the
-[replacement checklist](#replacement-checklist-for-existing-network-inputs).
-Never overwrite an existing approved input file. The minimal example supplies
-gateway integration, separate per-service
-gateway/model endpoint **fields** and the four core DNS zones. The three core
-subnet fields may use two physical subnets: the endpoint fields may share an
-approved subnet, separate from integration. Optional storage
-endpoints, private agents and the test VM remain disabled by default; enabling
-one also requires its additional network inputs. See
+For **existing**, the complete object supplies three core subnet **fields**
+and four DNS zone IDs. The endpoint fields may share one approved subnet,
+separate from gateway integration: three fields can describe two physical
+subnets. Optional storage endpoints, private agents and the test VM require
+their additional inputs when selected. See
 [required inputs and permissions](docs/private-connectivity.md#existing-network-prerequisites).
 
 With private networking enabled, both choices still create **new workload-owned
@@ -480,6 +462,21 @@ Foundry accounts or other application resources.
 Network and DNS are separate logical concerns, but only the two paired ownership
 modes are supported here: create both foundations, or reuse both. Missing reuse
 inputs fail; there is no silent creation fallback or mixed-ownership mode.
+
+<a id="optional-terragrunt-adapter"></a>
+<a id="1-identify-the-existing-live-units-and-workload-state"></a>
+<a id="2-confirm-available-outputs-before-editing-the-adapter"></a>
+<a id="3-place-and-adapt-the-two-workload-files"></a>
+<a id="4-use-the-existing-pipeline-for-this-workload-unit-only"></a>
+
+**Existing Terragrunt pipeline:** the maintainer can use the
+[adapter](docs/reference.md#optional-terragrunt-adapter) **instead of** the copied
+network file. Its procedure covers
+[live units/state](docs/reference.md#1-identify-the-existing-live-units-and-workload-state),
+[dependency outputs](docs/reference.md#2-confirm-available-outputs-before-editing-the-adapter),
+[adapter inputs](docs/reference.md#3-place-and-adapt-the-two-workload-files) and
+[single-unit execution](docs/reference.md#4-use-the-existing-pipeline-for-this-workload-unit-only).
+It keeps the authoritative pipeline/backend, not a second deployment or copied platform state.
 
 ### Existing-network connectivity reference
 
@@ -506,140 +503,30 @@ still need a completed DNS association and working resolution before private
 calls. The [request flow](docs/architecture.md#end-to-end-private-request-flow)
 explains the runtime sequence.
 
-<a id="find-resource-ids-and-fill-in-your-customer-file"></a>
-<a id="find-resource-ids-and-fill-in-your-network-input-file"></a>
+### Choose the DNS zone-group owner
 
-### Find resource IDs and fill in the network input file
+- **`private_dns_zone_group_management = "workload"` (default):** Terraform writes
+  the new endpoints' zone-group associations to the selected zones. In existing
+  mode this needs explicit, scoped permissions on those zones and the endpoints;
+  owning the endpoint alone does not grant central DNS access.
+- **`"platform"` (existing mode only):** Terraform leaves zone groups to Azure
+  Policy or the central deployment process. Still supply all required zone IDs.
+  The platform must complete endpoint associations/records and resolver readiness
+  before private calls, agent use or access closure. Terraform intentionally
+  does not wait for policy or manage central records/links. Do not let two
+  processes own the same group.
 
-The network/DNS team can complete these inputs in the approved configuration.
-Do not share passwords, keys or Terraform state through unapproved channels.
-A resource ID is the **full Azure resource address beginning with
-`/subscriptions/...`**, not a resource name, IP address or just a subscription UUID.
-Keep these infrastructure details in the approved internal configuration.
+Changing an existing deployment between workload/platform DNS ownership is a
+separately reviewed state handoff, not a routine flag flip. Review any zone-group
+removal/recreation and DNS continuity with both owners; no automatic import or
+ownership transfer is performed.
 
-#### 1. Choose approved resources
+Terraform success does not prove DNS propagation, firewall routing or runtime
+connectivity. A central resolver is valid without a direct DNS-zone link to every
+spoke; the network/DNS team retains the approved links/forwarding design.
 
-Ask the network/DNS owner which subnets and central zones this workload should
-use. Do not select an arbitrary existing subnet: gateway integration needs a
-dedicated, correctly delegated subnet with an attached network security group
-(NSG), separate from private endpoint subnets.
-See the [subnet and permission prerequisites](docs/private-connectivity.md#existing-network-prerequisites).
-If a suitable subnet does not exist yet, create it through the usual platform
-provisioning process, then pass its ID here; do not switch to `create` merely
-to fill a missing input.
-
-Before proceeding, have the owner complete
-[the six small NSG checks](docs/private-connectivity.md#confirm-the-gateway-subnets-network-security-group).
-An NSG merely existing elsewhere is not sufficient. If the subnet shows
-**Network security group: None**, stop until the platform process associates
-the approved NSG and checks outbound rules. The workload keeps the same subnet
-ID; no separate NSG ID or new workload-owned NSG is needed.
-
-#### 2. Find the IDs in the Azure Portal
-
-Sign in to the correct directory and check the subscription filters. Activate
-the approved PIM role if required. If a resource is not visible, ask its owner
-for the ID and the necessary scoped permissions; do not create a duplicate.
-
-| What you need | Where to find it |
-| --- | --- |
-| Workload subscription ID | **Subscriptions > approved workload subscription > Overview**: copy **Subscription ID**. This is the UUID for the base input `subscription_id`. |
-| Subnet resource ID | **Virtual networks > approved VNet > Overview > JSON View**: find the intended subnet by its `name` inside `properties.subnets`, then copy that subnet's entire `id`. Do **not** copy the VNet's top-level `id`. Repeat for each required subnet. |
-| Private DNS zone resource ID | **Private DNS zones > approved zone > Overview > JSON View**: copy the top-level `id`. Check the zone name, resource group and subscription with the DNS owner. Use the private DNS **zone** ID, not a public DNS zone, resolver resource ID or resolver IP address. |
-
-The endpoint subnets, and the optional test-client subnet if enabled, must
-belong to the workload `subscription_id`. Central DNS zones may belong to a
-different subscription. Copy each complete ID from its actual resource rather
-than replacing every subscription UUID with the same value.
-
-<a id="3-fill-in-your-own-configuration-file"></a>
-
-#### 3. Fill in the configuration file
-
-In `samples\terraform`, copy
-[profiles\network-existing.tfvars.json](profiles/network-existing.tfvars.json)
-to **`network-existing.environment.tfvars.json`**. Keep the shared example unchanged;
-if an approved input file already exists, edit that file without overwriting
-it with the template. Follow [Inputs and state](#inputs-and-state) to keep input
-files out of Git; never force-add them.
-
-For a **new input file only**:
-
-```powershell
-if (Test-Path -LiteralPath .\network-existing.environment.tfvars.json) {
-    throw 'Environment-specific network inputs already exist. Review that file instead of overwriting it.'
-}
-Copy-Item -LiteralPath .\profiles\network-existing.tfvars.json `
-    -Destination .\network-existing.environment.tfvars.json
-```
-
-Open the copied file in VS Code. Replace each complete resource-ID string
-inside its existing quotes, using the table below, then press **Ctrl+S**.
-
-Set the workload `subscription_id` in the base inputs, normally
-`terraform.tfvars`. In the copied JSON file, keep
-`"private_network_mode": "existing"` and replace the example values under
-**`existing_private_network`** using this mapping:
-
-| Field under `existing_private_network` | Approved resource ID to enter |
-| --- | --- |
-| `gateway_subnet_id` | The gateway's dedicated outbound-integration subnet, with its approved NSG already attached. |
-| `endpoint_subnet_ids.gateway` | The subnet for the gateway's inbound private endpoint. |
-| `endpoint_subnet_ids.models` | The subnet for the model account's private endpoint. |
-| `private_dns_zone_ids.gateway` | The central zone named `privatelink.azure-api.net`. |
-| `private_dns_zone_ids.cognitiveservices` | The central zone named `privatelink.cognitiveservices.azure.com`. |
-| `private_dns_zone_ids.openai` | The central zone named `privatelink.openai.azure.com`. |
-| `private_dns_zone_ids.services` | The central zone named `privatelink.services.ai.azure.com`. |
-
-The dotted field names in the table describe the existing nested JSON structure;
-replace the string values in that structure rather than adding literal dotted
-keys. Keep quotes, commas and braces intact and remove all example IDs.
-The gateway and model endpoints may share an approved endpoint subnet, but
-neither may use the delegated integration subnet.
-
-The starter file covers gateway/models only. If you enable storage endpoints,
-private hosted agents or the test VM, also supply the
-[additional required inputs](docs/private-connectivity.md#existing-network-prerequisites).
-Confirm [who manages the DNS zone groups](#choose-the-dns-zone-group-owner):
-keep `workload` only if this Terraform deployment should create those associations;
-choose `platform` when central policy or automation owns them.
-
-Check the saved JSON locally:
-
-```powershell
-$networkInput = Get-Content -LiteralPath .\network-existing.environment.tfvars.json -Raw | ConvertFrom-Json
-if ($networkInput.private_network_mode -cne 'existing') { throw 'Expected existing network mode.' }
-if (Select-String -LiteralPath .\network-existing.environment.tfvars.json `
-        -Pattern '00000000-0000-0000-0000-000000000000|<[^>]+>' -Quiet) {
-    throw 'Replace the remaining network placeholders before continuing.'
-}
-git check-ignore -v -- network-existing.environment.tfvars.json
-```
-
-**Expected:** no JSON/placeholder error, and an ignore-rule result. This checks
-syntax and obvious placeholders only; Terraform's later plan reads the actual
-subnets and validates their regions, prefixes, delegations and gateway NSG
-attachment. It does not prove effective firewall/NSG rules or runtime connectivity.
-
-#### 4. Connect the file to the deployment process
-
-Set `$networkOwnershipFile = 'network-existing.environment.tfvars.json'` in the
-PowerShell session for the runbook. This file is **not automatically loaded**:
-include it explicitly alongside the complete base inputs and private-access
-profile as shown in [Compose the inputs](#compose-the-inputs). It selects network
-ownership, not private access, and does not by itself deploy anything.
-
-Correct IDs alone do not establish routes, DNS resolution or permissions.
-Have the platform team confirm those prerequisites before the reviewed plan and
-private-path acceptance. If this workload is already deployed, retain its state
-and ownership until the separate migration review described below is complete.
-
-**Already using Terraform/Terragrunt?** Instead of copying IDs manually, expose
-the approved subnet and zone IDs as outputs of the existing platform modules
-and map them into this workload. The [Terragrunt adapter](#optional-terragrunt-adapter)
-shows the expected output names and dependency wiring; adapt them to the platform
-modules and keep the authoritative backend/pipeline. This does not require
-sharing or copying the platform's state into the gateway deployment.
+**Next:** compose the selected files below; do not run the optional ID appendix
+when the approved inputs are already complete.
 
 ### Compose the inputs
 
@@ -694,7 +581,6 @@ The private-only profile is the desired final posture, **not** a verified
 private-from-first-create shortcut. The explicitly approved intermediate stages
 below change only the private-access profile/temporary override, not the chosen ownership inputs.
 Never select a profile or override that reopens disabled gateway or model access.
-Do not add a later override that reopens public access.
 
 Do not switch an already-deployed `create` network to `existing` as a normal
 update: Terraform can propose deleting the sample-managed foundation. Retain the
@@ -704,27 +590,18 @@ reviewed state/migration plan is approved. The created VNet has a
 bypass it. Do not copy state or import the same central resources into
 another owner.
 
-### Choose the DNS zone-group owner
+## Access
 
-- **`private_dns_zone_group_management = "workload"` (default):** Terraform writes
-  the new endpoints' zone-group associations to the selected zones. In existing
-  mode this needs explicit, scoped permissions on those zones and the endpoints;
-  owning the endpoint alone does not grant central DNS access.
-- **`"platform"` (existing mode only):** Terraform leaves zone groups to Azure
-  Policy or the central deployment process. Still supply all required zone IDs.
-  The platform must complete endpoint associations/records and resolver readiness
-  before private calls, agent use or access closure. Terraform intentionally
-  does not wait for policy or manage central records/links. Do not let two
-  processes own the same group.
+Before the plan, decide whether to add **Microsoft Entra ID** callers or retain
+the default **API-key** callers. The [Access reference](docs/reference.md#access)
+owns object-ID lookup, complete inputs, token/consent requirements and billable
+post-deployment probes. Optional Entra configuration is not a prerequisite for
+an API-key client.
 
-Changing an existing deployment between workload/platform DNS ownership is a
-separately reviewed state handoff, not a routine flag flip. Review any zone-group
-removal/recreation and DNS continuity with both owners; no automatic import or
-ownership transfer is performed.
-
-Terraform success does not prove DNS propagation, firewall routing or runtime
-connectivity. A central resolver is valid without a direct DNS-zone link to every
-spoke; the network/DNS team retains the approved links/forwarding design.
+Adding Entra is additive: it does not disable keys, remove existing role bindings
+or supply a private network route. The gateway's separate backend identity stays
+unchanged. For an existing gateway, use the [update preflight](#update-an-existing-gateway)
+and extend approved inputs without replacing other settings, state or endpoint exceptions.
 
 ## Platform handoff before a plan
 
@@ -754,7 +631,14 @@ The same infrastructure team may operate both platform and workload roles.
 | Deployment permissions | Identity/platform administrator grants scoped access; knowing a resource ID does not grant access. | Effective deploy/read/join/endpoint/approval and role-management permissions, PIM duration and deny assignments. Workload-managed zone groups also need access to the specified central zones. |
 | Models | Model owner approves model selection and allocation; the sample creates its workload model deployments. | Exact model names/versions, deployment geography, quota/capacity and a billable test allowance. |
 | Policy and access sequence | Security/platform owner approves the deployment; this sample does not relax central policy. | Region/type/tag policy and the entire access sequence. Temporary public access needs explicit approval, not just approval of the final private design. |
-| Testing and operation | Test/operations owner selects the client and owns evidence, cleanup and ongoing operation. The sample VM is optional. | Existing private client or approved test VM, test permissions, evidence location and cleanup/monitoring responsibility. |
+| Testing and operation | Test/operations owner selects the clients and owns evidence, cleanup and ongoing operation. The sample VM is optional. | Existing private client or approved test VM; for final private-only acceptance, also arrange [outside-network client C](docs/acceptance.md#prove-public-network-denial-with-a-valid-gateway-key). Confirm each client's own identity/permissions, evidence location and cleanup/monitoring responsibility. |
+
+For final private-only acceptance, prepare C before the final private tests:
+an approved Windows client with
+PowerShell 7 and Azure CLI, a verified public gateway route and its own
+gateway-scoped key-read permission. The operator's host can serve as C only
+if its actual route qualifies; a VPN or proxy into the private network does
+not. No additional VM, Terraform/backend access or copied runtime key is required.
 
 Do not demand `Approved` endpoints before they have been created. Those are
 **post-apply gates**, explained in the
@@ -766,56 +650,41 @@ finishes; Terraform does not wait for that handoff.
 corresponding owner. Do not select a convenient but unrelated subnet, request
 Owner for the test VM, create duplicate DNS zones or disable policy.
 
-### Optional Terragrunt adapter
+### Platform team: policy compatibility
 
-The platform maintainer can use the
-[Terragrunt integration procedure](docs/reference.md#optional-terragrunt-adapter)
-instead of direct input files. It uses the same root and approved workload
-backend, not another deployment or a copy of platform state. The former
-subsection links below now point to that procedure.
+Before deployment, review the effective Azure Policy assignments at the target
+scope, including inherited management-group and subscription assignments,
+initiative parameters, exclusions and applicable exemptions. Compare them with
+the resources and settings in the selected deployment path.
 
-#### 1. Identify the existing live units and workload state
+| Check | Required outcome before apply |
+| --- | --- |
+| Allowed regions, resource types, SKUs and mandatory tags | All planned resources comply, including Azure-managed monitoring helper resources. |
+| Public network access for the gateway, model account, Storage and Container Registry | The selected path meets the approved requirements, including any temporary access used during staged deployment. |
+| Private endpoints, DNS, routing and outbound restrictions | Deployment clients and each runtime identity have a supported network path to the services they need; disabling public access alone does not provide that path. |
+| Identity, authentication and RBAC requirements | Deployment permissions, managed identities, optional Entra caller roles and retained gateway API keys are compatible with the applicable controls. |
+| Monitoring and security requirements | Required diagnostics, retention and destinations are accounted for, along with any automatically enabled Defender plans and their costs. |
 
-See [live units and workload state](docs/reference.md#1-identify-the-existing-live-units-and-workload-state).
+Resolve incompatibilities in the IaC and deployment inputs **before apply**.
+For example, if the applicable policies require private Storage access, provide or reuse
+the necessary private endpoint, DNS and connectivity for every client that
+needs Storage. This is a conditional requirement, not a prerequisite for every
+deployment. Do not disable policies or reopen restricted endpoints to make the
+sample deploy.
 
-#### 2. Confirm available outputs before editing the adapter
+A successful `terraform plan` is **not** proof of policy compatibility:
+`Deny` can block resource creation, `Modify` can change requested settings, and
+`DeployIfNotExists` can deploy related resources. After deployment and any policy
+remediation, inspect the actual configuration, run a fresh plan with the same
+inputs, and verify DNS, connectivity, authentication and telemetry from the
+intended clients. Investigate policy-induced drift rather than blindly applying
+a plan that would undo an enforced setting.
 
-See [the dependency-output contract](docs/reference.md#2-confirm-available-outputs-before-editing-the-adapter).
-
-#### 3. Place and adapt the two workload files
-
-See [adapter placement and complete inputs](docs/reference.md#3-place-and-adapt-the-two-workload-files).
-
-#### 4. Use the existing pipeline, for this workload unit only
-
-See [single-unit execution and helper integration](docs/reference.md#4-use-the-existing-pipeline-for-this-workload-unit-only).
-
-## Access
-
-Grant identity-based access with **Microsoft Entra ID**, or manage **API keys**.
-The [end-to-end private request sequence](docs/architecture.md#end-to-end-private-request-flow)
-shows client authentication, DNS and the gateway's separate backend identity.
-For an additive Entra change, use the [Access reference](docs/reference.md#access)
-for the complete input example, object-ID/role-scope contract and client probes.
-Retain the existing state, full inputs, access posture and endpoint exceptions;
-extend the approved principal map without replacing unrelated settings.
-
-Use audience `https://azure-api.net/aigateway`; SDK clients calling as themselves
-request `https://azure-api.net/aigateway/.default`. Custom apps signing in users
-need delegated `https://azure-api.net/aigateway/Data.All` consent plus the user's
-invocation role. This custom-app consent setup does not apply to managed identities,
-client credentials or built-in Azure CLI/PowerShell clients. Send
-`Authorization: Bearer <token>`, never an ARM or model-backend token. See the
-[portal security and identity guide](https://ai.gateway.azure.com/docs/security-identity).
-
-Run the reference's billable probes **after deployment** from the selected route,
-verifying authorized/unauthorized callers and fresh telemetry. Its dated
-managed-identity evidence is not custom delegated-user client verification.
-
-**Not Entra-only:** keys are neither disabled nor deleted. The existing agent and
-private VM retain their key-reader roles and API-key calls. The gateway's backend
-Foundry User binding stays unchanged. An empty map also does not remove roles
-managed outside this sample.
+**Stop before the first plan:** unresolved policy requirements, no approved design
+for required supporting-service connectivity, or prohibition of the new path's
+temporary public stages. Selecting the final profile alone is not a verified
+private-from-first-create workaround. Once this handoff is approved, continue to
+[saved-plan review](#review-every-plan-before-apply) and [monitoring](#monitoring-setup).
 
 ## Review every plan before apply
 
@@ -987,75 +856,51 @@ plan and allow for a brief interruption of the agent's key retrieval.
 
 ## Acceptance and maintenance
 
-Require fresh results in the selected environment, not screenshots from another
-deployment: each alias succeeds, missing/invalid gateway keys are rejected, expected
-roles/connections and private DNS are correct, and gateway/backend telemetry
-correlates to the same request. For Private-only, a **valid authenticated request
-from outside the private route** must receive explicit network denial; a 401,
-authentication-related 403, timeout or DNS error is not equivalent.
-
-For a hosted agent, invoke a fresh session/version and correlate its response to
-successful gateway **and intended model backend** spans in `OTelSpans` by `TraceId`
-and time window. Confirm gateway/model/Foundry public settings, cleanup of temporary
-roles/VMs, and a no-change plan with **all** original and runtime inputs.
-
-Choose **one** acceptance execution path:
+Choose **one** execution route; do not repeat equivalent billable tests through
+another runner. Use fresh evidence from the selected deployment:
 
 | Test client | Procedure | Important limit |
 | --- | --- | --- |
-| Approved existing private client, no sample VM | [Existing-client private checks](docs/private-connectivity.md#test-from-an-existing-private-client), then [manual acceptance](docs/acceptance.md), including the [six-check manual portal review](docs/acceptance.md#8-record-the-manual-portal-review). | The VM-based runner cannot certify this client. Keep operator-attested evidence and mark unperformed checks; do not fabricate a runner PASS. |
-| Optional sample VM | [Optional sample-VM acceptance runner](docs/end-to-end.md), after smoke-test deallocation. | Requires the VM ID even for diagnostics, full inputs, VM initially deallocated, explicit model/compute approval and a separate portal review. Public rejection and agent runtime are still separate. |
-| Intentionally public deployment | [Manual acceptance](docs/acceptance.md), including its [manual portal review](docs/acceptance.md#8-record-the-manual-portal-review), on that approved public route. | It is not private-route evidence. |
-
-For the optional sample-VM report, use the runner's
-[complete parameter selection](docs/end-to-end.md#2-read-only-backend-checks),
-then its [explicit runtime step](docs/end-to-end.md#3-explicit-private-runtime-and-telemetry).
-It reads ARM, runs a full drift plan and writes local reports; the runtime flag
-also starts the VM, uses Run Command, makes billable calls and deallocates it.
-Keep every approved file in `-AdditionalVarFile`; the access profile is last.
-Use manual acceptance if a post-profile compatibility override is needed.
-
-Both routes require the [shared portal checklist](docs/acceptance.md#ai-gateway-portal-checklist).
-The VM manifest validator checks evidence completeness, **not the browser**.
-Never treat blocked or unexecuted checks as passed.
-
-For platform-managed DNS, acceptance requires delivered private-endpoint zone
-groups with the exact supplied zone IDs; group names and Terraform ownership do
-not matter. Missing bindings fail, so manual-record-only DNS is not certified.
-Gateway/model/optional-storage DNS and private inference/authentication still
-need proof; registry image-pull runtime is a separate check.
-
-Use an approved, access-restricted report directory. A `BLOCKED` result is not
-a pass or necessarily a broken gateway: inspect which gates were not run.
-The [report interpretation](docs/end-to-end.md#read-the-result-before-proceeding)
-explains the next action.
+| Approved existing private client, no sample VM | [Private-client handoff](docs/private-connectivity.md#test-from-an-existing-private-client), then [manual acceptance](docs/acceptance.md). | The VM runner cannot certify an arbitrary existing client. Manual acceptance needs no new VM. |
+| Intentionally public deployment | [Manual acceptance](docs/acceptance.md) on that approved public route. | It is not private-route evidence. |
+| Optional sample VM | [VM runner prerequisites and parameters](docs/end-to-end.md#2-read-only-backend-checks), then its approved runtime step. | Diagnostics read Azure, plan and write local reports; runtime uses Run Command and incurs model/compute costs. Use manual acceptance if a post-profile override is required. |
 
 <a id="handover-checklist"></a>
 
 ### Deployment acceptance checklist
 
-Review the [version and verification scope](docs/reference.md#version-and-verification-scope),
-then complete this record for **the target deployment**. A reviewed source revision
-does not replace acceptance in that environment.
+Complete the selected route and attach its evidence to the protected
+[acceptance and handover record](docs/acceptance.md#complete-the-acceptance-record).
+The following are completion gates, not a second test procedure:
 
-| Record in the protected acceptance record | Required result or named remaining item |
-| --- | --- |
-| Approved commit and workload owner | Exact revision, authoritative backend and operating contact are known. Do not attach raw state to the acceptance record. |
-| Input file locations and choices | Base/additional files, create/existing ownership, DNS owner, access profile and any runtime-identity inputs are recorded without keys. |
-| Networking and authentication | Endpoint approval, actual private DNS, per-alias calls, same-route invalid/missing-key checks and required public-network rejection are evidenced. |
-| Monitoring | Fresh requests correlate with gateway/backend telemetry. All six portal checks and a matched numeric metrics comparison are evidenced through the VM manifest or the explicitly manual portal record. |
-| Optional services | Agent/image/registry or Blob tests have their own results; unrelated successful model calls do not certify them. |
-| Final drift and open issues | Full plan uses every original input and exits `0`; otherwise the exact difference/failure remains open. `NOT RUN`, `BLOCKED` and `not verified` are not relabeled as passed. |
-| Cleanup and costs | Any deployed sample VM is confirmed **deallocated** (otherwise record `not deployed`), temporary job-created roles are removed, retained roles are preserved, and continuing service/storage costs have an owner. |
+- Every alias succeeds on the intended route, with actual DNS/endpoint readiness,
+  correct roles/connections and same-route authentication controls. For Private-only,
+  a valid authenticated public request must receive **network denial**; a 401,
+  authentication-related 403, timeout or DNS error is not equivalent.
+- Fresh gateway and intended backend telemetry correlate to the same request.
+  Complete the [six portal checks and numeric metrics comparison](docs/acceptance.md#ai-gateway-portal-checklist);
+  UI observations are operator-attested, not automatically browser-verified.
+- The full drift plan uses **all** approved base, ownership, runtime and access
+  inputs plus endpoint exceptions and exits `0`. Platform-owned DNS associations
+  must be delivered against the exact supplied zone IDs; manual records alone
+  are not the runner's certification contract.
+- Required agent/image/registry and Storage paths have separate evidence.
+  A hosted-agent result must correlate with its intended gateway/backend trace;
+  a successful direct model call does not prove those supporting paths.
+
+Record source/state/input owners, central-DNS approval, cleanup and continuing
+cost ownership in that one acceptance record. `NOT RUN`, `BLOCKED` and
+`not verified` remain open, not passes. Review the
+[verification scope](docs/reference.md#version-and-verification-scope);
+historical results are not customer acceptance.
 
 Run maintenance tests only in a **separate clean checkout without deployment
 tfvars or state**, as described in [offline checks](docs/reference.md#offline-checks).
 The helper may download providers and writes local files; it does not touch Azure.
-Do not run
-generic fixtures against a configured workload directory. The operator can
+Do not run generic fixtures against a configured workload directory. The operator can
 retain the approved revision's CI result instead of rerunning maintenance tests.
-Azure Policy can deny, modify or create related resources; inspect actual posture
-and drift after remediation instead of blindly undoing enforced settings.
+After policy remediation, repeat the [policy/runtime checks](#platform-team-policy-compatibility)
+instead of blindly undoing enforced settings.
 
 Model calls, Premium ACR, Storage, monitoring and optional compute incur charges.
 The gateway preview has no SLA. Before cleanup, review a destroy plan, data-retention
@@ -1103,50 +948,184 @@ does not undo Azure changes. To resume:
    [deallocates it](docs/private-connectivity.md#step-6-stop-the-vm-when-you-are-done)
    even when the previous session crashed.
 
-## Understand the files before deploying
+<a id="find-resource-ids-and-fill-in-your-customer-file"></a>
+<a id="find-resource-ids-and-fill-in-your-network-input-file"></a>
+<a id="find-resource-ids-and-fill-in-the-network-input-file"></a>
 
-The read-only walkthrough has moved to [Understand the sample](docs/understand-the-sample.md).
-These signposts preserve earlier links; they are not additional operator steps.
+## Appendix: prepare missing existing-network inputs
 
-### Where do I edit, and where does Terraform run?
+**Conditional branch only:** use this appendix when the approved existing-network
+input file is incomplete or has not been prepared. With complete inputs, skip
+directly to [network-file selection](#network-foundation-create-or-existing),
+[DNS ownership](#choose-the-dns-zone-group-owner) and [input composition](#compose-the-inputs).
+The network/DNS owner can supply the IDs through its existing process instead
+of using the Portal. The [Terragrunt adapter](#optional-terragrunt-adapter) is the
+alternative for approved dependency outputs, not another required setup.
 
-See [editors, runners and file languages](docs/understand-the-sample.md#where-do-i-edit-and-where-does-terraform-run).
+**Where:** Portal lookups use the approved directory/subscription. Local file
+steps use PowerShell 7 in the approved checkout's `samples\terraform`.
+A resource ID is the **full address beginning with `/subscriptions/...`**, not
+a name, IP address or subscription UUID. Keep these infrastructure details in
+approved protected configuration; do not share passwords, keys or state.
 
-### One configuration, not a sequence of scripts
+### 1. Choose approved resources
 
-See [one shared Terraform root](docs/understand-the-sample.md#one-configuration-not-a-sequence-of-scripts).
+Ask the network/DNS owner which subnets and central zones this workload should
+use. Do not select an arbitrary existing subnet: gateway integration needs a
+dedicated, correctly delegated subnet with an attached network security group
+(NSG), separate from private endpoint subnets.
+See the [subnet and permission prerequisites](docs/private-connectivity.md#existing-network-prerequisites).
+If a suitable subnet does not exist yet, create it through the usual platform
+provisioning process, then pass its ID here; do not switch to `create` merely
+to fill a missing input.
 
-### Which files do I open or edit?
+Before proceeding, have the owner complete
+[the six small NSG checks](docs/private-connectivity.md#confirm-the-gateway-subnets-network-security-group).
+An NSG merely existing elsewhere is not sufficient. If the subnet shows
+**Network security group: None**, stop until the platform process associates
+the approved NSG and checks outbound rules. The workload keeps the same subnet
+ID; no separate NSG ID or new workload-owned NSG is needed.
 
-See [files to edit, select and leave unchanged](docs/understand-the-sample.md#which-files-do-i-open-or-edit).
+### 2. Find the IDs in the Azure Portal
 
-### Replacement checklist for existing-network inputs
+Sign in to the correct directory and check the subscription filters. Activate
+the approved PIM role if required. If a resource is not visible, ask its owner
+for the ID and the necessary scoped permissions; do not create a duplicate.
 
-See the [seven-ID replacement checklist](docs/understand-the-sample.md#replacement-checklist-for-existing-network-inputs).
+| What you need | Where to find it |
+| --- | --- |
+| Workload subscription ID | **Subscriptions > approved workload subscription > Overview**: copy **Subscription ID**. This is the UUID for the base input `subscription_id`. |
+| Subnet resource ID | **Virtual networks > approved VNet > Overview > JSON View**: find the intended subnet by its `name` inside `properties.subnets`, then copy that subnet's entire `id`. Do **not** copy the VNet's top-level `id`. Repeat for each required subnet. |
+| Private DNS zone resource ID | **Private DNS zones > approved zone > Overview > JSON View**: copy the top-level `id`. Check the zone name, resource group and subscription with the DNS owner. Use the private DNS **zone** ID, not a public DNS zone, resolver resource ID or resolver IP address. |
 
-### Optional: highlight input placeholders in VS Code
+The endpoint subnets, and the optional test-client subnet if enabled, must
+belong to the workload `subscription_id`. Central DNS zones may belong to a
+different subscription. Copy each complete ID from its actual resource rather
+than replacing every subscription UUID with the same value.
 
-See [optional scoped editor help](docs/understand-the-sample.md#optional-highlight-input-placeholders-in-vs-code).
+<a id="3-fill-in-your-own-configuration-file"></a>
 
-### Why four subnet roles but only two endpoint keys?
+### 3. Fill in the configuration file
 
-See [three core subnet inputs and optional roles](docs/understand-the-sample.md#three-core-subnet-inputs).
+Select the JSON file for this PowerShell session. Keep an existing approved
+filename; the path below is the example for a new file in this checkout:
 
-### Follow one input through the code
+```powershell
+$networkOwnershipFile = '.\network-existing.environment.tfvars.json'
+```
 
-See [the subnet-ID trace](docs/understand-the-sample.md#follow-one-input-through-the-code).
+For a **new input file only**, copy
+[profiles\network-existing.tfvars.json](profiles/network-existing.tfvars.json).
+Keep the shared example unchanged. If an approved file already exists, **skip
+the copy block** and edit that file, retaining its complete object and optional
+fields rather than replacing them with this minimal template.
 
-### Who manages DNS, and how do the input files get selected?
+```powershell
+if (Test-Path -LiteralPath $networkOwnershipFile) {
+    throw 'Environment-specific network inputs already exist. Review that file instead of overwriting it.'
+}
+Copy-Item -LiteralPath .\profiles\network-existing.tfvars.json `
+    -Destination $networkOwnershipFile
+```
 
-See [DNS ownership and input selection](docs/understand-the-sample.md#who-manages-dns-and-how-do-the-input-files-get-selected).
+Open the selected file in VS Code. Replace each complete resource-ID string
+inside its existing quotes, using the table below, then press **Ctrl+S**.
+Set the workload `subscription_id` in the base inputs, normally `terraform.tfvars`.
+In this JSON file, keep `"private_network_mode": "existing"` and fill
+**`existing_private_network`** using this mapping:
 
-### Which commands and helper scripts matter?
+| Field under `existing_private_network` | Approved resource ID to enter |
+| --- | --- |
+| `gateway_subnet_id` | The gateway's dedicated outbound-integration subnet, with its approved NSG already attached. |
+| `endpoint_subnet_ids.gateway` | The subnet for the gateway's inbound private endpoint. |
+| `endpoint_subnet_ids.models` | The subnet for the model account's private endpoint. |
+| `private_dns_zone_ids.gateway` | The central zone named `privatelink.azure-api.net`. |
+| `private_dns_zone_ids.cognitiveservices` | The central zone named `privatelink.cognitiveservices.azure.com`. |
+| `private_dns_zone_ids.openai` | The central zone named `privatelink.openai.azure.com`. |
+| `private_dns_zone_ids.services` | The central zone named `privatelink.services.ai.azure.com`. |
 
-See [helper purposes and side effects](docs/understand-the-sample.md#which-commands-and-helper-scripts-matter).
+The dotted field names describe nested JSON; replace existing string values,
+not the keys. Keep quotes, commas and braces intact and remove all example IDs.
+The gateway and model endpoints may share an approved endpoint subnet, but
+neither may use the delegated integration subnet.
 
-## Terraform implementation
+The starter file covers gateway/models only. If storage endpoints, private hosted
+agents or the test VM are selected, include their
+[additional required inputs](docs/private-connectivity.md#existing-network-prerequisites)
+in this **complete object**. Later var-files replace whole objects; they do not
+deep-merge missing fields. Confirm [the DNS zone-group owner](#choose-the-dns-zone-group-owner):
+keep `workload` only with association-management approval; use `platform` only
+when central policy/automation owns the associations. Supply all required zone
+IDs either way.
 
-The AzAPI/module distinction and preview contract notes are in
-[Terraform implementation](docs/reference.md#terraform-implementation);
-[resource lifecycle](docs/reference.md#resource-type-and-lifecycle) remains a
-deployment prerequisite, not an optional repair step.
+Check the saved JSON locally, using the file path selected above:
+
+```powershell
+$networkInput = Get-Content -LiteralPath $networkOwnershipFile -Raw | ConvertFrom-Json
+if ($networkInput.private_network_mode -cne 'existing') { throw 'Expected existing network mode.' }
+if (Select-String -LiteralPath $networkOwnershipFile `
+        -Pattern '00000000-0000-0000-0000-000000000000|<[^>]+>' -Quiet) {
+    throw 'Replace the remaining network placeholders before continuing.'
+}
+```
+
+For a file **inside this checkout**, verify its ignore rule:
+
+```powershell
+git check-ignore -v -- $networkOwnershipFile
+```
+
+**Expected:** no JSON/placeholder error and, for an in-checkout file, an
+ignore-rule result. For approved external configuration, retain that location's
+access controls instead. Never force-add inputs to Git. These checks cover syntax
+and obvious placeholders, not the complete resource contract: inspect all fields
+above. The later plan reads actual subnets and validates regions, prefixes,
+delegations and the gateway NSG attachment. It does not prove effective
+firewall/NSG rules or runtime connectivity.
+
+### 4. Connect the file to the deployment process
+
+Keep the selected `$networkOwnershipFile`. It is **not automatically loaded**;
+the runbook includes it explicitly with complete base/additional inputs and the
+selected access profile. This file selects ownership, not private access, and
+does not deploy anything by itself.
+
+**Return to the main flow:** confirm [DNS ownership](#choose-the-dns-zone-group-owner),
+then [compose the inputs](#compose-the-inputs) and complete the
+[platform handoff](#platform-handoff-before-a-plan). Do not prepare a second file.
+Correct IDs alone do not establish routes, DNS or permissions. An existing gateway
+retains its state and ownership until a separately reviewed migration is approved;
+use the [update preflight](#update-an-existing-gateway), not new-workload bootstrap.
+
+<a id="understand-the-files-before-deploying"></a>
+<a id="where-do-i-edit-and-where-does-terraform-run"></a>
+<a id="one-configuration-not-a-sequence-of-scripts"></a>
+<a id="which-files-do-i-open-or-edit"></a>
+
+For read-only background, the [walkthrough](docs/understand-the-sample.md) explains
+[one shared root](docs/understand-the-sample.md#one-configuration-not-a-sequence-of-scripts),
+[file roles](docs/understand-the-sample.md#which-files-do-i-open-or-edit) and
+[editors versus runners](docs/understand-the-sample.md#where-do-i-edit-and-where-does-terraform-run).
+
+<a id="replacement-checklist-for-existing-network-inputs"></a>
+<a id="why-four-subnet-roles-but-only-two-endpoint-keys"></a>
+<a id="follow-one-input-through-the-code"></a>
+<a id="who-manages-dns-and-how-do-the-input-files-get-selected"></a>
+
+Its input explanations cover [three core subnet fields](docs/understand-the-sample.md#three-core-subnet-inputs),
+the [seven-ID checklist](docs/understand-the-sample.md#replacement-checklist-for-existing-network-inputs),
+the [code trace](docs/understand-the-sample.md#follow-one-input-through-the-code) and
+[DNS ownership/input selection](docs/understand-the-sample.md#who-manages-dns-and-how-do-the-input-files-get-selected).
+
+<a id="optional-highlight-input-placeholders-in-vs-code"></a>
+<a id="which-commands-and-helper-scripts-matter"></a>
+
+Optional [editor highlighting](docs/understand-the-sample.md#optional-highlight-input-placeholders-in-vs-code)
+and [helper purposes/effects](docs/understand-the-sample.md#which-commands-and-helper-scripts-matter)
+are learning aids, not extra deployment steps.
+
+<a id="terraform-implementation"></a>
+
+The [implementation reference](docs/reference.md#terraform-implementation) explains
+AzAPI/module choices; [resource lifecycle](docs/reference.md#resource-type-and-lifecycle)
+remains a deployment prerequisite, not an optional repair step.
