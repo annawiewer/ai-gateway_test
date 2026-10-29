@@ -1,0 +1,49 @@
+# Scenario 01: filled base inputs for the selected existing-network walkthrough.
+# Illustrative values only; replace them with approved inputs before use.
+# This .example is not auto-loaded. Never overwrite existing approved inputs.
+# Also supply the complete network inputs and approved access stage from README.md.
+
+subscription_id = "11111111-2222-4333-8444-555555555555"
+
+environment_name = "demo-ai-gateway"
+
+location         = "swedencentral"
+gateway_location = "swedencentral"
+
+publisher_email = "platform-team@example.com"
+
+model_deployments = {
+  gpt-mini = {
+    model_name    = "gpt-4.1-mini"
+    model_version = "2025-04-14"
+    sku_name      = "GlobalStandard"
+    capacity      = 10
+    token_limit   = 5000
+  }
+
+  gpt-full = {
+    model_name    = "gpt-4.1"
+    model_version = "2025-04-14"
+    sku_name      = "GlobalStandard"
+    capacity      = 10
+    token_limit   = 10000
+  }
+}
+
+# Use an existing identity's object/principal ID, not its application/client ID.
+# This grants model-invocation rights; it does not create an identity or disable keys.
+gateway_access_principals = {
+  demo_application = {
+    principal_id   = "22222222-3333-4444-8555-666666666666"
+    principal_type = "ServicePrincipal"
+  }
+}
+
+storage_public_network_access   = "Disabled"
+enable_storage_private_endpoint = true
+
+enable_private_hosted_agent = true
+
+# Replace the deliberately unusable placeholder with an approved SSH public key.
+enable_private_test_client         = true
+private_test_client_ssh_public_key = "ssh-ed25519 <approved-public-SSH-key>"

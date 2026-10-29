@@ -27,8 +27,10 @@ The labels carry the meaning even when colors are unavailable.
 | &#x1F534; **NOT THIS SCENARIO** | Do not activate settings that create a parallel network/DNS foundation. |
 
 In HCL, `#` starts a comment. **Never remove every `#`**: explanation text must
-remain commented. When activating a selected object in the working input file,
-uncomment and fill the entire block, including its closing brace. The shared
+remain commented. The selected assignments in the
+[Scenario 01 base example (`01-terraform.tfvars.example`)](./01-terraform.tfvars.example)
+are already active, including the complete Entra block and selected private
+features; no further uncommenting is needed in that file. The shared
 Base template (`01-04-terraform.tfvars.example`) still comments out these
 extensions because it supports other scenarios; its defaults are unchanged.
 
@@ -36,11 +38,18 @@ extensions because it supports other scenarios; its defaults are unchanged.
 
 &#x1F7E2; **ACTIVE** - these are the assignment lines in the base input file.
 Use the
-[Base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
-as the editable starting point if no approved workload input file exists.
-Also include the [required Entra caller access](#required-entra-caller-access)
-and [selected private features](#selected-private-features) shown below in
-that same protected base input file.
+[Scenario 01 base example (`01-terraform.tfvars.example`)](./01-terraform.tfvars.example)
+for this walkthrough. It already combines the base values below, the
+[required Entra caller access](#required-entra-caller-access) and the
+[selected private features](#selected-private-features) in one file.
+The sections below explain those assignments; **do not append them a second
+time** to the example.
+
+If no approved workload input file exists, use a protected working copy such
+as `terraform.tfvars` and replace the illustrative values before use.
+The `.example` file is not loaded automatically. The
+[shared Base template (`01-04-terraform.tfvars.example`)](../../../01-04-terraform.tfvars.example)
+remains the generic starting point for other selections.
 
 ```hcl
 subscription_id = "11111111-2222-4333-8444-555555555555"
@@ -87,9 +96,9 @@ the sample's gateway SKU.
 `capacity` is model-deployment capacity, not a price or the gateway caller limit;
 `token_limit` is a separate gateway token limit.
 
-**The base inputs alone enable neither existing-network ownership nor private
-access.** The next input file and the approved stage-specific access settings
-are also required.
+**The base file does not supply network ownership or the gateway/model access
+stage.** The complete network input file and the approved stage-specific access
+settings are also required.
 
 ## Filled existing-network inputs
 
@@ -98,6 +107,13 @@ environment copy of
 [01-04-profiles/network-existing.tfvars.json](../../../01-04-profiles/network-existing.tfvars.json).
 JSON has no `#` comments: every entry below is an assignment when that file is
 explicitly selected.
+
+**This walkthrough uses eight subnet-ID fields referring to five distinct
+existing subnets, plus six central Private DNS zones.** The linked profile is a
+core-only starting template. The complete example below also includes the
+network inputs for our selected private Blob connectivity, private Hosted Agent
+infrastructure and new private test VM; do not replace it with the smaller
+core-only object while those features are enabled.
 
 ```json
 {
@@ -132,9 +148,9 @@ readiness confirmation from the platform owner using the
 [field-by-field mapping and Portal lookup](../../../01-04-deployment.md#find-resource-ids-and-fill-in-the-network-input-file).
 DNS zone IDs are not Private DNS Resolver IDs.
 
-| Example choice | What must be agreed or verified |
+| Setting in this walkthrough | Required platform agreement or verification |
 | --- | --- |
-| Three core subnet fields plus selected extensions | The basic gateway/model path needs three fields; this expanded example includes eight subnet-ID fields referring to five distinct subnets. See the breakdown below. Existing does not mean available or compatible. |
+| Eight subnet-ID fields, five existing subnets | All eight fields are included in the JSON above and mapped below. The platform must approve the five subnets and their use, including shared endpoint placement. Existing does not mean available or compatible. |
 | Subscription in subnet IDs | The example uses the same fictional subscription as the base file. The sample requires endpoint subnets in the workload subscription. |
 | Six central DNS zones | Four core zones plus `storage` and `registry` are required for the selected features. The agent endpoint reuses the core Cognitive Services/OpenAI/services zones; there is no separate `agents` DNS-map key. Zone count is not endpoint count. Replace the subscription/group IDs; central zones may be in another subscription with the required permissions. |
 | `"private_dns_zone_group_management": "workload"` | This is an illustrative ownership choice, not a customer decision. Use `workload` only when the workload may create endpoint-to-zone associations; use `platform` when platform automation owns them. Neither transfers ownership of central zones, VNet links or the resolver. |
@@ -143,25 +159,32 @@ The network file chooses **ownership**, not an access stage. Keep the complete
 `existing_private_network` object: a later assignment replaces the whole object,
 not just its changed fields.
 
-### Three core input fields, two or three core subnets
+<a id="three-core-input-fields-two-or-three-core-subnets"></a>
 
-The two entries named `gateway` and `models` inside `endpoint_subnet_ids` are
-**not the complete set of subnet inputs**. There is also `gateway_subnet_id`.
-All three core fields below belong to `existing_private_network`; the selected
-extensions add the fields described in the next subsection:
+### Eight subnet-ID fields, five existing subnets
+
+All eight fields below belong to `existing_private_network` and are required
+for the selected setup in this walkthrough. This is the complete subnet-input
+list, not just the gateway/model core:
 
 | Field | Purpose | Subnet in the filled example |
 | --- | --- | --- |
 | `gateway_subnet_id` | Gateway outbound VNet integration, used to reach private backends. | `snet-gateway-outbound` |
+| `agent_subnet_id` | Separate outbound VNet integration for the private Hosted Agent infrastructure. | `snet-agents-outbound` |
+| `client_subnet_id` | Subnet for the new private test VM, not automatically the production application's subnet. | `snet-test-clients` |
 | `endpoint_subnet_ids.gateway` | Gateway private endpoint: the private entry point used by callers. | `snet-gateway-private-links` |
 | `endpoint_subnet_ids.models` | Model-service private endpoint, reached by the gateway. | `snet-model-private-links` |
+| `endpoint_subnet_ids.storage` | Blob Storage private endpoint. | `snet-model-private-links` |
+| `endpoint_subnet_ids.agents` | Private endpoint for the additional private Hosted Agent infrastructure. | `snet-model-private-links` |
+| `endpoint_subnet_ids.registry` | Container registry private endpoint. | `snet-model-private-links` |
 
-The core gateway/model part of this example shows **three distinct subnets**.
-The gateway and
-model endpoint fields may instead contain the **same suitable, platform-approved
-subnet ID**. The basic setup then uses **two distinct subnets but still three
-input fields**. Gateway integration must remain separate from every private
-endpoint subnet.
+**Why eight fields but five subnets?** The model, Blob, agent and registry
+endpoint fields all reference the same `snet-model-private-links` subnet.
+Gateway integration, gateway endpoints, agent integration and the test client
+each use a separate subnet in this example. Shared endpoint placement requires
+platform approval and sufficient free IP capacity; an input field does not
+imply a separate subnet. Gateway and agent integration must remain separate
+from each other and from every private endpoint subnet.
 
 > [!IMPORTANT]
 > **Confirm subnet suitability and authorized use through the platform process
@@ -177,34 +200,22 @@ endpoint subnet.
 >
 > **A successful Terraform plan is not a full readiness or connectivity check.**
 
-### How `client` and `agents` fit
+<a id="how-client-and-agents-fit"></a>
 
-When `enable_private_networking = true` and `private_network_mode = "create"`,
-`private-network.tf` creates the three subnet roles `gateway`, `endpoints` and
-`client`. Gateway/model private endpoints share the created `endpoints` subnet.
-The `client` subnet is created even when the optional test VM is not enabled.
-A fourth subnet, `agents`, is added only with
-`enable_private_hosted_agent = true`; deploying an arbitrary agent does not
-automatically enable this option.
+### Selected private components and DNS inputs
 
 **In this `existing` scenario, Terraform creates none of these subnets.** The
-platform must supply compatible existing subnets for the selected additions.
+platform must supply compatible existing subnets for the selected components.
 **Private Blob connectivity, private Hosted Agent infrastructure and the new
-test VM are all selected here**, so their additional inputs are included in
+test VM are all selected here**, so their required inputs are included in
 the complete network object above:
 
-| Selected feature | Additional fields inside `existing_private_network` | Placement in this example |
+| Selected feature | Required fields inside `existing_private_network` | Placement in this example |
 | --- | --- | --- |
 | Private Blob connectivity | `endpoint_subnet_ids.storage`, `private_dns_zone_ids.storage` | Blob endpoint in `snet-model-private-links`, using the central Blob zone. |
 | Private Hosted Agent outbound integration | `agent_subnet_id` | Separate `snet-agents-outbound` integration subnet, delegated to `Microsoft.App/environments`. |
 | Private Hosted Agent and registry endpoints | `endpoint_subnet_ids.agents`, `endpoint_subnet_ids.registry`, `private_dns_zone_ids.registry` | Both endpoints share `snet-model-private-links`; registry uses the central ACR zone. |
 | New private test VM | `client_subnet_id` | `snet-test-clients`, not automatically the production application's subnet. |
-
-This makes **eight subnet-ID fields, but five distinct subnets** in the filled
-example: gateway integration, gateway endpoints, shared model/Blob/agent/registry
-endpoints, agent integration and the test client. Endpoint-subnet sharing still
-requires platform approval and sufficient free IP capacity; it is not a request
-to create a separate subnet for every map entry.
 
 **The test VM is a test computer, not an intermediary for application traffic.**
 From it, you can check private DNS resolution, gateway reachability and an
@@ -220,9 +231,29 @@ This walkthrough explicitly selects the new VM.
 For private Hosted Agents, the supplied integration subnet must be separate from
 gateway integration and all private endpoint subnets. Supplying `agent_subnet_id`
 alone is not the complete feature configuration: the required agent/registry
-endpoint and DNS inputs must also be agreed. Existing mode never creates a
-missing agent subnet automatically, and its total subnet count is **not always
-four**; it depends on the enabled features and approved endpoint-subnet sharing.
+endpoint and DNS inputs must also be agreed; all are included above. Existing
+mode never creates a missing agent subnet automatically.
+
+### Background only: the core profile and create-network comparison
+
+These other starting points explain the different counts; they do not change
+the eight-field, five-subnet setup selected above.
+
+The reusable existing-network profile has three **core subnet-ID fields**:
+`gateway_subnet_id`, `endpoint_subnet_ids.gateway` and
+`endpoint_subnet_ids.models`. A core-only setup can use two or three distinct
+subnets, depending on approved sharing of gateway/model endpoint subnets.
+Gateway integration must remain separate from those endpoints. That smaller
+profile does not include the network inputs for all our selected components.
+
+For comparison, when `enable_private_networking = true` and
+`private_network_mode = "create"`, `private-network.tf` creates the three subnet
+roles `gateway`, `endpoints` and `client`. Gateway/model private endpoints share
+the created `endpoints` subnet. The `client` subnet is created even when the
+optional test VM is not enabled. A fourth subnet, `agents`, is added only with
+`enable_private_hosted_agent = true`; deploying an arbitrary agent does not
+automatically enable this option. That create-mode count is not the subnet count
+for this existing-network walkthrough.
 
 ## Access settings for this walkthrough
 
@@ -262,8 +293,9 @@ selected owner of the caller role assignments is this Terraform deployment.
 This is a requirement of the chosen example, not an interchangeable optional
 authentication choice.
 
-&#x1F7E2; **ACTIVE** - include this complete block in the protected base inputs.
-Replace the fictional principal with an approved existing Entra identity:
+&#x1F7E2; **ACTIVE** - this complete block is already active in the Scenario 01
+base example. Keep one copy in the protected base inputs and replace the
+fictional principal with an approved existing Entra identity:
 
 ```hcl
 gateway_access_principals = {
@@ -300,7 +332,8 @@ selecting Terraform in this example does not transfer existing IAM ownership.
 ### Selected private features
 
 &#x1F7E2; **ACTIVE** - these features are part of this walkthrough, not left
-off. Include these assignments in the same protected base input file:
+off. These assignments are already active in the Scenario 01 base example;
+keep one copy in the same protected base input file:
 
 ```hcl
 storage_public_network_access   = "Disabled"
@@ -346,9 +379,10 @@ new workload state.
 
 ## Use this reference alongside the runbook
 
-Start from the linked editable templates, or keep the complete approved input
-files supplied by your organization. Never overwrite an existing approved input
-file with fictional examples. Replace the illustrative values and agree the
+Use the Scenario 01 base example and the complete network object above as
+references for the protected working inputs, or keep the complete approved files
+supplied by your organization. Never overwrite an existing approved input file
+with fictional examples. Replace the illustrative values and agree the
 network/DNS contract, policy, permissions, regions, quota and selected feature scope
 before planning. Keep real inputs and state out of public Git.
 
