@@ -93,6 +93,12 @@ does not make it production-proven. Terraform retains its own deterministic
 names, project labels and optional developer grants rather than adopting Bicep
 resources or application state.
 
+Unlike the Bicep reference, the AppInsights connection uses the component
+**name** for `metadata.ResourceId` while retaining its full ARM ID in `target`.
+This preserves a reported successful-apply/clean-plan Terraform workaround;
+the original error and provider version were unavailable, so its root cause
+is unconfirmed.
+
 The new alias API exposes PATCH for updates, whereas `azapi_resource` updates
 use PUT. Changed 2026 alias properties therefore request **replacement**, not
 a silently assumed PATCH. Review the saved plan: replacement can temporarily

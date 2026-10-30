@@ -73,6 +73,15 @@ override_resource {
 }
 
 override_resource {
+  target          = azapi_resource.insights["agents"]
+  override_during = plan
+  values = {
+    id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/agents/providers/Microsoft.Insights/components/agents"
+    output = { properties = { ConnectionString = "test-agent-connection-string" } }
+  }
+}
+
+override_resource {
   target          = azapi_resource.model_deployment["gpt-latest"]
   override_during = plan
   values = {
@@ -223,6 +232,16 @@ run "bicep_profile_routes_policies_and_placement" {
       !azapi_resource.insights_connection.body.properties.isSharedToAll
     )
     error_message = "Match Bicep monitoring, identity and connection-sharing boundaries without legacy OTLP grants, automatic developer roles, shared keys or registry admin access."
+  }
+
+  assert {
+    condition = (
+      azapi_resource.insights_connection.body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.insights_connection.body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.insights_connection.body.properties.target != azapi_resource.insights_connection.body.properties.metadata.ResourceId &&
+      azapi_resource.insights_connection.body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+    )
+    error_message = "The 2026 entry must retain the AppInsights metadata-name workaround while keeping the full ARM ID target and connection-string credentials."
   }
 }
 
