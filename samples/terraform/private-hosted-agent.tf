@@ -188,8 +188,9 @@ resource "azapi_resource" "private_insights_connection" {
       target        = azapi_resource.insights["agents"].id
       credentials   = { key = azapi_resource.insights["agents"].output.properties.ConnectionString }
       metadata = {
+        # Use the component name for AppInsights ResourceId; target keeps its ARM ID.
         ApiType     = "Azure"
-        ResourceId  = azapi_resource.insights["agents"].id
+        ResourceId  = azapi_resource.insights["agents"].name
         displayName = azapi_resource.insights["agents"].name
       }
     }

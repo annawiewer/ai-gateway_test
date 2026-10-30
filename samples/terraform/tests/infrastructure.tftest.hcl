@@ -17,6 +17,15 @@ override_resource {
 }
 
 override_resource {
+  target          = azapi_resource.insights["agents"]
+  override_during = plan
+  values = {
+    id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/shared-gateway/providers/Microsoft.Insights/components/agents"
+    output = { properties = { ConnectionString = "test-agent-connection-string" } }
+  }
+}
+
+override_resource {
   target          = azapi_resource.resource_group["gateway"]
   override_during = plan
   values = {
@@ -144,6 +153,16 @@ run "models_and_access_without_developer" {
       !azapi_resource.telemetry_exporter.body.properties.payloadCapture
     )
     error_message = "The sample must preserve identity-based backend access and avoid storage keys, public blobs, registry admin credentials, and payload capture."
+  }
+
+  assert {
+    condition = (
+      azapi_resource.insights_connection.body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.insights_connection.body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.insights_connection.body.properties.target != azapi_resource.insights_connection.body.properties.metadata.ResourceId &&
+      azapi_resource.insights_connection.body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+    )
+    error_message = "AppInsights metadata.ResourceId must use the component name while the target keeps the full ARM ID and credentials keep the connection string."
   }
 }
 
@@ -701,6 +720,15 @@ run "additional_private_hosted_agent" {
       azapi_resource.private_agent_key_role[0].body.properties.permissions[0].actions[0] == "Microsoft.ApiManagement/service/apiKeys/listSecrets/action"
     )
     error_message = "Use Basic platform-managed data, scoped roles, the new project registry identity and no placeholder runtime key binding."
+  }
+  assert {
+    condition = (
+      azapi_resource.private_insights_connection[0].body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.private_insights_connection[0].body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.private_insights_connection[0].body.properties.target != azapi_resource.private_insights_connection[0].body.properties.metadata.ResourceId &&
+      azapi_resource.private_insights_connection[0].body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+    )
+    error_message = "The private AppInsights connection must use the component name in metadata without replacing its full ARM ID target or connection-string credentials."
   }
 }
 
