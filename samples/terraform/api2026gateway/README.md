@@ -12,10 +12,13 @@ expected service rollout must be verified before a later deployment.
 
 ## What matches Bicep
 
-The reference is the repository's [Bicep root](../../bicep/infra/main.bicep) and
-[gateway module](../../bicep/infra/ai-gateway/main.bicep), as captured on
+The reference is the historical [Bicep root](https://github.com/annawiewer/ai-gateway_test/blob/714419fd6eba38a067f325b1b8978adc7d5cbc6c/samples/bicep/infra/main.bicep) and
+[gateway module](https://github.com/annawiewer/ai-gateway_test/blob/714419fd6eba38a067f325b1b8978adc7d5cbc6c/samples/bicep/infra/ai-gateway/main.bicep), as captured on
 2026-10-29. [bicep-profile.json](bicep-profile.json) is the default model/routing
 configuration used by this entry and by the shared module's regression tests.
+The copied Bicep tree is no longer maintained in this fork; these immutable
+references preserve the exact profile provenance rather than following a
+changing external sample implicitly.
 
 | Deployment/catalog name | Foundry model | Version | GlobalStandard capacity | Gateway token limit/minute |
 | --- | --- | --- | ---: | ---: |
@@ -87,8 +90,8 @@ AzAPI 2.13's embedded schema does not contain `aigateways`. Schema validation
 is disabled for that root and the unsupported preview child types, not for
 the legacy root. The mocked plans cannot replace server-side contract checks.
 
-The source Bicep includes unmerged upstream policy and connector-removal
-changes; see its [provenance notes](../../bicep/README.md). Matching that snapshot
+The pinned Bicep snapshot included then-unmerged policy and connector-removal
+changes; see its [provenance notes](https://github.com/annawiewer/ai-gateway_test/blob/714419fd6eba38a067f325b1b8978adc7d5cbc6c/samples/bicep/README.md). Matching that snapshot
 does not make it production-proven. Terraform retains its own deterministic
 names, project labels and optional developer grants rather than adopting Bicep
 resources or application state.
