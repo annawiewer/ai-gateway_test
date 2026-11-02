@@ -120,6 +120,35 @@ Browse the [samples catalog](samples/README.md) for application examples, or the
 [Terraform architecture views](samples/terraform/README.md#architecture-views)
 to understand the infrastructure before using the deployment guide.
 
+### Understand the Terraform sample
+
+The [Terraform sample](samples/terraform/README.md) connects a client-facing AI
+Gateway to dedicated Foundry model deployments. The gateway checks access and
+policy; **the model generates the answer**. The sample also prepares the
+infrastructure for a separately deployed hosted agent.
+
+Choose **Public** or **Private-only** in the
+[networking guide](samples/terraform/README.md#choose-your-networking-path).
+Temporary provisioning stages are not additional deployment options.
+
+![Public architecture: application, AI Gateway and Foundry models, with separate agent dependencies and monitoring](samples/terraform/docs/images/architecture-public.svg)
+
+Read the [architecture guide](samples/terraform/docs/architecture.md) for what
+each service does and how the base sample differs from the
+[verified private-agent reference](samples/terraform/docs/architecture.md#3-private-agent-reference).
+The optional extension configures network injection when the agent account is
+created. A separately deployed agent passed private gateway/model inference and
+public gateway rejection on October 25, 2026.
+The guide separates the **current agent authentication sequence** (runtime identity
+retrieves a gateway API key) from the **optional Entra caller sequence**.
+Configure additive identity-based [Access](samples/terraform/README.md#access)
+with **Microsoft Entra ID or API keys** without changing the existing agent or
+revoking keys. Managed-identity Entra access and API-key calls have both passed
+the private-route live test. The compact [deployment guide](samples/terraform/01-04-deployment.md)
+is next to the Terraform README.
+This diagram describes the sample, not every AI Gateway deployment. It retains
+the legacy resource type and preview limitations described in the sample README.
+
 ## Contributing
 
 For local Cursor plugin testing, symlink the repository into

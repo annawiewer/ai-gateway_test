@@ -171,6 +171,16 @@ run "models_and_access_without_developer" {
     )
     error_message = "AppInsights metadata.ResourceId must use the component name while the target keeps the full ARM ID and credentials keep the connection string."
   }
+
+  assert {
+    condition = (
+      azapi_resource.insights_connection.body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.insights_connection.body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.insights_connection.body.properties.target != azapi_resource.insights_connection.body.properties.metadata.ResourceId &&
+      azapi_resource.insights_connection.body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+    )
+    error_message = "AppInsights metadata.ResourceId must use the component name while the target keeps the full ARM ID and credentials keep the connection string."
+  }
 }
 
 run "explicit_developer_service_principal" {
