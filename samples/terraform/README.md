@@ -234,6 +234,10 @@ Terraform acceptance runner for each variant plus the upstream CLI installer
 tests once. The sync job uses Ubuntu for the installers' POSIX executable test
 fixtures; the existing Terraform-only Windows CI remains unchanged.
 
+The provider locks cover Windows and Linux. When intentionally updating providers,
+refresh each entry's lock with
+`terraform providers lock -platform=linux_amd64 -platform=windows_amd64`.
+
 Both branch updates are published together with a normal atomic push, only
 after all checks pass. Fork edits outside Terraform, overlapping upstream
 Terraform paths, merge conflicts, failed checks and concurrent branch changes
@@ -246,3 +250,7 @@ Use **Actions > Synchronize upstream originals > Run workflow** on `main` for an
 immediate check, including full validation when already current. Check Actions
 for failed or disabled runs; resolve unexpected differences explicitly before
 retrying. Terraform changes and API migrations remain separate reviewed work.
+
+GitHub can delay scheduled runs and disables schedules in public repositories
+after 60 days without repository activity. Re-enable the workflow in Actions if
+needed; see the [scheduled-workflow behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
