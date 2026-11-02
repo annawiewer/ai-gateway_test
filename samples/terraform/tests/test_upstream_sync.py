@@ -103,6 +103,17 @@ class UpstreamSyncTests(unittest.TestCase):
         sync.publish(self.repository, self.workspace)
         self.assertEqual(self.original, self.remote_heads())
 
+    def test_merges_without_configured_git_identity(self):
+        self.advance_upstream()
+        autocrlf = sync.git(self.repository, "config", "--default", "false", "--get", "core.autocrlf")
+        sync.git(self.repository, "config", "core.autocrlf", autocrlf)
+        sync.git(self.repository, "config", "user.useConfigOnly", "true")
+        with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}):
+            for key in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+                os.environ.pop(key, None)
+            state = sync.prepare(self.repository, self.workspace)
+        self.assertTrue(all(branch["tip"] != branch["before"] for branch in state["branches"].values()))
+
     def test_stops_on_fork_edits_to_upstream_files(self):
         self.write(self.repository, "README.md", "Fork-specific change\n")
         self.commit(self.repository)

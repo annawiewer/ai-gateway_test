@@ -127,6 +127,10 @@ def prepare(repository, workspace):
     if select(tree(repository, upstream), terraform=True):
         raise RuntimeError("Upstream now owns a Terraform extension path; manual review required.")
     state["upstream"] = upstream
+    identity = (
+        "-c", "user.name=github-actions[bot]",
+        "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+    )
     for name in BRANCHES:
         before = git(repository, "rev-parse", f"refs/remotes/origin/{name}")
         bases = git(repository, "merge-base", "--all", before, upstream).splitlines()
@@ -137,10 +141,9 @@ def prepare(repository, workspace):
         worktree = workspace / name
         git(repository, "worktree", "add", "--detach", str(worktree), before)
         if bases[0] != upstream:
-            git(worktree, "merge", "--no-ff", "--no-commit", upstream)
+            git(worktree, *identity, "merge", "--no-ff", "--no-commit", upstream)
             git(
-                worktree, "-c", "user.name=github-actions[bot]",
-                "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+                worktree, *identity,
                 "commit", "-m", f"Sync Azure/aigateway main into {name}",
                 "-m", f"Upstream-Commit: {upstream}",
             )
