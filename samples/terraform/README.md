@@ -217,3 +217,32 @@ A successful model reply alone is not acceptance: verify authentication,
 private/public boundaries where applicable, fresh telemetry and a full drift
 plan with the same approved inputs. Optional helpers can contact Azure, manage
 the sample VM and perform billable inference; run only the selected procedure.
+
+## Fork layout and upstream synchronization
+
+The original files, including the root README and sample catalog, follow
+`Azure/aigateway`. This Terraform directory and the two `terraform-*` workflows
+are the deliberate fork extensions. `main` retains the 2025 gateway contract;
+`api2026gateway` keeps its separate experimental 2026 entry point. Synchronization
+never merges the API-2026 branch into `main` or changes either Terraform variant.
+The former local Bicep/Python copy remains in Git history, not in the active tree.
+
+**Synchronize upstream originals** checks upstream daily at **05:17 UTC**.
+It prepares isolated normal merges for both branches, checks byte/mode identity
+of upstream-owned files and preservation of Terraform, and runs the existing
+Terraform acceptance runner for each variant plus the upstream CLI installer
+tests once. The sync job uses Ubuntu for the installers' POSIX executable test
+fixtures; the existing Terraform-only Windows CI remains unchanged.
+
+Both branch updates are published together with a normal atomic push, only
+after all checks pass. Fork edits outside Terraform, overlapping upstream
+Terraform paths, merge conflicts, failed checks and concurrent branch changes
+stop publication. No force-push, Azure deployment or cross-branch Terraform merge
+is performed. Checkout credentials are not retained; `GH_TOKEN` is exposed only
+to the publication step and removed from the check processes. No personal token
+or Azure credential is required.
+
+Use **Actions > Synchronize upstream originals > Run workflow** on `main` for an
+immediate check, including full validation when already current. Check Actions
+for failed or disabled runs; resolve unexpected differences explicitly before
+retrying. Terraform changes and API migrations remain separate reviewed work.
