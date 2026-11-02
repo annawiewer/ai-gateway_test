@@ -1,14 +1,20 @@
 #Requires -Version 7.0
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-foreach ($command in @(
-    @('init', '-backend=false', '-input=false', '-lockfile=readonly'),
-    @('fmt', '-check', '-recursive'),
-    @('validate'),
-    @('test')
-)) {
-    & terraform "-chdir=$root" @command
-    if ($LASTEXITCODE -ne 0) { throw "Terraform $($command[0]) failed." }
+foreach ($directory in @($root, (Join-Path $root 'api2026gateway'))) {
+    foreach ($command in @(
+        @('init', '-backend=false', '-input=false', '-lockfile=readonly'),
+        @('validate')
+    )) {
+        & terraform "-chdir=$directory" @command
+        if ($LASTEXITCODE -ne 0) { throw "Terraform $($command[0]) failed in $directory." }
+    }
+}
+& terraform "-chdir=$root" fmt -check -recursive
+if ($LASTEXITCODE -ne 0) { throw 'Terraform formatting check failed.' }
+foreach ($directory in @($root, (Join-Path $root 'api2026gateway'))) {
+    & terraform "-chdir=$directory" test
+    if ($LASTEXITCODE -ne 0) { throw "Terraform mocked regression tests failed in $directory." }
 }
 & python -B -m unittest discover -s (Join-Path $root 'tests') -p 'test_*.py'
 if ($LASTEXITCODE -ne 0) { throw 'Python regression tests failed.' }

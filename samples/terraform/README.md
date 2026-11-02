@@ -3,6 +3,12 @@
 Manage an Azure AI Gateway that routes calls to Foundry models. This is standalone
 Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway), not an `azd` app.
 
+> **Experimental 2026 entry:** [api2026gateway](api2026gateway/README.md) mirrors
+> the Bicep models, routing, governance and three-group layout using a separate
+> Terraform root/state. This root and scenarios 01-04 keep their legacy defaults.
+> The new entry is preparation for later live validation, **not a customer
+> migration or a verified private-network replacement**.
+
 <a id="start-here-step-by-step-deployment"></a>
 
 ## Choose your scenario

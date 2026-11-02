@@ -1,0 +1,25 @@
+# Preparation only: these placeholders do not authorize a live deployment.
+# Use a NEW terraform.tfvars and separate backend/state in this directory.
+# Never copy legacy/customer state or load the parent's 01-04 private profiles.
+subscription_id  = "00000000-0000-0000-0000-000000000000"
+environment_name = "api2026gateway"
+location         = "<approved-foundry-region>"
+gateway_location = "<approved-gateway-region>"
+
+# The three model deployments and two aliases default to bicep-profile.json.
+# Check all pinned model versions, GlobalStandard quota and data residency first.
+# Optional: supply complete model_deployments and model_aliases overrides here.
+
+# Outbound integration only, configured before creating the gateway:
+# gateway_backend_subnet_id = "/subscriptions/<id>/resourceGroups/<platform-rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<delegated-subnet>"
+# The existing subnet must use Microsoft.App/environments delegation.
+# The sample never creates or updates the subnet, NSG, routes or central DNS.
+
+# Optional caller access uses Entra OBJECT IDs, not application/client IDs.
+# API-key authentication remains available; this is not an Entra-only switch.
+# gateway_access_principals = {
+#   application = {
+#     principal_id   = "<managed-identity-or-service-principal-object-id>"
+#     principal_type = "ServicePrincipal"
+#   }
+# }
