@@ -1,6 +1,6 @@
 # Standalone AI Gateway reference
 
-[Start-to-finish guide](README.md) · [Architecture explanation](architecture.md) · [Terraform overview](../README.md)
+[Start-to-finish guide](../README.md) · [Architecture explanation](architecture.md) · [Terraform overview](../../README.md)
 
 This reference describes this checkout's configuration, not live service
 acceptance. The entry is a separate Terraform root calling the shared
@@ -10,24 +10,24 @@ implementation as `module.gateway` with `source = "../"`.
 
 | File | Responsibility |
 | --- | --- |
-| [main.tf](main.tf) | Select the standalone resource family, load the default profile and call the shared module |
-| [versions.tf](versions.tf) / [.terraform.lock.hcl](.terraform.lock.hcl) | Entry requirements and pinned provider selection |
-| [variables.tf](variables.tf) | Supported typed inputs |
-| [legacy-input-guards.tf](legacy-input-guards.tf) | Reject legacy settings explicitly rather than silently ignoring them |
-| [terraform.tfvars.example](terraform.tfvars.example) | Starting input template |
-| [model-profile.json](model-profile.json) | Pinned deployment and alias defaults |
-| [model-routing.tfvars.example](model-routing.tfvars.example) | Optional, illustrative replacement maps; never auto-loaded |
-| [outputs.tf](outputs.tf) | Described IDs, endpoints and review metadata; no runtime key value |
-| [../main.tf](../main.tf) | Deterministic names, default three-group or optional fresh single-group ownership, and API selection |
-| [../ai-gateway.tf](../ai-gateway.tf) | Gateway, endpoint, runtime key and retained legacy connector compatibility |
-| [../model-routing.tf](../model-routing.tf) | Model provider, catalog policies and aliases |
-| [../foundry-models.tf](../foundry-models.tf) | Foundry model account, deployments and explicit backend safety binding |
-| [../foundry-agents.tf](../foundry-agents.tf) / [../rbac.tf](../rbac.tf) | Agent-support resources, connections and scoped identity bindings |
-| [../monitoring.tf](../monitoring.tf) | Log Analytics, Application Insights and telemetry exporter |
-| [../ai-gateway-backend.tf](../ai-gateway-backend.tf) | Select the owned or external outbound subnet and read external subnet/VNet metadata |
-| [../api2026-private-network.tf](../api2026-private-network.tf) | Opt-in owned backend network, private endpoints, DNS and AMPLS |
-| [../api2026-private-client.tf](../api2026-private-client.tf) | Opt-in verification VM, identities, scoped grants, Blob container and diagnostic |
-| [../versions.tf](../versions.tf) | Shared provider configuration; unchanged for both entry points |
+| [../main.tf](../main.tf) | Select the standalone resource family, load the default profile and call the shared module |
+| [../versions.tf](../versions.tf) / [../.terraform.lock.hcl](../.terraform.lock.hcl) | Entry requirements and pinned provider selection |
+| [../variables.tf](../variables.tf) | Supported typed inputs |
+| [../legacy-input-guards.tf](../legacy-input-guards.tf) | Reject legacy settings explicitly rather than silently ignoring them |
+| [../terraform.tfvars.example](../terraform.tfvars.example) | Starting input template |
+| [../model-profile.json](../model-profile.json) | Pinned deployment and alias defaults |
+| [../examples/model-routing.tfvars.example](../examples/model-routing.tfvars.example) | Optional, illustrative replacement maps; never auto-loaded |
+| [../outputs.tf](../outputs.tf) | Described IDs, endpoints and review metadata; no runtime key value |
+| [../../main.tf](../../main.tf) | Deterministic names, default three-group or optional fresh single-group ownership, and API selection |
+| [../../ai-gateway.tf](../../ai-gateway.tf) | Gateway, endpoint, runtime key and retained legacy connector compatibility |
+| [../../model-routing.tf](../../model-routing.tf) | Model provider, catalog policies and aliases |
+| [../../foundry-models.tf](../../foundry-models.tf) | Foundry model account, deployments and explicit backend safety binding |
+| [../../foundry-agents.tf](../../foundry-agents.tf) / [../../rbac.tf](../../rbac.tf) | Agent-support resources, connections and scoped identity bindings |
+| [../../monitoring.tf](../../monitoring.tf) | Log Analytics, Application Insights and telemetry exporter |
+| [../../ai-gateway-backend.tf](../../ai-gateway-backend.tf) | Select the owned or external outbound subnet and read external subnet/VNet metadata |
+| [../../api2026-private-network.tf](../../api2026-private-network.tf) | Opt-in owned backend network, private endpoints, DNS and AMPLS |
+| [../../api2026-private-client.tf](../../api2026-private-client.tf) | Opt-in verification VM, identities, scoped grants, Blob container and diagnostic |
+| [../../versions.tf](../../versions.tf) | Shared provider configuration; unchanged for both entry points |
 
 Terraform loads all `.tf` files in a module together. File extraction does not
 change resource addresses or create new modules; these filenames express
@@ -55,7 +55,7 @@ No connector gateway is created for the API-2026 contract.
    to Foundry backends. Alias routing chooses a catalog registration, whose
    backend deployment key must exist in the complete model map.
 3. The separate project identity receives agent-account and dependency roles
-   through [rbac.tf](../rbac.tf). It is not the gateway identity. Optional
+   through [rbac.tf](../../rbac.tf). It is not the gateway identity. Optional
    developer grants are additional access, not required runtime identity.
 4. Gateway telemetry targets Application Insights/Log Analytics independently of
    inference routing. Agent-support connections do not mean an agent image has
@@ -91,8 +91,8 @@ do not construct a hostname or fall back to the legacy `gatewayUrl` property.
 
 ## Inputs
 
-Defaults, types and validations are in [variables.tf](variables.tf); inherited
-contract checks remain in [../variables.tf](../variables.tf).
+Defaults, types and validations are in [variables.tf](../variables.tf); inherited
+contract checks remain in [../../variables.tf](../../variables.tf).
 
 | Inputs | Use |
 | --- | --- |
@@ -128,7 +128,7 @@ Its SSH public key is rejected outside lab mode. See
 `gateway_public_network_access`, `models_public_network_access` and
 `storage_public_network_access`, along with
 legacy private-client/network settings. The
-[guard file](legacy-input-guards.tf) is the authoritative list. Even a lone
+[guard file](../legacy-input-guards.tf) is the authoritative list. Even a lone
 `gateway_public_network_access = "Disabled"` or an explicitly supplied legacy
 `false` flag is rejected; it does not make this a private deployment.
 
@@ -355,7 +355,7 @@ applicable foundation explicitly:
 | External | Supply `gateway_backend_subnet_id` and separately provision/verify backend private endpoints, DNS, monitoring private access and a private caller; this input only integrates outbound gateway traffic |
 | Owned lab | Enable `api2026_private_lab_enabled` with fresh single-group inputs, matching regions, a fresh SSH public key and explicit backend `Disabled`; do not supply an external subnet |
 
-The owned lab in [api2026-private-network.tf](../api2026-private-network.tf)
+The owned lab in [api2026-private-network.tf](../../api2026-private-network.tf)
 creates an unpeered VNet, delegated gateway-outbound subnet, private-endpoint
 subnet with disabled endpoint network policies, and verification-client subnet.
 It adds client/gateway NSGs, client NAT/public egress IP, private endpoints for
@@ -363,7 +363,7 @@ Blob, models, agents, registry and AMPLS, private DNS zones/links/zone groups,
 and private-only AMPLS ingestion/query with both workspaces and components
 linked. These are backend endpoints, **not a gateway private endpoint**.
 
-[api2026-private-client.tf](../api2026-private-client.tf) adds a private-addressed
+[api2026-private-client.tf](../../api2026-private-client.tf) adds a private-addressed
 verification VM/NIC without public SSH ingress, two distinct user-assigned test
 identities, positive-test scoped grants, an export-restricted OS disk, a
 private Blob test container and a `StorageRead` diagnostic to the gateway
@@ -384,7 +384,7 @@ the list before and after a later approved apply.
 
 The **fresh owned lab** instead sets Storage bypass to `None` and does not
 enable that external-rule preservation overlay. See the conditional body and
-`ignore_body_changes` in [foundry-agents.tf](../foundry-agents.tf); do not apply
+`ignore_body_changes` in [foundry-agents.tf](../../foundry-agents.tf); do not apply
 the external-foundation exception to all modes.
 
 Disabled controls and `Deny` are not proof of repaired public routes,
@@ -399,7 +399,7 @@ from the parent root; neither copying a state file nor changing a working
 directory adopts a legacy workload safely. No import, migration or
 resource-address rewrite is included.
 
-For local state, protect this directory's state, backup and `.terraform`
+For local state, protect the entry directory's state, backup and `.terraform`
 metadata. For a separately configured remote backend, use the approved distinct
 key/workspace and access controls. Never share another workload's backend
 identity or `TF_DATA_DIR` just because the checkout path differs.
@@ -411,7 +411,7 @@ reviewed saved plan for changes; retain or remove resources only with approval.
 
 ## Outputs
 
-All outputs are described in [outputs.tf](outputs.tf).
+All outputs are described in [outputs.tf](../outputs.tf).
 
 | Outputs | Purpose |
 | --- | --- |
@@ -441,10 +441,10 @@ delivered by this configuration. MCP monitoring categories do not mean this
 sample deploys MCP tools. The documentation supplies no KQL table or field
 schema: verify actual delivered data and its correlation fields rather than
 inventing queries or treating exporter configuration as delivery evidence.
-Do not carry over the legacy [OTLP procedure](../docs/monitoring.md) or its
+Do not carry over the legacy [OTLP procedure](../../docs/monitoring.md) or its
 schema assumptions to this entry.
 
-[Test-Api2026Deployment.ps1](../scripts/Test-Api2026Deployment.ps1) is a
+[Test-Api2026Deployment.ps1](../../scripts/Test-Api2026Deployment.ps1) is a
 **configuration-only** checker. Its required inputs are `-TerraformDirectory`,
 `-SubscriptionId`, `-TenantId` and `-AllowedResourceGroups` (the exact three
 distinct approved names by default, or one with `-SingleResourceGroup`).
@@ -467,7 +467,7 @@ remain failed, and the bounded probe stops before credentials or inference.
 
 ### Advanced checker options
 
-These are modifiers to the [main verification command](README.md), not another
+These are modifiers to the [main verification command](../README.md), not another
 deployment sequence. The bounded probe forwards them to the same checker.
 
 | Option | Scope and requirement |
@@ -554,7 +554,7 @@ stored secret or working agent telemetry from an unknown value.
 
 | Gate | Meaning of the available evidence |
 | --- | --- |
-| Offline validation | Canonical [Test-Offline.ps1](../scripts/Test-Offline.ps1); local and mocked checks only |
+| Offline validation | Canonical [Test-Offline.ps1](../../scripts/Test-Offline.ps1); local and mocked checks only |
 | Configuration | `configurationStatus` is `PASS` or `FAIL`; a configuration pass still has `overallStatus = INCOMPLETE` |
 | Runtime inference and caller authentication | Separate approved, bounded live evidence required; not established by this checker |
 | Token/cost/request/IP enforcement and failover | Separate controlled behavior checks; emitted policy/routing JSON is insufficient |
@@ -567,12 +567,12 @@ stored secret or working agent telemetry from an unknown value.
 
 The checker's runtime, telemetry delivery, failover/policy, idempotence, portal and
 agent-runtime gates remain `NOT TESTED`. The offline
-[acceptance fixtures](../tests/Test-Api2026Acceptance.ps1) mock Terraform, Azure
+[acceptance fixtures](../../tests/Test-Api2026Acceptance.ps1) mock Terraform, Azure
 and HTTP; their results are not live acceptance.
 
 ### Bounded runtime probe
 
-After configuration approval, [Test-ModelAliases.ps1](../scripts/Test-ModelAliases.ps1)
+After configuration approval, [Test-ModelAliases.ps1](../../scripts/Test-ModelAliases.ps1)
 offers an opt-in bounded mode. From this entry's directory, with approved
 runtime-call scope and the already-selected Azure account:
 

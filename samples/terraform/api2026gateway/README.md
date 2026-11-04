@@ -11,14 +11,31 @@ or a migration.** Terraform does not build or run an agent application.
 | Read | Purpose |
 | --- | --- |
 | **This page** | Choose your starting point, prepare inputs, deploy and check configuration. |
-| [Architecture](architecture.md) | Understand the request flow, resources, identities and Terraform structure. |
-| [Reference](reference.md) | Look up inputs, contracts, detailed safeguards and acceptance gates. |
+| [Architecture](docs/architecture.md) | Understand the request flow, resources, identities and Terraform structure. |
+| [Reference](docs/reference.md) | Look up inputs, contracts, detailed safeguards and acceptance gates. |
 
 The default bundle adds **token, monthly cost and request limits** to each
 model registration. Model-call IP filtering is opt-in; backend safety uses
 `Microsoft.DefaultV2`. Telemetry uses `payloadCapture = false`.
-See [policy scope](reference.md#policies-and-backend-safety) for the limits of
+See [policy scope](docs/reference.md#policies-and-backend-safety) for the limits of
 these settings; configuration alone does not prove enforcement or delivery.
+
+## Directory layout
+
+| Path | Purpose |
+| --- | --- |
+| [main.tf](main.tf) | Deployable entry calling the shared implementation as `module.gateway` |
+| [variables.tf](variables.tf) / [outputs.tf](outputs.tf) | Typed inputs and described outputs |
+| [versions.tf](versions.tf) / [.terraform.lock.hcl](.terraform.lock.hcl) | Terraform requirements and pinned provider selection |
+| [legacy-input-guards.tf](legacy-input-guards.tf) | Explicit rejection of unsupported legacy settings |
+| [terraform.tfvars.example](terraform.tfvars.example) / [model-profile.json](model-profile.json) | Primary new-lab input template and default model profile |
+| [docs/](docs/) | Architecture explanation and detailed configuration reference |
+| [examples/](examples/) | Optional input illustrations, not separate Terraform stacks |
+| [tests/](tests/) | Provider-mocked entry tests |
+
+Run Terraform from **this entry directory**, not from `docs/` or `examples/`.
+The shared implementation remains in the parent directory; this organization
+does not change module/resource addresses or move existing state.
 
 ## Scenario coverage
 
@@ -40,15 +57,15 @@ Optional private backend connectivity does **not** make gateway ingress private.
 If private ingress or a disabled gateway public endpoint is mandatory, **stop**:
 this entry does not implement that boundary. Before opting into a backend
 foundation or disabling backend public access, review
-[backend-private connectivity](reference.md#backend-private-connectivity) and
-[network boundaries](reference.md#network-and-access-boundaries).
+[backend-private connectivity](docs/reference.md#backend-private-connectivity) and
+[network boundaries](docs/reference.md#network-and-access-boundaries).
 
 ## 1. Confirm the deployment scope
 
 - Obtain approval for the subscription, tenant, exact resource groups, regions,
   state boundary and **full resource footprint**, not only the gateway.
   The default uses three groups; a fresh-state single-group option is described
-  in the [input reference](reference.md#inputs).
+  in the [input reference](docs/reference.md#inputs).
 - Verify API access, model/version/SKU availability and quota for the selected
   subscription and regions. The checked-in profile is not availability evidence.
 - Budget for model deployments, the agent account/project, Storage, **Premium**
@@ -59,11 +76,11 @@ foundation or disabling backend public access, review
   PowerShell 7 and an explicitly authenticated Azure CLI context for live checks.
   The deploying identity needs the approved resource and role-assignment rights.
 
-Review the [deployment gates](reference.md#deployment-gates) and
-[authentication choices](reference.md#caller-authentication). The default
+Review the [deployment gates](docs/reference.md#deployment-gates) and
+[authentication choices](docs/reference.md#caller-authentication). The default
 runtime key is gateway-wide and not recommended for production. For an existing
-workload, also review the [account capability](reference.md#api-contracts-and-lifecycle) and
-[project monitoring connection](reference.md#project-monitoring-connection)
+workload, also review the [account capability](docs/reference.md#api-contracts-and-lifecycle) and
+[project monitoring connection](docs/reference.md#project-monitoring-connection)
 before planning; do not treat capability changes or connection cleanup as
 implicit approval.
 
@@ -90,8 +107,8 @@ approved input file instead. Do not initialize against a new or empty state.
 | --- | --- |
 | [terraform.tfvars.example](terraform.tfvars.example) | New-lab template. Edit only your private copy: set `subscription_id`, `environment_name`, `location` and `gateway_location` to approved values; replace every placeholder. |
 | [model-profile.json](model-profile.json) | Read the default deployments, versions, capacities and aliases. Leave model maps unset to use it. |
-| [model-routing.tfvars.example](model-routing.tfvars.example) | Optional complete-map example, not auto-loaded. If needed, put approved overrides in your complete input file. Maps **replace**, not merge with, defaults. |
-| [variables.tf](variables.tf) / [input reference](reference.md#inputs) | Look up optional caller access, backend network/lab inputs, naming and rejected settings. Choose creation-time settings before the first deployment. |
+| [model-routing.tfvars.example](examples/model-routing.tfvars.example) | Optional complete-map example, not auto-loaded. If needed, put approved overrides in your complete input file. Maps **replace**, not merge with, defaults. |
+| [variables.tf](variables.tf) / [input reference](docs/reference.md#inputs) | Look up optional caller access, backend network/lab inputs, naming and rejected settings. Choose creation-time settings before the first deployment. |
 
 Keep `model_allowed_client_cidrs` empty unless an allow list is approved. To
 enable it, use the actual client/proxy egress IPv4/IPv6 CIDRs, not the commented
@@ -100,7 +117,7 @@ documentation ranges. It filters model calls; it does not create private ingress
 Terraform loads this directory's `.tf` files together, not in filename order.
 Its `main.tf` calls the parent implementation as `module.gateway`; the resource
 groups do not have separate states. Running from `..` instead selects the
-**legacy root**. See [architecture](architecture.md) for the implementation map.
+**legacy root**. See [architecture](docs/architecture.md) for the implementation map.
 
 Approve state storage, access and isolation **before initialization**. This entry
 declares no remote backend: without approved remote configuration it uses local
@@ -108,7 +125,7 @@ state. A new lab must not reuse another workload's backend key or `TF_DATA_DIR`,
 or copy legacy state; an existing workload must retain its authoritative state.
 A separate directory alone is not state isolation. Keep state, plans and private
 inputs out of published output and source control; they can contain credentials
-and connection strings. See [state and lifecycle](reference.md#state-and-lifecycle).
+and connection strings. See [state and lifecycle](docs/reference.md#state-and-lifecycle).
 
 ## 3. Run offline validation
 
@@ -193,22 +210,22 @@ Failure is terminating/nonzero, not an acceptance pass.
 
 Use these focused references when they apply; do not relax the checker:
 
-- [Backend-private connectivity](reference.md#backend-private-connectivity):
+- [Backend-private connectivity](docs/reference.md#backend-private-connectivity):
   required network preparation and explicit backend verification arguments.
-- [External private-endpoint NSG](reference.md#external-private-endpoint-nsg):
+- [External private-endpoint NSG](docs/reference.md#external-private-endpoint-nsg):
   exact approved attachment and strict exception checks.
-- [Live readback projections](reference.md#live-readback-projections):
+- [Live readback projections](docs/reference.md#live-readback-projections):
   narrowly accepted service projections, not permission to ignore mismatches.
-- [Project monitoring connection](reference.md#project-monitoring-connection):
+- [Project monitoring connection](docs/reference.md#project-monitoring-connection):
   project-local ownership, sharing checks and separately approved correction.
 
 ## 7. Record acceptance separately
 
 `configurationStatus = PASS` still means `overallStatus = INCOMPLETE`.
 For separately approved inference, follow the
-[bounded runtime probe](reference.md#bounded-runtime-probe), with a token cap and
+[bounded runtime probe](docs/reference.md#bounded-runtime-probe), with a token cap and
 timeout. Record runtime, policy/failover behavior, telemetry delivery,
 idempotence, portal and agent-runtime evidence as separate
-[acceptance gates](reference.md#monitoring-and-acceptance). Private connectivity
+[acceptance gates](docs/reference.md#monitoring-and-acceptance). Private connectivity
 needs its own evidence; gateway private ingress is not implemented. Do not infer
 customer readiness from a clean plan, offline tests or a configuration-only PASS.

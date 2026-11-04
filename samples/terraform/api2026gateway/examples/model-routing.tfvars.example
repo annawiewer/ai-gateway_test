@@ -1,5 +1,5 @@
 # Optional complete-map illustration, not automatically loaded by Terraform.
-# Keep terraform.tfvars.example as the primary starting point for a NEW workload.
+# Keep ..\terraform.tfvars.example as the primary starting point for a NEW workload.
 # Copy only an approved variant to private working inputs and replace all placeholders.
 # These names, capacity and limits are illustrative, not proof of availability or quota.
 #

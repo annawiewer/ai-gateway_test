@@ -1,6 +1,6 @@
 # Standalone AI Gateway architecture
 
-[Deployment guide](README.md) · [Configuration reference](reference.md) · [Terraform overview](../README.md)
+[Deployment guide](../README.md) · [Configuration reference](reference.md) · [Terraform overview](../../README.md)
 
 This page explains the infrastructure in this Terraform entry. It describes
 source configuration, not a deployed inventory or evidence of acceptance.
@@ -15,16 +15,16 @@ The entry calls the shared implementation as `module.gateway` with the standalon
 
 | Workload | Configured resources | Source |
 | --- | --- | --- |
-| Gateway | Standalone gateway, Foundry provider, catalog models and policies, aliases, default runtime key, gateway monitoring and exporter | [Gateway](../ai-gateway.tf), [routing](../model-routing.tf), [monitoring](../monitoring.tf) |
-| Models | Dedicated Foundry model-serving account and selected model deployments, explicitly bound to system-managed `Microsoft.DefaultV2` safety | [Foundry models](../foundry-models.tf) |
-| Agents | Separate Foundry account and project, Storage, Premium container registry, project connections, scoped roles and separate monitoring | [Agent support](../foundry-agents.tf), [roles](../rbac.tf), [monitoring](../monitoring.tf) |
+| Gateway | Standalone gateway, Foundry provider, catalog models and policies, aliases, default runtime key, gateway monitoring and exporter | [Gateway](../../ai-gateway.tf), [routing](../../model-routing.tf), [monitoring](../../monitoring.tf) |
+| Models | Dedicated Foundry model-serving account and selected model deployments, explicitly bound to system-managed `Microsoft.DefaultV2` safety | [Foundry models](../../foundry-models.tf) |
+| Agents | Separate Foundry account and project, Storage, Premium container registry, project connections, scoped roles and separate monitoring | [Agent support](../../foundry-agents.tf), [roles](../../rbac.tf), [monitoring](../../monitoring.tf) |
 
 By default these workloads use **three managed resource groups**. For fresh
 state, `api2026_resource_group_name` selects one exact managed group shared by
 all three workloads. The logical workload keys remain distinct even when their
 group names coincide. This option is not a switch for consolidating an existing
 deployment. Names, group selection and API selection live in
-[the shared main.tf](../main.tf).
+[the shared main.tf](../../main.tf).
 
 The gateway omits an explicit SKU; **Premium refers to the registry**, not an
 API Management gateway tier. No legacy connector gateway or agent application
@@ -93,19 +93,19 @@ received records.
 
 | Layer | Relationship |
 | --- | --- |
-| Entry root | [main.tf](main.tf) calls `module.gateway` with `source = "../"` and fixes `gateway_contract = "2026"`; this directory has its own state boundary |
-| Inputs | [variables.tf](variables.tf) exposes the entry controls; [main.tf](main.tf) forwards them to the shared module; [shared variables](../variables.tf) enforce inherited validations |
-| Model defaults | [model-profile.json](model-profile.json) supplies each map when that input is null; custom `model_deployments` and `model_aliases` independently replace entire maps, not merge |
-| Unsupported inputs | [legacy-input-guards.tf](legacy-input-guards.tf) rejects legacy flags rather than silently accepting private-ingress claims |
-| Implementation | The parent directory is the shared module here, but remains a separate legacy root when selected directly; [file map](reference.md#file-map) identifies each responsibility |
-| Outputs | [outputs.tf](outputs.tf) forwards scoped IDs, endpoints and review metadata; endpoints are not connectivity proofs and no runtime key value is exposed |
+| Entry root | [main.tf](../main.tf) calls `module.gateway` with `source = "../"` and fixes `gateway_contract = "2026"`; the entry directory has its own state boundary |
+| Inputs | [variables.tf](../variables.tf) exposes the entry controls; [main.tf](../main.tf) forwards them to the shared module; [shared variables](../../variables.tf) enforce inherited validations |
+| Model defaults | [model-profile.json](../model-profile.json) supplies each map when that input is null; custom `model_deployments` and `model_aliases` independently replace entire maps, not merge |
+| Unsupported inputs | [legacy-input-guards.tf](../legacy-input-guards.tf) rejects legacy flags rather than silently accepting private-ingress claims |
+| Implementation | The entry's parent directory supplies the shared module, but remains a separate legacy root when selected directly; [file map](reference.md#file-map) identifies each responsibility |
+| Outputs | [outputs.tf](../outputs.tf) forwards scoped IDs, endpoints and review metadata; endpoints are not connectivity proofs and no runtime key value is exposed |
 
 Terraform loads **all `.tf` files in each module together** and derives a
 dependency graph from references and explicit dependencies. Filenames are not
 an execution order; moving blocks within the same module does not create a
 new module or migrate state.
 
-Use the [deployment guide](README.md) for the single plan/apply sequence and
+Use the [deployment guide](../README.md) for the single plan/apply sequence and
 [state reference](reference.md#state-and-lifecycle) for isolation requirements.
 Neither copying legacy state nor reusing its backend is part of this design.
 
@@ -120,8 +120,8 @@ Neither copying legacy state nor reusing its backend is part of this design.
 The lab requires `api2026_private_lab_enabled = true`, an exact
 `api2026_resource_group_name`, matching workload/gateway regions, a fresh public
 SSH key and explicit backend access `Disabled`; it rejects an external backend
-subnet. Its implementation is in [network foundation](../api2026-private-network.tf)
-and [verification client](../api2026-private-client.tf).
+subnet. Its implementation is in [network foundation](../../api2026-private-network.tf)
+and [verification client](../../api2026-private-client.tf).
 
 Storage hardening differs between the external-foundation and fresh owned-lab
 modes, including bypass and externally managed rule preservation. Read the

@@ -8,10 +8,10 @@ build an agent image or start an agent.
 
 ## Start here: standalone AI Gateway
 
-**On this branch, follow the [standalone gateway guide](api2026gateway/README.md).** It has
+**On this branch, open the [standalone gateway folder](api2026gateway/).** Its guide has
 the input checklist and one preparation, validation, deployment and acceptance
-path. For explanation, read the [architecture](api2026gateway/architecture.md);
-for exact settings and safeguards, use the [reference](api2026gateway/reference.md).
+path. For explanation, read the [architecture](api2026gateway/docs/architecture.md);
+for exact settings and safeguards, use the [reference](api2026gateway/docs/reference.md).
 
 The `api2026gateway` directory selects `Microsoft.ApiManagement/aigateways`
 with API **`2026-09-01-preview`**, without an explicit gateway SKU override.
@@ -23,7 +23,7 @@ connectivity does not make the gateway frontend private.
 
 | Where you work | Reader path and state boundary |
 | --- | --- |
-| `samples\terraform\api2026gateway` | [Standalone guide](api2026gateway/README.md): create a separately approved lab with isolated state, or retain an existing standalone workload's complete approved inputs and authoritative state. |
+| `samples\terraform\api2026gateway` | [Standalone entry](api2026gateway/): create a separately approved lab with isolated state, or retain an existing standalone workload's complete approved inputs and authoritative state. |
 | `samples\terraform` | Legacy scenarios below: retain the selected legacy workload's contract, complete approved inputs and authoritative state. |
 
 Running Terraform from the parent directory still selects the **legacy**
@@ -33,7 +33,7 @@ Do not combine their profiles or state with the standalone entry.
 
 <a id="directory-and-request-flow"></a>
 
-The [architecture](api2026gateway/architecture.md) explains the directory map
+The [architecture](api2026gateway/docs/architecture.md) explains the directory map
 and request flow without adding deployment steps.
 
 <a id="ai-gateway-and-foundry-with-terraform"></a>

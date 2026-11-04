@@ -10,7 +10,7 @@ gateway_location = "<approved-gateway-region>"
 # Check all pinned model versions, GlobalStandard quota and data residency first.
 # Defaults include token limits, monthly cost amount 10 and 100 requests/minute.
 # Each deployment explicitly binds the Microsoft.DefaultV2 backend safety policy.
-# Optional: model-routing.tfvars.example illustrates complete paired-map overrides.
+# Optional: examples\model-routing.tfvars.example illustrates complete paired-map overrides.
 # It is not automatically loaded. Omitted entries do not survive a map replacement.
 
 # Optional model-call IP allow list. Empty leaves IP filtering off.
