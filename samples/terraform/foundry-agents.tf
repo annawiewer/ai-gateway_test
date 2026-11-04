@@ -12,9 +12,9 @@ resource "azapi_resource" "agents" {
       allowProjectManagement = true
       customSubDomainName    = local.names.agents
       disableLocalAuth       = true
-      publicNetworkAccess    = "Enabled"
+      publicNetworkAccess    = local.backend_network_access.agents
       networkAcls = {
-        defaultAction       = "Allow"
+        defaultAction       = local.backend_network_access.agents == "Disabled" ? "Deny" : "Allow"
         virtualNetworkRules = []
         ipRules             = []
       }
@@ -35,15 +35,22 @@ resource "azapi_resource" "storage" {
       minimumTlsVersion     = "TLS1_2"
       allowBlobPublicAccess = false
       allowSharedKeyAccess  = false
-      publicNetworkAccess   = var.storage_public_network_access
-      networkAcls = {
-        bypass              = "AzureServices"
-        defaultAction       = "Allow"
+      publicNetworkAccess   = local.backend_network_access.storage
+      networkAcls = merge({
+        bypass              = var.api2026_private_lab_enabled ? "None" : "AzureServices"
+        defaultAction       = var.standalone_backend_public_network_access == "Disabled" ? "Deny" : "Allow"
         virtualNetworkRules = []
-      }
+        }, var.standalone_backend_public_network_access == "Disabled" ? {
+        # AzAPI needs this path in the request body to overlay its live value.
+        resourceAccessRules = []
+      } : {})
     }
   }
   response_export_values = ["properties.primaryEndpoints.blob"]
+  # Existing external-network deployments retain their reviewed policy overlay; fresh labs do not.
+  ignore_body_changes = var.standalone_backend_public_network_access == "Disabled" && !var.api2026_private_lab_enabled ? [
+    "properties.networkAcls.resourceAccessRules"
+  ] : null
 }
 
 resource "azapi_resource" "registry" {
@@ -57,7 +64,7 @@ resource "azapi_resource" "registry" {
     sku = { name = "Premium" }
     properties = {
       adminUserEnabled    = false
-      publicNetworkAccess = "Enabled"
+      publicNetworkAccess = local.backend_network_access.registry
       zoneRedundancy      = "Disabled"
     }
   }
@@ -107,7 +114,7 @@ resource "azapi_resource" "registry_connection" {
       category      = "ContainerRegistry"
       target        = azapi_resource.registry.output.properties.loginServer
       authType      = "ManagedIdentity"
-      isSharedToAll = local.gateway_is_2026
+      isSharedToAll = false
       credentials = {
         clientId   = azapi_resource.project.identity[0].principal_id
         resourceId = azapi_resource.registry.id
@@ -118,7 +125,13 @@ resource "azapi_resource" "registry_connection" {
   depends_on = [azapi_resource.role_assignment["project-acr-pull"]]
 }
 
+moved {
+  from = azapi_resource.insights_connection
+  to   = azapi_resource.insights_connection[0]
+}
+
 resource "azapi_resource" "insights_connection" {
+  count     = local.gateway_is_2026 ? 0 : 1
   type      = "Microsoft.CognitiveServices/accounts/connections@2025-06-01"
   name      = azapi_resource.insights["agents"].name
   parent_id = azapi_resource.agents.id
@@ -126,7 +139,7 @@ resource "azapi_resource" "insights_connection" {
     properties = {
       category      = "AppInsights"
       authType      = "ApiKey"
-      isSharedToAll = !local.gateway_is_2026
+      isSharedToAll = true
       target        = azapi_resource.insights["agents"].id
       credentials   = { key = azapi_resource.insights["agents"].output.properties.ConnectionString }
       metadata = {
@@ -134,6 +147,27 @@ resource "azapi_resource" "insights_connection" {
         ApiType     = "Azure"
         ResourceId  = azapi_resource.insights["agents"].name
         displayName = azapi_resource.insights["agents"].name
+      }
+    }
+  }
+}
+
+resource "azapi_resource" "project_insights_connection" {
+  for_each  = local.gateway_is_2026 ? toset(["agents"]) : toset([])
+  type      = "Microsoft.CognitiveServices/accounts/projects/connections@2025-06-01"
+  name      = azapi_resource.insights[each.key].name
+  parent_id = azapi_resource.project.id
+  body = {
+    properties = {
+      category      = "AppInsights"
+      authType      = "ApiKey"
+      isSharedToAll = false
+      target        = azapi_resource.insights[each.key].id
+      credentials   = { key = azapi_resource.insights[each.key].output.properties.ConnectionString }
+      metadata = {
+        ApiType    = "Azure"
+        ResourceId = azapi_resource.insights[each.key].id
+        location   = var.location
       }
     }
   }

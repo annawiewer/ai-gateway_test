@@ -6,9 +6,17 @@ environment_name = "api2026gateway"
 location         = "<approved-foundry-region>"
 gateway_location = "<approved-gateway-region>"
 
-# The three model deployments and two aliases default to bicep-profile.json.
+# The three model deployments and two aliases default to model-profile.json.
 # Check all pinned model versions, GlobalStandard quota and data residency first.
-# Optional: supply complete model_deployments and model_aliases overrides here.
+# Defaults include token limits, monthly cost amount 10 and 100 requests/minute.
+# Each deployment explicitly binds the Microsoft.DefaultV2 backend safety policy.
+# Optional: model-routing.tfvars.example illustrates complete paired-map overrides.
+# It is not automatically loaded. Omitted entries do not survive a map replacement.
+
+# Optional model-call IP allow list. Empty leaves IP filtering off.
+# Replace these documentation ranges with approved client/proxy egress ranges
+# before enabling. They do not configure private ingress or management/MCP access.
+# model_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48"]
 
 # Outbound integration only, configured before creating the gateway:
 # gateway_backend_subnet_id = "/subscriptions/<id>/resourceGroups/<platform-rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<delegated-subnet>"

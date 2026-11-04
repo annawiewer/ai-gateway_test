@@ -8,13 +8,56 @@ variable "subscription_id" {
 }
 
 variable "gateway_contract" {
-  description = "legacy preserves service/AIGateway and its existing networking. 2026 selects the isolated, experimental Bicep-aligned aigateways contract; never switch an existing state."
+  description = "legacy preserves service/AIGateway at 2025-09-01-preview. 2026 selects the isolated aigateways contract at 2026-09-01-preview; never switch an existing state."
   type        = string
   default     = "legacy"
   nullable    = false
   validation {
     condition     = contains(["legacy", "2026"], var.gateway_contract)
     error_message = "gateway_contract must be legacy or 2026. Use the api2026gateway entry point and separate state for the new contract."
+  }
+}
+
+variable "api2026_resource_group_name" {
+  description = "Fresh standalone deployments only: exact name of one owned RG for all workloads. Null preserves the three-group API2026 layout; never use this to consolidate an existing state."
+  type        = string
+  default     = null
+  validation {
+    condition = var.api2026_resource_group_name == null ? true : (
+      var.gateway_contract == "2026" &&
+      can(regex("^[A-Za-z0-9][A-Za-z0-9_().-]{0,89}$", var.api2026_resource_group_name)) &&
+      !endswith(var.api2026_resource_group_name, ".")
+    )
+    error_message = "api2026_resource_group_name is standalone-only: use 1-90 letters, digits, underscores, parentheses, hyphens or periods, starting alphanumeric and without a trailing period."
+  }
+}
+
+variable "api2026_private_lab_enabled" {
+  description = "Fresh single-RG standalone lab only: own its isolated backend network, private DNS/AMPLS, verification client and scoped test grants. Does not create gateway ingress or hosted agents."
+  type        = bool
+  default     = false
+  nullable    = false
+  validation {
+    condition = !var.api2026_private_lab_enabled || (
+      var.gateway_contract == "2026" &&
+      var.api2026_resource_group_name != null &&
+      var.gateway_backend_subnet_id == "" &&
+      lower(replace(var.location, " ", "")) == lower(replace(var.gateway_location, " ", ""))
+    )
+    error_message = "The private lab requires API2026, an exact single RG, matching workload/gateway regions and no external gateway_backend_subnet_id."
+  }
+}
+
+variable "api2026_private_lab_ssh_public_key" {
+  description = "Fresh OpenSSH public key for the private-lab client. Supply public material only; no key generation, private-key storage or public SSH ingress is provided."
+  type        = string
+  default     = null
+  validation {
+    condition = var.api2026_private_lab_ssh_public_key == null ? !var.api2026_private_lab_enabled : (
+      var.api2026_private_lab_enabled &&
+      can(regex("^ssh-(ed25519|rsa) [A-Za-z0-9+/=]{64,}( [^\\r\\n]*)?$", trimspace(var.api2026_private_lab_ssh_public_key)))
+    )
+    error_message = "Supply a fresh ssh-ed25519 or ssh-rsa public key exactly when api2026_private_lab_enabled is true; private keys and empty values are not accepted."
   }
 }
 
@@ -28,6 +71,24 @@ variable "gateway_backend_subnet_id" {
       var.gateway_contract == "2026" && can(regex(local.private_subnet_id_pattern, var.gateway_backend_subnet_id))
     )
     error_message = "gateway_backend_subnet_id must be empty or a full existing subnet ARM ID with gateway_contract = 2026."
+  }
+}
+
+variable "standalone_backend_public_network_access" {
+  description = "Optional standalone-only backend access setting for models, agents, Storage, registry and monitoring ingestion/query. Disabled requires the owned private lab or separate private connectivity and an external outbound subnet; it does not disable gateway ingress."
+  type        = string
+  default     = null
+  validation {
+    condition = var.standalone_backend_public_network_access == null ? true : (
+      var.gateway_contract == "2026" &&
+      contains(["Enabled", "Disabled"], var.standalone_backend_public_network_access) &&
+      (var.standalone_backend_public_network_access != "Disabled" || var.gateway_backend_subnet_id != "" || var.api2026_private_lab_enabled)
+    )
+    error_message = "standalone_backend_public_network_access is standalone-only and must be Enabled or Disabled; Disabled requires the private lab or an external gateway_backend_subnet_id and private connectivity."
+  }
+  validation {
+    condition     = !var.api2026_private_lab_enabled || var.standalone_backend_public_network_access == "Disabled"
+    error_message = "The private lab requires standalone_backend_public_network_access explicitly set to Disabled."
   }
 }
 
@@ -91,7 +152,7 @@ variable "location" {
 }
 
 variable "gateway_location" {
-  description = "Region in which the subscription is enabled for the preview AIGateway SKU."
+  description = "Region in which the subscription is enabled for the selected gateway resource family and SKU."
   type        = string
   validation {
     condition     = length(trimspace(var.gateway_location)) > 0
@@ -115,7 +176,7 @@ variable "enable_private_networking" {
   default     = false
   validation {
     condition     = !var.enable_private_networking || var.gateway_contract == "legacy"
-    error_message = "The legacy private endpoint/DNS/public-disable contract is not verified for 2026. Do not reuse private profiles; gateway_backend_subnet_id only prepares outbound integration."
+    error_message = "The legacy private endpoint/DNS/public-disable contract is not verified for the standalone entry. Do not reuse private profiles or remove private requirements to bypass this check."
   }
 }
 
@@ -376,6 +437,7 @@ variable "model_deployments" {
     endpoints               = optional(list(string), ["/openai/v1/chat/completions", "/openai/v1/responses"])
     description             = optional(string, "Foundry model routed through AI Gateway.")
     cost_limit              = optional(number)
+    request_limit           = optional(number)
     content_safety_severity = optional(string)
   }))
   validation {
@@ -401,6 +463,39 @@ variable "model_deployments" {
       model.content_safety_severity == null ? true : contains(["Low", "Medium", "High"], model.content_safety_severity)
     ])
     error_message = "An optional content_safety_severity must be Low, Medium or High."
+  }
+  validation {
+    condition = var.gateway_contract != "2026" || alltrue([
+      for model in var.model_deployments : model.content_safety_severity == null
+    ])
+    error_message = "The standalone gateway does not support content_safety_severity. Omit it; this entry binds Foundry deployments to the Microsoft.DefaultV2 backend content filter instead."
+  }
+  validation {
+    condition = alltrue([for model in var.model_deployments :
+      model.request_limit == null ? true : (
+        var.gateway_contract == "2026" &&
+        model.request_limit >= 1 && floor(model.request_limit) == model.request_limit
+      )
+    ])
+    error_message = "request_limit is an optional positive integer requests-per-minute limit for the standalone 2026 entry."
+  }
+}
+
+variable "model_allowed_client_cidrs" {
+  description = "Optional standalone model-call IP allow list. Empty omits the policy. Use approved caller egress IPv4/IPv6 CIDRs; this is not private ingress or a management/MCP firewall."
+  type        = list(string)
+  default     = []
+  nullable    = false
+  validation {
+    condition = alltrue([
+      for cidr in var.model_allowed_client_cidrs :
+      can(cidrhost(cidr, 0)) && try(tonumber(split("/", cidr)[1]) > 0, false)
+    ])
+    error_message = "Each model_allowed_client_cidrs entry must be a valid IPv4/IPv6 CIDR with a nonzero prefix; use /32 or /128 for a single address."
+  }
+  validation {
+    condition     = length(var.model_allowed_client_cidrs) == 0 || var.gateway_contract == "2026"
+    error_message = "model_allowed_client_cidrs is supported only by the standalone 2026 entry."
   }
 }
 

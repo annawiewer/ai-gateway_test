@@ -9,12 +9,12 @@ resource "azapi_resource" "models" {
     kind = "AIServices"
     sku  = { name = "S0" }
     properties = {
-      allowProjectManagement = false
+      allowProjectManagement = local.gateway_is_2026
       customSubDomainName    = local.names.models
       disableLocalAuth       = true
-      publicNetworkAccess    = var.models_public_network_access
+      publicNetworkAccess    = local.backend_network_access.models
       networkAcls = {
-        defaultAction       = var.models_public_network_access == "Disabled" ? "Deny" : "Allow"
+        defaultAction       = local.backend_network_access.models == "Disabled" ? "Deny" : "Allow"
         virtualNetworkRules = []
         ipRules             = []
       }
@@ -35,12 +35,14 @@ resource "azapi_resource" "model_deployment" {
       name     = each.value.sku_name
       capacity = each.value.capacity
     }
-    properties = {
+    properties = merge({
       model = {
         name    = each.value.model_name
         version = each.value.model_version
         format  = each.value.model_format
       }
-    }
+      }, local.gateway_is_2026 ? {
+      raiPolicyName = "Microsoft.DefaultV2"
+    } : {})
   }
 }

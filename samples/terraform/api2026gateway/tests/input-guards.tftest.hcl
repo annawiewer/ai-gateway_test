@@ -16,6 +16,22 @@ run "accept_new_entry_defaults" {
   command = plan
 }
 
+run "reject_old_model_profile_safety_field" {
+  command = plan
+  variables {
+    model_deployments = {
+      old-model = {
+        model_name              = "example"
+        model_version           = "example"
+        capacity                = 1
+        token_limit             = 100
+        content_safety_severity = "Medium"
+      }
+    }
+  }
+  expect_failures = [var.model_deployments]
+}
+
 run "reject_legacy_private_enable" {
   command = plan
   variables {

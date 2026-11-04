@@ -10,7 +10,7 @@
       "api_format": "OpenAIChatCompletions",
       "endpoints": ["/openai/v1/chat/completions", "/openai/v1/responses"],
       "cost_limit": 10,
-      "content_safety_severity": "Medium",
+      "request_limit": 100,
       "description": "Primary Gateway registration for the latest supported full GPT model."
     },
     "gpt-6-sol": {
@@ -23,7 +23,7 @@
       "api_format": "OpenAIChatCompletions",
       "endpoints": ["/openai/v1/chat/completions", "/openai/v1/responses"],
       "cost_limit": 10,
-      "content_safety_severity": "Medium",
+      "request_limit": 100,
       "description": "Secondary Gateway registration for full-model failover in a separate quota pool."
     },
     "gpt-mini-latest": {
@@ -36,7 +36,7 @@
       "api_format": "OpenAIChatCompletions",
       "endpoints": ["/openai/v1/chat/completions", "/openai/v1/responses"],
       "cost_limit": 10,
-      "content_safety_severity": "Medium",
+      "request_limit": 100,
       "description": "Default model registration for AI Gateway using the latest supported GPT mini model."
     }
   },

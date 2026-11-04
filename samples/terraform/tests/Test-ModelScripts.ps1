@@ -67,6 +67,11 @@ function Invoke-RestMethod {
             throw 'Entra invocation must send only the bearer credential.'
         }
     }
+    elseif ($global:modelScriptTest.keyAsBearer) {
+        if ($Headers.Authorization -cne 'Bearer test-key-must-not-appear' -or $Headers.ContainsKey('Api-Key')) {
+            throw 'Standalone key invocation must send only the key as a bearer credential.'
+        }
+    }
     elseif ($Headers['Api-Key'] -ne 'test-key-must-not-appear' -or $Headers.ContainsKey('Authorization')) {
         throw 'Key invocation must send only the API-key credential.'
     }
@@ -82,6 +87,7 @@ function Reset-Test {
     $global:modelScriptTest.azExit = 0
     $global:modelScriptTest.azCalls = 0
     $global:modelScriptTest.authentication = 'ApiKey'
+    $global:modelScriptTest.keyAsBearer = $false
     $global:modelScriptTest.token = 'test-token-must-not-appear'
     $global:modelScriptTest.restFailure = $null
     $global:modelScriptTest.models = [System.Collections.Generic.List[string]]::new()
@@ -181,6 +187,7 @@ Assert-Rejected 'Test-ModelAliases.ps1' 'Authentication|ValidateSet' 0 @{ Authen
 
 function Set-NewContractOutputs {
     $outputs = $global:modelScriptTest.outputs
+    $global:modelScriptTest.keyAsBearer = $true
     $outputs.gateway_api_key_id.value = '/subscriptions/test/providers/Microsoft.ApiManagement/aigateways/test/apiKeys/default'
     $outputs.gateway_api_versions = @{ value = @{ api_keys = '2026-09-01-preview' } }
     $outputs.model_deployment_ids.value.third = 'third-id'
@@ -198,15 +205,18 @@ function Set-NewContractOutputs {
     } }
 }
 
-Reset-Test
-Set-NewContractOutputs
-$global:modelScriptTest.expectedRoot = Join-Path (Split-Path $scripts -Parent) 'api2026gateway'
-$result = (& (Join-Path $scripts 'Test-ModelAliases.ps1') -TerraformDirectory $global:modelScriptTest.expectedRoot) -join "`n"
-if ($global:modelScriptTest.models.Count -ne 2 -or
-    'gpt-latest' -notin $global:modelScriptTest.models -or 'gpt-mini-latest' -notin $global:modelScriptTest.models -or
-    $global:modelScriptTest.keyUrl -notlike '*/aigateways/*/listSecrets?api-version=2026-09-01-preview' -or
-    $result -match 'test-key-must-not-appear') {
-    throw 'The new profile must test two callable aliases, not three deployments, using its own state and API version.'
+foreach ($keyApiVersion in @('2025-09-01-preview', '2026-09-01-preview')) {
+    Reset-Test
+    Set-NewContractOutputs
+    $global:modelScriptTest.outputs.gateway_api_versions.value.api_keys = $keyApiVersion
+    $global:modelScriptTest.expectedRoot = Join-Path (Split-Path $scripts -Parent) 'api2026gateway'
+    $result = (& (Join-Path $scripts 'Test-ModelAliases.ps1') -TerraformDirectory $global:modelScriptTest.expectedRoot) -join "`n"
+    if ($global:modelScriptTest.models.Count -ne 2 -or
+        'gpt-latest' -notin $global:modelScriptTest.models -or 'gpt-mini-latest' -notin $global:modelScriptTest.models -or
+        $global:modelScriptTest.keyUrl -notlike "*/aigateways/*/listSecrets?api-version=$keyApiVersion" -or
+        $result -match 'test-key-must-not-appear') {
+        throw 'The generic caller must preserve explicit API-version metadata for current and historical standalone outputs, using callable aliases and the selected state.'
+    }
 }
 
 Reset-Test
@@ -235,6 +245,15 @@ foreach ($case in @('missing-version', 'invalid-version', 'missing-aliases', 'du
         'unsupported-route' { $global:modelScriptTest.outputs.model_alias_configuration.value.'primary-router'.endpoints = @('/openai/v1/responses') }
     }
     Assert-Rejected 'Test-ModelAliases.ps1' 'gateway_api_versions|model_alias_configuration|duplicated|Unsupported probe API'
+}
+
+Reset-Test
+Set-NewContractOutputs
+$global:modelScriptTest.authentication = 'EntraId'
+$result = (& (Join-Path $scripts 'Test-ModelAliases.ps1') -Authentication EntraId) -join "`n"
+if ($global:modelScriptTest.azCalls -ne 1 -or $global:modelScriptTest.keyUrl -or
+    $global:modelScriptTest.models.Count -ne 2 -or $result -match 'test-token-must-not-appear|test-key-must-not-appear') {
+    throw 'New-family Entra must probe callable aliases without a key fallback or credential disclosure.'
 }
 
 foreach ($envelope in @(

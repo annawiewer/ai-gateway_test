@@ -1,10 +1,10 @@
 output "resource_group_name" {
-  description = "Gateway application group. Legacy shares it across workloads; use resource_groups for the separate 2026 layout."
+  description = "Gateway application group. Use resource_groups for actual logical workload placement."
   value       = azapi_resource.resource_group["gateway"].name
 }
 
 output "resource_groups" {
-  description = "Actual group names for gateway, models and agents. Legacy shares one group; 2026 separates the three workloads like Bicep."
+  description = "Logical workload group names. Legacy and the optional fresh exact-name API2026 mode share one physical RG owner."
   value       = { for key, group in local.resource_group_keys : key => azapi_resource.resource_group[group].name }
 }
 
@@ -19,7 +19,7 @@ output "gateway_endpoint" {
 }
 
 output "gateway_api_versions" {
-  description = "Exact management API versions. The 2026 variant intentionally retains the Bicep 2025 telemetry exporter contract."
+  description = "Exact management API versions. The 2026 variant intentionally retains the 2025 telemetry exporter contract."
   value = {
     gateway   = local.gateway_api_version
     catalog   = local.gateway_api_version
@@ -32,15 +32,25 @@ output "gateway_api_versions" {
 output "gateway_contract" {
   description = "Selected contract, resource type and outbound subnet; not proof of live API or private ingress availability."
   value = {
-    name              = var.gateway_contract
-    resource_type     = local.gateway_type
-    backend_subnet_id = var.gateway_backend_subnet_id == "" ? null : var.gateway_backend_subnet_id
+    name                  = var.gateway_contract
+    resource_type         = local.gateway_type
+    backend_subnet_id     = local.gateway_has_backend_subnet ? local.gateway_backend_subnet_id : null
+    single_resource_group = local.api2026_single_resource_group
+    private_lab           = var.api2026_private_lab_enabled
   }
 }
 
 output "gateway_api_key_id" {
   description = "API key resource ID only; no runtime key value is exported."
   value       = azapi_resource.runtime_api_key.id
+}
+
+output "backend_public_network_access" {
+  description = "Requested backend PaaS and monitoring access settings, not live enforcement or private-connectivity proof. Unspecified monitoring access retains service defaults."
+  value = merge(local.backend_network_access, {
+    monitoring_ingestion = coalesce(var.standalone_backend_public_network_access, "Unspecified")
+    monitoring_query     = coalesce(var.standalone_backend_public_network_access, "Unspecified")
+  })
 }
 
 output "model_deployment_ids" {
@@ -99,7 +109,7 @@ output "application_insights_ids" {
 }
 
 output "gateway_monitoring" {
-  description = "Nonsecret exporter metadata. Legacy uses OTLP/DCR; 2026 matches Bicep applicationInsights and does not create an OTLP publisher role."
+  description = "Nonsecret exporter metadata. Legacy uses OTLP/DCR; 2026 uses applicationInsights and does not create an OTLP publisher role."
   value = merge(local.gateway_is_2026 ? {} : local.gateway_monitoring, {
     kind             = local.gateway_is_2026 ? "applicationInsights" : "OpenTelemetry"
     insights_id      = azapi_resource.insights["gateway"].id

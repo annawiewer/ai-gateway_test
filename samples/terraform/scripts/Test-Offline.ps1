@@ -13,8 +13,13 @@ foreach ($directory in @($root, (Join-Path $root 'api2026gateway'))) {
 & terraform "-chdir=$root" fmt -check -recursive
 if ($LASTEXITCODE -ne 0) { throw 'Terraform formatting check failed.' }
 foreach ($directory in @($root, (Join-Path $root 'api2026gateway'))) {
-    & terraform "-chdir=$directory" test
-    if ($LASTEXITCODE -ne 0) { throw "Terraform mocked regression tests failed in $directory." }
+    if ($directory -eq $root) {
+        & terraform "-chdir=$directory" test
+        if ($LASTEXITCODE -ne 0) { throw "Terraform mocked regression tests failed in $directory." }
+    }
+    else {
+        & (Join-Path $root 'tests\Test-Api2026Wrapper.ps1') -AllTests
+    }
 }
 & python -B -m unittest discover -s (Join-Path $root 'tests') -p 'test_*.py'
 if ($LASTEXITCODE -ne 0) { throw 'Python regression tests failed.' }
@@ -25,6 +30,7 @@ foreach ($path in Get-ChildItem -LiteralPath $root -Filter '*.ps1' -Recurse -Fil
     if ($errors.Count) { throw "PowerShell parse failure: $($path.Name)" }
 }
 & (Join-Path $root 'tests\Test-ModelScripts.ps1')
+& (Join-Path $root 'tests\Test-Api2026Acceptance.ps1')
 & (Join-Path $root 'tests\Test-CustomerAcceptance.ps1')
 & (Join-Path $root 'tests\Test-PortalAcceptance.ps1')
 Write-Host 'Offline checks passed. This does not certify Azure deployment, model runtime or portal behavior.'

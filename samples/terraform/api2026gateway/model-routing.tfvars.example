@@ -1,0 +1,42 @@
+# Optional complete-map illustration, not automatically loaded by Terraform.
+# Keep terraform.tfvars.example as the primary starting point for a NEW workload.
+# Copy only an approved variant to private working inputs and replace all placeholders.
+# These names, capacity and limits are illustrative, not proof of availability or quota.
+#
+# Both assignments REPLACE their complete default maps; they do not merge entries.
+# This example selects one deployment and one alias instead of the default three/two.
+# Applying it to an existing workload can remove deployments and replace aliases.
+# Review the full saved plan; never use this file to reset existing approved inputs.
+# capacity and token_limit have different units, not a universal conversion.
+
+model_deployments = {
+  example-model = {
+    model_name    = "<approved-model-name>"
+    model_version = "<approved-model-version>"
+    model_format  = "OpenAI"
+    sku_name      = "<approved-deployment-sku>"
+    capacity      = 1
+    token_limit   = 1000
+    api_format    = "OpenAIChatCompletions"
+    endpoints     = ["/openai/v1/chat/completions", "/openai/v1/responses"]
+    cost_limit    = 10
+    request_limit = 100
+  }
+}
+
+# example-route is the alias ARM key; example-chat is its callable model name.
+# deployment refers to a key in the complete model_deployments map above.
+# The preview cost policy is not an Azure spending budget or a proven invoice cap.
+# request_limit is requests per minute per identity, independent of backend quota.
+# Every standalone deployment explicitly uses the Microsoft.DefaultV2 backend
+# content filter. Do not add the unsupported gateway content_safety_severity.
+model_aliases = {
+  example-route = {
+    alias_name = "example-chat"
+    backend_models = [{
+      deployment = "example-model"
+      priority   = 0
+      weight     = 100
+    }]
+  }
+}

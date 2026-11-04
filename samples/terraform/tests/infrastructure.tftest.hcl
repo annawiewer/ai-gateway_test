@@ -95,6 +95,7 @@ run "models_and_access_without_developer" {
     condition = (
       azapi_resource.model_deployment["test-model"].body.properties.model.name == "test-model-name" &&
       azapi_resource.model_deployment["test-model"].body.properties.model.version == "test-version" &&
+      !can(azapi_resource.model_deployment["test-model"].body.properties.raiPolicyName) &&
       azapi_resource.model_deployment["test-model"].body.sku.capacity == 7 &&
       azapi_resource.catalog_model["test-model"].body.properties.deployment.modelName == "test-model" &&
       azapi_resource.catalog_model["test-model"].body.properties.policies[0].count == 2300 &&
@@ -150,37 +151,81 @@ run "models_and_access_without_developer" {
 
   assert {
     condition = (
+      !azapi_resource.models.body.properties.allowProjectManagement &&
+      azapi_resource.agents.body.properties.allowProjectManagement &&
       azapi_resource.models.body.properties.disableLocalAuth &&
       azapi_resource.agents.body.properties.disableLocalAuth &&
       !azapi_resource.storage.body.properties.allowSharedKeyAccess &&
       !azapi_resource.storage.body.properties.allowBlobPublicAccess &&
       !azapi_resource.registry.body.properties.adminUserEnabled &&
       !azapi_resource.registry_connection.body.properties.isSharedToAll &&
-      azapi_resource.insights_connection.body.properties.isSharedToAll &&
+      azapi_resource.insights_connection[0].body.properties.isSharedToAll &&
+      length(azapi_resource.project_insights_connection) == 0 &&
       !azapi_resource.telemetry_exporter.body.properties.payloadCapture
     )
-    error_message = "Preserve legacy connection sharing and identity-based access without storage keys, public blobs, registry admin credentials or payload capture."
+    error_message = "Preserve the legacy models project-management false default, connection sharing and identity-based access without storage keys, public blobs, registry admin credentials or payload capture."
   }
 
   assert {
     condition = (
-      azapi_resource.insights_connection.body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
-      azapi_resource.insights_connection.body.properties.target == azapi_resource.insights["agents"].id &&
-      azapi_resource.insights_connection.body.properties.target != azapi_resource.insights_connection.body.properties.metadata.ResourceId &&
-      azapi_resource.insights_connection.body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+      azapi_resource.insights_connection[0].body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.insights_connection[0].body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.insights_connection[0].body.properties.target != azapi_resource.insights_connection[0].body.properties.metadata.ResourceId &&
+      azapi_resource.insights_connection[0].body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
     )
     error_message = "AppInsights metadata.ResourceId must use the component name while the target keeps the full ARM ID and credentials keep the connection string."
   }
 
   assert {
     condition = (
-      azapi_resource.insights_connection.body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
-      azapi_resource.insights_connection.body.properties.target == azapi_resource.insights["agents"].id &&
-      azapi_resource.insights_connection.body.properties.target != azapi_resource.insights_connection.body.properties.metadata.ResourceId &&
-      azapi_resource.insights_connection.body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
+      azapi_resource.insights_connection[0].body.properties.metadata.ResourceId == azapi_resource.insights["agents"].name &&
+      azapi_resource.insights_connection[0].body.properties.target == azapi_resource.insights["agents"].id &&
+      azapi_resource.insights_connection[0].body.properties.target != azapi_resource.insights_connection[0].body.properties.metadata.ResourceId &&
+      azapi_resource.insights_connection[0].body.properties.credentials.key == azapi_resource.insights["agents"].output.properties.ConnectionString
     )
     error_message = "AppInsights metadata.ResourceId must use the component name while the target keeps the full ARM ID and credentials keep the connection string."
   }
+}
+
+run "legacy_gateway_content_safety_remains_available" {
+  command = plan
+  variables {
+    model_deployments = {
+      test-model = {
+        model_name              = "test-model-name"
+        model_version           = "test-version"
+        capacity                = 7
+        token_limit             = 2300
+        content_safety_severity = "Medium"
+      }
+    }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.catalog_model["test-model"].body.properties.policies) == 2 &&
+      azapi_resource.catalog_model["test-model"].body.properties.policies[1].type == "contentSafety" &&
+      azapi_resource.catalog_model["test-model"].body.properties.policies[1].hateSeverity == "Medium" &&
+      !can(azapi_resource.model_deployment["test-model"].body.properties.raiPolicyName)
+    )
+    error_message = "The new backend-safety design must not remove legacy gateway policies or change legacy deployment properties."
+  }
+}
+
+run "reject_standalone_policy_inputs_for_legacy" {
+  command = plan
+  variables {
+    model_allowed_client_cidrs = ["203.0.113.42/32"]
+    model_deployments = {
+      test-model = {
+        model_name    = "test-model-name"
+        model_version = "test-version"
+        capacity      = 7
+        token_limit   = 2300
+        request_limit = 10
+      }
+    }
+  }
+  expect_failures = [var.model_deployments, var.model_allowed_client_cidrs]
 }
 
 run "explicit_developer_service_principal" {

@@ -30,71 +30,85 @@ variable "enable_private_networking" {
 }
 
 variable "private_network_mode" {
-  type    = string
-  default = null
+  description = "Rejected legacy network-ownership input; omit it from this entry."
+  type        = string
+  default     = null
 }
 
 variable "existing_private_network" {
-  type    = any
-  default = null
+  description = "Rejected legacy network object; this sentinel accepts any shape only to report the unsupported input."
+  type        = any
+  default     = null
 }
 
 variable "private_dns_zone_group_management" {
-  type    = string
-  default = null
+  description = "Rejected legacy private-DNS ownership input; omit it from this entry."
+  type        = string
+  default     = null
 }
 
 variable "enable_private_hosted_agent" {
-  type    = bool
-  default = null
+  description = "Rejected legacy private-agent input; omit it from this entry."
+  type        = bool
+  default     = null
 }
 
 variable "private_hosted_agent_runtime_principal_id" {
-  type    = string
-  default = null
+  description = "Rejected legacy private-agent identity input; omit it from this entry."
+  type        = string
+  default     = null
 }
 
 variable "enable_private_test_client" {
-  type    = bool
-  default = null
+  description = "Rejected legacy private-client input; omit it from this entry."
+  type        = bool
+  default     = null
 }
 
 variable "enable_storage_private_endpoint" {
-  type    = bool
-  default = null
+  description = "Rejected legacy Blob private-endpoint input; omit it from this entry."
+  type        = bool
+  default     = null
 }
 
 variable "storage_public_network_access" {
-  type    = string
-  default = null
+  description = "Rejected legacy storage-access input; this entry does not implement that private path."
+  type        = string
+  default     = null
 }
 
 variable "gateway_public_network_access" {
-  type    = string
-  default = null
+  description = "Rejected legacy gateway-access input; this entry does not implement private ingress."
+  type        = string
+  default     = null
 }
 
 variable "models_public_network_access" {
-  type    = string
-  default = null
+  description = "Rejected legacy model-access input; this entry does not implement that private path."
+  type        = string
+  default     = null
 }
 
 variable "gateway_private_endpoint_manual_approval" {
-  type    = bool
-  default = null
+  description = "Rejected legacy private-endpoint approval input; omit it from this entry."
+  type        = bool
+  default     = null
 }
 
 variable "private_network_address_prefix" {
-  type    = string
-  default = null
+  description = "Rejected legacy network-creation input; this entry does not create a VNet."
+  type        = string
+  default     = null
 }
 
 variable "private_test_client_ssh_public_key" {
-  type    = string
-  default = null
+  description = "Rejected legacy test-client input; this entry does not create a test VM."
+  type        = string
+  default     = null
 }
 
 variable "private_test_client_vm_size" {
-  type    = string
-  default = null
+  description = "Rejected legacy test-client input; this entry does not create a test VM."
+  type        = string
+  default     = null
 }
