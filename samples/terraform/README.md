@@ -1,17 +1,53 @@
-# AI Gateway and Foundry with Terraform
+# AI Gateway with Terraform
 
-Manage an Azure AI Gateway that routes calls to Foundry models. This is standalone
-Terraform for the [Foundry AI Gateway Python sample](https://github.com/Azure-Samples/simple-foundry-hosted-agent-python-aigateway), not an `azd` app.
+Provision an AI Gateway, Foundry model deployments and the infrastructure for a
+later agent application. Terraform manages the Azure resources; it does not
+build an agent image or start an agent.
 
-> **Experimental 2026 entry:** [api2026gateway](api2026gateway/README.md) mirrors
-> the Bicep models, routing, governance and three-group layout using a separate
-> Terraform root/state. This root and scenarios 01-04 keep their legacy defaults.
-> The new entry is preparation for later live validation, **not a customer
-> migration or a verified private-network replacement**.
+<a id="start-here-api-2026"></a>
+
+## Start here: standalone AI Gateway
+
+**On this branch, follow the [standalone gateway guide](api2026gateway/README.md).** It has
+the input checklist and one preparation, validation, deployment and acceptance
+path. For explanation, read the [architecture](api2026gateway/architecture.md);
+for exact settings and safeguards, use the [reference](api2026gateway/reference.md).
+
+The `api2026gateway` directory selects `Microsoft.ApiManagement/aigateways`
+with API **`2026-09-01-preview`**, without an explicit gateway SKU override.
+The legacy root retains `Microsoft.ApiManagement/service` at `2025-09-01-preview`.
+
+The standalone entry is **experimental and authenticated public ingress**,
+not a migration or a private-only replacement. Optional private backend
+connectivity does not make the gateway frontend private.
+
+| Where you work | Reader path and state boundary |
+| --- | --- |
+| `samples\terraform\api2026gateway` | [Standalone guide](api2026gateway/README.md): create a separately approved lab with isolated state, or retain an existing standalone workload's complete approved inputs and authoritative state. |
+| `samples\terraform` | Legacy scenarios below: retain the selected legacy workload's contract, complete approved inputs and authoritative state. |
+
+Running Terraform from the parent directory still selects the **legacy**
+configuration; the branch name does not change that default. The four legacy
+scenarios are **not four standalone stacks or automatically ported scenarios**.
+Do not combine their profiles or state with the standalone entry.
+
+<a id="directory-and-request-flow"></a>
+
+The [architecture](api2026gateway/architecture.md) explains the directory map
+and request flow without adding deployment steps.
+
+<a id="ai-gateway-and-foundry-with-terraform"></a>
+
+## Legacy configuration: scenarios 01-04
+
+**Everything below, through “Continue by task”, describes the legacy root.**
+Use it for the selected legacy workload, not as extra steps or input layers for
+the API-2026 entry. Existing scenario paths, input profiles and anchors remain
+available.
 
 <a id="start-here-step-by-step-deployment"></a>
 
-## Choose your scenario
+### Choose your scenario
 
 **First decide whether the gateway itself is new or already deployed.**
 An existing network does not mean an existing gateway. Pick one entry; you do
@@ -34,7 +70,7 @@ scenario guide or filled-example folder identifies its scenario.
 | [01-04-deployment.md](01-04-deployment.md) | Shared runbook; follow only the branch selected by your scenario. |
 | [01-04-profiles](01-04-profiles/) | Shared library of network/access choices, not a set to load in full. Your scenario identifies the relevant files and approved stage. |
 
-### Scenario 01: customer reading path
+#### Scenario 01: customer reading path
 
 | Read in this order | What you find |
 | --- | --- |
@@ -58,7 +94,7 @@ Each scenario identifies its files and leads to the
 and example folders contain documentation, **not separate Terraform stacks**. This page explains
 scope and architecture; the deployment guide owns the command sequence.
 
-## What gets deployed
+### What gets deployed
 
 An application sends a model request to the gateway. The gateway checks access
 and policy, then forwards it to a Foundry model deployment. The gateway does
@@ -104,7 +140,7 @@ create **Azure-managed helper groups**; see the
 <a id="choose-your-networking-path"></a>
 <a id="choose-a-networking-path"></a>
 
-## Network ownership and access
+### Network ownership and access
 
 Your scenario combines two independent choices; these are **not additional
 deployment scenarios**.
@@ -138,15 +174,15 @@ requirements. Authentication does not provide a missing private network route.
 <a id="prerequisites-and-decisions"></a>
 <a id="platform-team-policy-compatibility"></a>
 
-## Before you deploy
+### Before you deploy
 
 - Check [tools, region/quota, provider registration and permissions](01-04-deployment.md#prerequisites). Reusing platform networking requires approved inputs and scoped access, not ownership of its state.
 - Complete the [platform handoff and policy review](01-04-deployment.md#platform-team-policy-compatibility) **before a plan**. If public gateway/model access is prohibited even temporarily, do not use the new-deployment sequence unchanged. Required private access to supporting services must be designed explicitly.
 - For an [existing gateway](docs/scenarios/04-update-existing.md), keep its authoritative state, full approved inputs and current endpoint-approval mode. Changing foundation ownership, changing the DNS-association owner or upgrading the [former three-group layout](docs/reference.md#single-group-consolidation) requires a separately approved migration; it is not a routine flag change.
 
-## Architecture views
+### Architecture views
 
-### Existing-network reference architecture
+#### Existing-network reference architecture
 
 **What is reused, and where does a private model request travel?** This view
 combines `existing` ownership with the `private-only` end state after approved
@@ -172,7 +208,7 @@ Historical rehearsals are not acceptance of another environment; their
 [verification scope](docs/reference.md#private-only-gateway-ingress-status)
 does not establish private-from-first-create support.
 
-### Public endpoint architecture
+#### Public endpoint architecture
 
 **Which services handle the model call?** A client calls the gateway directly;
 an agent is not a required hop. This is a deliberately public alternative,
@@ -182,7 +218,7 @@ an agent is not a required hop. This is a deliberately public alternative,
 
 [Open full-size SVG](docs/images/architecture-public.svg)
 
-### Private agent reference for new deployments
+#### Private agent reference for new deployments
 
 **What does the optional private-agent extension add?** It creates the additional
 agent account with its required network configuration at creation time.
@@ -199,7 +235,7 @@ acceptance. This extension is not required for a direct private model call.
 <a id="which-files-matter"></a>
 <a id="shared-setup"></a>
 
-## Continue by task
+### Continue by task
 
 Use the files named by your scenario. Commands run from `samples/terraform`;
 Terraform loads **all root `.tf` files together**. Profiles are explicitly
@@ -231,7 +267,7 @@ The original files, including the root README and sample catalog, follow
 are the deliberate fork extensions. `main` retains the 2025 gateway contract;
 `api2026gateway` keeps its separate experimental 2026 entry point. Synchronization
 never merges the API-2026 branch into `main` or changes either Terraform variant.
-The former local Bicep/Python copy remains in Git history, not in the active tree.
+Historical sample copies remain in Git history, not in the active tree.
 
 **Synchronize upstream originals** checks upstream daily at **05:17 UTC**.
 It prepares isolated normal merges for both branches, checks byte/mode identity
