@@ -65,14 +65,14 @@ publisher_email  = "platform@example.com"
 # capacity units depend on model/type; token_limit is the gateway caller limit.
 model_deployments = {
   gpt-mini = {
-    model_name    = "gpt-4.1-mini"
-    model_version = "2025-04-14"
+    model_name    = "gpt-5.4-mini"
+    model_version = "2026-03-17"
     capacity      = 10
     token_limit   = 10000
   }
   gpt-full = {
-    model_name    = "gpt-4.1"
-    model_version = "2025-04-14"
+    model_name    = "gpt-6.1-sol"
+    model_version = "2026-09-29"
     capacity      = 10
     token_limit   = 10000
   }

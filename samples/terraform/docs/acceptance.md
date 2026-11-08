@@ -317,8 +317,7 @@ try {
         $body = @{
             model = $alias
             messages = @(@{ role = 'user'; content = 'Reply with exactly OK and no other text.' })
-            max_tokens = 8
-            temperature = 0
+            max_completion_tokens = 256
         } | ConvertTo-Json -Depth 5
         $response = Invoke-WebRequest -Method Post `
             -Uri "$gatewayUrl/default/models/openai/v1/chat/completions" `
@@ -328,7 +327,7 @@ try {
             throw "Positive control failed for $alias, HTTP $($response.StatusCode)."
         }
         $reply = $response.Content | ConvertFrom-Json
-        if (-not $reply.choices -or ([string]$reply.choices[0].message.content).Trim() -cne 'OK') {
+        if (-not $reply.choices -or ([string]$reply.choices[0].message.content).Trim().TrimEnd('.', '!') -ine 'OK') {
             throw "Expected OK from $alias; do not interpret this as an authentication pass."
         }
         $requestEvidence += [pscustomobject]@{
@@ -349,7 +348,7 @@ $requestEvidence | ConvertTo-Json -Depth 4
 
 **Expected:** one sanitized record per alias with HTTP `200`, `OK` and a unique
 32-character trace ID. Retain these records and the UTC bounds in the restricted
-evidence location. The reference models support `max_tokens` and `temperature`;
+evidence location. The reference models support `max_completion_tokens`;
 other request types need their own approved probe. A generic
 `Test-ModelAliases.ps1` reply alone does not supply these trace IDs.
 Do not run a public-path infrastructure plan against a private deployment.
@@ -366,7 +365,7 @@ No public endpoint needs to be opened for authentication testing.
 if (-not $manualPositiveControl) { throw 'A fresh same-route valid-key control is required first.' }
 $gatewayUrl = ([string]$o.gateway_endpoint.value).TrimEnd('/')
 $alias = @($o.model_deployment_ids.value.PSObject.Properties.Name)[0]
-$body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_tokens = 8; temperature = 0 } |
+$body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_completion_tokens = 256 } |
     ConvertTo-Json -Depth 5
 $negativeEvidence = @()
 foreach ($case in @(
@@ -640,7 +639,7 @@ try {
     $publicTraceId = [guid]::NewGuid().ToString('N')
     $spanId = [guid]::NewGuid().ToString('N').Substring(0, 16)
     $headers = @{ 'Api-Key' = $apiKey; traceparent = "00-$publicTraceId-$spanId-01" }
-    $body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_tokens = 8; temperature = 0 } |
+    $body = @{ model = $alias; messages = @(@{ role = 'user'; content = 'Say OK.' }); max_completion_tokens = 256 } |
         ConvertTo-Json -Depth 5
     $response = Invoke-WebRequest -Method Post `
         -Uri "$gatewayUrl/default/models/openai/v1/chat/completions" `

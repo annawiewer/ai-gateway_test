@@ -452,8 +452,8 @@ verification. This does not recreate the endpoint or change approval; see the
 [approval-state reference](reference.md#legacy-gateway-private-endpoint-approval-and-cleanup).
 
 **Model prerequisite:** all aliases must support the probe's OpenAI Chat
-Completions request, including `max_tokens` and `temperature`. The sample's
-`gpt-4.1` and `gpt-4.1-mini` configuration is the reference. Responses-only,
+Completions request, including `max_completion_tokens`. The sample's
+`gpt-6.1-sol` and `gpt-5.4-mini` configuration is the reference. Responses-only,
 embeddings, image, or other API formats need their own test. The probe rejects
 incompatible API metadata before DNS/key retrieval; it does not interpret that
 rejection as a networking failure. See [probe compatibility](reference.md#probe-compatibility).
