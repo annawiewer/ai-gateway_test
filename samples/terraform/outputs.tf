@@ -1,11 +1,11 @@
 output "resource_group_name" {
   description = "Gateway application group. Use resource_groups for actual logical workload placement."
-  value       = azapi_resource.resource_group["gateway"].name
+  value       = local.resource_group_names["gateway"]
 }
 
 output "resource_groups" {
-  description = "Logical workload group names. Legacy and the optional fresh exact-name API2026 mode share one physical RG owner."
-  value       = { for key, group in local.resource_group_keys : key => azapi_resource.resource_group[group].name }
+  description = "Logical workload group names. Legacy and the optional fresh exact-name API2026 mode share one physical RG, which the existing-group mode reuses without owning it."
+  value       = { for key, group in local.resource_group_keys : key => local.resource_group_names[group] }
 }
 
 output "gateway_id" {
@@ -19,25 +19,32 @@ output "gateway_endpoint" {
 }
 
 output "gateway_api_versions" {
-  description = "Exact management API versions. The 2026 variant intentionally retains the 2025 telemetry exporter contract."
+  description = "Exact management API versions. The 2026 variant intentionally retains the 2025 telemetry exporter contract and pins tool servers to the preview version used by the blue-octopus reference; tool_servers is null for legacy."
   value = {
-    gateway   = local.gateway_api_version
-    catalog   = local.gateway_api_version
-    aliases   = local.gateway_api_version
-    api_keys  = local.gateway_api_version
-    telemetry = local.gateway_telemetry_api_version
+    gateway      = local.gateway_api_version
+    catalog      = local.gateway_api_version
+    aliases      = local.gateway_api_version
+    api_keys     = local.gateway_api_version
+    telemetry    = local.gateway_telemetry_api_version
+    tool_servers = local.gateway_is_2026 ? local.gateway_tool_server_api_version : null
   }
 }
 
 output "gateway_contract" {
   description = "Selected contract, resource type and outbound subnet; not proof of live API or private ingress availability."
   value = {
-    name                  = var.gateway_contract
-    resource_type         = local.gateway_type
-    backend_subnet_id     = local.gateway_has_backend_subnet ? local.gateway_backend_subnet_id : null
-    single_resource_group = local.api2026_single_resource_group
-    private_lab           = var.api2026_private_lab_enabled
+    name                    = var.gateway_contract
+    resource_type           = local.gateway_type
+    backend_subnet_id       = local.gateway_has_backend_subnet ? local.gateway_backend_subnet_id : null
+    single_resource_group   = local.api2026_single_resource_group
+    existing_resource_group = local.api2026_existing_resource_group
+    private_lab             = var.api2026_private_lab_enabled
   }
+}
+
+output "mcp_tool_server_ids" {
+  description = "Gateway tool-server ARM IDs keyed by name; registration is not proof that the remote MCP server is reachable."
+  value       = { for key, server in azapi_resource.mcp_tool_server : key => server.id }
 }
 
 output "gateway_api_key_id" {

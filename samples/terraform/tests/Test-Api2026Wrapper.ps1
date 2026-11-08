@@ -18,7 +18,7 @@ if ($exitCode -ne 0) {
     throw 'Provider-mocked API wrapper tests failed.'
 }
 $plans = @($messages | Where-Object { $_.type -eq 'test_plan' -and $_.'@testfile' -match '(integration|private-lab)\.tftest\.hcl$' })
-if ($plans.Count -ne 4) { throw 'Expected the two existing and two opt-in real-wrapper integration plans.' }
+if ($plans.Count -ne 5) { throw 'Expected the two existing and three opt-in real-wrapper integration plans.' }
 $profile = Get-Content -LiteralPath (Join-Path $root 'model-profile.json') -Raw | ConvertFrom-Json -AsHashtable
 foreach ($message in $plans) {
     $resources = @{}
@@ -72,8 +72,40 @@ foreach ($message in $plans) {
             }
         }
     }
+    # Explicit inputs replace the default Microsoft Learn tool server; every other run keeps the default.
+    $toolServerKey = if ($message.'@testrun' -eq 'explicit_inputs_reach_child') { 'docs' } else { 'microsoft-learn' }
+    $toolServerExpected = @{
+        'microsoft-learn' = @{ displayName = 'Microsoft Learn'; url = 'https://learn.microsoft.com/api/mcp'; calls = 20; period = 60 }
+        docs              = @{ displayName = 'Docs'; url = 'https://docs.example/mcp'; calls = 5; period = 30 }
+    }[$toolServerKey]
+    $toolServerAddresses = @($resources.Keys | Where-Object { $_ -like 'module.gateway.azapi_resource.mcp_tool_server*' })
+    $toolServer = $resources['module.gateway.azapi_resource.mcp_tool_server["' + $toolServerKey + '"]']
+    $toolServerProperties = $toolServer.body.properties
+    if ($toolServerAddresses.Count -ne 1 -or $null -eq $toolServer -or
+        $toolServer.type -cne 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' -or
+        $toolServer.name -cne $toolServerKey -or
+        $toolServer.schema_validation_enabled -ne $false -or
+        $toolServerProperties.type -cne 'mcp' -or
+        $toolServerProperties.displayName -cne $toolServerExpected.displayName -or
+        $toolServerProperties.description -cne $toolServerExpected.displayName -or
+        $toolServerProperties.endpoints.Count -ne 1 -or
+        $toolServerProperties.endpoints[0].namespace -cne $toolServerKey -or
+        $toolServerProperties.endpoints[0].kind -cne 'mcp' -or
+        $toolServerProperties.endpoints[0].mcp.url -cne $toolServerExpected.url -or
+        $toolServerProperties.endpoints[0].mcp.transport -cne 'streamableHttp' -or
+        $toolServerProperties.policies.Count -ne 1 -or
+        $toolServerProperties.policies[0].type -cne 'requestRateLimit' -or
+        $toolServerProperties.policies[0].callsPerPeriod -ne $toolServerExpected.calls -or
+        $toolServerProperties.policies[0].periodSeconds -ne $toolServerExpected.period -or
+        ($toolServerProperties.policies[0].counterKey -join ',') -cne 'identity' -or
+        $toolServer.create_headers.'If-None-Match' -cne '*' -or
+        $toolServer.delete_headers.'If-Match' -cne '*' -or
+        ($toolServer.replace_triggers_refs -join ',') -cne 'properties' -or
+        ($gateway.id -and $toolServer.parent_id -cne "$($gateway.id)/workspaces/default")) {
+        throw 'The wrapper must register exactly the configured MCP tool server on the gateway workspace, with its identity rate limit and conditional create/delete headers.'
+    }
     if ($message.'@testrun' -eq 'default_profile_reaches_child') {
-        if ($resources.Count -ne 33 -or $roles.Count -ne 6 -or $gateway.body.properties.Count -ne 0) { throw 'Default wrapper must plan the full public 33-resource/six-role sample with project-only Insights.' }
+        if ($resources.Count -ne 34 -or $roles.Count -ne 6 -or $gateway.body.properties.Count -ne 0) { throw 'Default wrapper must plan the full public 34-resource/six-role sample with project-only Insights and the Microsoft Learn tool server.' }
         foreach ($name in $profile.model_deployments.Keys) {
             $model = $profile.model_deployments[$name]
             $deployment = $resources['module.gateway.azapi_resource.model_deployment["' + $name + '"]']
@@ -95,7 +127,7 @@ foreach ($message in $plans) {
         $model = $resources['module.gateway.azapi_resource.model_deployment["custom-model"]']
         $catalog = $resources['module.gateway.azapi_resource.catalog_model["custom-model"]']
         $caller = $resources['module.gateway.azapi_resource.role_assignment["gateway-models-user-fixture"]']
-        if ($resources.Count -ne 36 -or $roles.Count -ne 14 -or
+        if ($resources.Count -ne 37 -or $roles.Count -ne 14 -or
             $model.body.properties.model.name -cne 'gpt-5.4-mini' -or $model.body.properties.model.version -cne '2026-03-17' -or
             $model.body.sku.capacity -ne 7 -or $catalog.body.properties.policies[0].count -ne 700 -or
             $catalog.body.properties.policies[1].amount -ne 3 -or
@@ -122,6 +154,18 @@ foreach ($message in $plans) {
             }
         }
     }
+    elseif ($message.'@testrun' -eq 'existing_group_profile_reaches_child') {
+        $existingGroupId = '/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/single-fixture'
+        if (@($resources.Keys | Where-Object { $_ -like 'module.gateway.azapi_resource.resource_group*' }).Count -ne 0 -or
+            $resources.Count -ne 31 -or $roles.Count -ne 6 -or $gateway.body.properties.Count -ne 0) {
+            throw 'Existing-group mode must plan the single-RG public workload without owning any resource group.'
+        }
+        foreach ($name in @('gateway', 'models', 'agents', 'storage', 'registry', 'logs["gateway"]', 'logs["agents"]', 'insights["gateway"]', 'insights["agents"]')) {
+            if ($resources["module.gateway.azapi_resource.$name"].parent_id -cne $existingGroupId) {
+                throw "Existing-group mode must place $name in the group read by Terraform."
+            }
+        }
+    }
     elseif ($message.'@testrun' -eq 'single_group_profile_reaches_child' -or $privateLab) {
         $groupAddresses = @($resources.Keys | Where-Object { $_ -like 'module.gateway.azapi_resource.resource_group*' })
         if ($groupAddresses.Count -ne 1 -or $groupAddresses[0] -cne 'module.gateway.azapi_resource.resource_group["gateway"]' -or
@@ -129,7 +173,7 @@ foreach ($message in $plans) {
             throw 'Single-group opt-in must have exactly the original gateway RG address owning the requested name.'
         }
         if (-not $privateLab) {
-            if ($resources.Count -ne 31 -or $roles.Count -ne 6 -or $gateway.body.properties.Count -ne 0) {
+            if ($resources.Count -ne 32 -or $roles.Count -ne 6 -or $gateway.body.properties.Count -ne 0) {
                 throw 'Single-RG public mode must retain the default workload minus the two surplus group owners.'
             }
         }
@@ -141,9 +185,9 @@ foreach ($message in $plans) {
                 api2026_identity = 2; api2026_nic = 1; api2026_vm = 1; api2026_container = 1
                 api2026_client_grant = 11; api2026_blob_read_diagnostics = 1
             }
-            if ($resources.Count -ne 90 -or $roles.Count -ne 6 -or
+            if ($resources.Count -ne 91 -or $roles.Count -ne 6 -or
                 -not $resources.ContainsKey('module.gateway.azapi_update_resource.disk_access["client"]')) {
-                throw 'Private mode must plan the exact 90-resource graph, including its native disk restriction and project-only Insights.'
+                throw 'Private mode must plan the exact 91-resource graph, including its native disk restriction, project-only Insights and the Microsoft Learn tool server.'
             }
             foreach ($name in $privateCounts.Keys) {
                 if (@($resources.Keys | Where-Object { $_.StartsWith("module.gateway.azapi_resource.$name[", [StringComparison]::Ordinal) }).Count -ne $privateCounts[$name]) {
@@ -173,5 +217,5 @@ foreach ($message in $plans) {
     else { throw 'Unexpected integration run.' }
 }
 $summary = @($messages | Where-Object { $_.type -eq 'test_summary' })[-1].test_summary
-if ($summary.passed -lt 4) { throw 'Expected nonzero selected wrapper tests, including all four integration plans.' }
-"API wrapper checks passed ($($summary.passed) Terraform runs; 4 nested-plan integration inspections; mocked provider only)."
+if ($summary.passed -lt 5) { throw 'Expected nonzero selected wrapper tests, including all five integration plans.' }
+"API wrapper checks passed ($($summary.passed) Terraform runs; 5 nested-plan integration inspections; mocked provider only)."

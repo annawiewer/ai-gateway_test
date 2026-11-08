@@ -18,9 +18,10 @@ implementation as `module.gateway` with `source = "../"`.
 | [../model-profile.json](../model-profile.json) | Pinned deployment and alias defaults |
 | [../examples/model-routing.tfvars.example](../examples/model-routing.tfvars.example) | Optional, illustrative replacement maps; never auto-loaded |
 | [../outputs.tf](../outputs.tf) | Described IDs, endpoints and review metadata; no runtime key value |
-| [../../main.tf](../../main.tf) | Deterministic names, default three-group or optional fresh single-group ownership, and API selection |
-| [../../ai-gateway.tf](../../ai-gateway.tf) | Gateway, endpoint, runtime key and retained legacy connector compatibility |
+| [../../main.tf](../../main.tf) | Deterministic names, default three-group or optional fresh single-group ownership or existing-group reuse, and API selection |
+| [../../ai-gateway.tf](../../ai-gateway.tf) | Gateway and its readiness check, endpoint, runtime key and retained legacy connector compatibility |
 | [../../model-routing.tf](../../model-routing.tf) | Model provider, catalog policies and aliases |
+| [../../mcp-tool-servers.tf](../../mcp-tool-servers.tf) | Optional remote MCP tool-server registrations and their per-caller rate limit |
 | [../../foundry-models.tf](../../foundry-models.tf) | Foundry model account, deployments and explicit backend safety binding |
 | [../../foundry-agents.tf](../../foundry-agents.tf) / [../../rbac.tf](../../rbac.tf) | Agent-support resources, connections and scoped identity bindings |
 | [../../monitoring.tf](../../monitoring.tf) | Log Analytics, Application Insights and telemetry exporter |
@@ -37,7 +38,7 @@ responsibilities, not deployment order.
 
 | Group | Resources in this entry |
 | --- | --- |
-| Gateway | Standalone AI Gateway without an explicit SKU override, Foundry provider, model catalog registrations, aliases, `default` runtime key, Log Analytics, Application Insights and exporter |
+| Gateway | Standalone AI Gateway without an explicit SKU override, Foundry provider, model catalog registrations, aliases, optional MCP tool servers (the entry default registers Microsoft Learn), `default` runtime key, Log Analytics, Application Insights and exporter |
 | Models | Separate Foundry model account and selected deployments bound to the existing system-managed `Microsoft.DefaultV2` safety policy |
 | Agents | Separate agent account and project, Storage, Premium Registry, agent Log Analytics/Application Insights and connections |
 
@@ -45,6 +46,9 @@ Names and group ownership are derived deterministically from the configured
 workload inputs. Three managed resource groups are the default. For **fresh
 state only**, `api2026_resource_group_name` selects one exact managed group for
 all three logical workloads; it is not an existing-state consolidation option.
+Adding `api2026_existing_resource_group = true` instead reuses that group,
+which must already exist, without owning it; see
+[state and lifecycle](#state-and-lifecycle).
 The parent legacy root retains its own one-group behavior.
 No connector gateway is created for the API-2026 contract.
 
@@ -101,13 +105,15 @@ contract checks remain in [../../variables.tf](../../variables.tf).
 | `location` | Required approved Foundry/Storage/Registry/monitoring region; verify every selected model and quota there |
 | `gateway_location` | Required approved standalone-gateway region |
 | `tags` | Optional additional tags; the entry records its API contract |
-| `api2026_resource_group_name` | Optional exact single managed group name for fresh state; `null` retains three groups; not a migration switch |
+| `api2026_resource_group_name` | Optional exact single group name for fresh state, created and managed unless `api2026_existing_resource_group` is `true`; `null` retains three groups; not a migration switch |
+| `api2026_existing_resource_group` | Default `false`; `true` reuses the existing group named by `api2026_resource_group_name` instead of creating it; fresh state only; never toggle it on an existing state |
 | `api2026_private_lab_enabled` | Default `false`; opt into the owned single-group backend network and verification client, not gateway private ingress or a hosted agent |
 | `api2026_private_lab_ssh_public_key` | Fresh `ssh-ed25519` or `ssh-rsa` public key required exactly when the lab is enabled; no private key material or key generation |
 | `gateway_backend_subnet_id` | Optional existing delegated subnet for creation-time outbound backend integration |
 | `standalone_backend_public_network_access` | Optional `Enabled`/`Disabled` backend PaaS/monitoring override; `null` preserves defaults; `Disabled` requires the owned lab or an external outbound subnet and separately provisioned private connectivity |
 | `model_deployments`, `model_aliases` | Optional complete replacement maps; `null` selects each checked-in default map |
 | `model_allowed_client_cidrs` | Optional IPv4/IPv6 egress CIDR allow list for model calls; default `[]` emits no IP policy |
+| `mcp_tool_servers` | Optional remote MCP servers to register as gateway tool servers, keyed by name; the entry default registers the public Microsoft Learn server and `{}` registers none; see [MCP tool protection](#mcp-tool-protection-separate-extension) |
 | `gateway_access_principals` | Optional named, typed Entra caller bindings; keys remain enabled |
 | `developer_principal_id`, `developer_principal_type` | Optional explicit developer object ID/type; an empty ID creates no developer grants |
 
@@ -121,6 +127,19 @@ The owned lab requires that exact group, matching workload/gateway regions,
 explicit backend access `Disabled` and no external `gateway_backend_subnet_id`.
 Its SSH public key is rejected outside lab mode. See
 [backend-private connectivity](#backend-private-connectivity) for the footprint.
+`api2026_existing_resource_group = true` also requires a non-null
+`api2026_resource_group_name` and is rejected with
+`api2026_private_lab_enabled = true`, whose lab needs a group it owns. The
+shared module also rejects it for the legacy contract.
+
+Each `mcp_tool_servers` key is the tool-server name and endpoint namespace:
+3–63 lowercase letters, digits or hyphens, starting and ending alphanumeric.
+Each entry needs a non-empty `display_name` and an `https://` `url` without
+user-info credentials. Validation does not detect secrets in the URL path or
+query, so never put any there. `description` defaults to the display name.
+`calls_per_period` (default 20) and `period_seconds` (default 60) must be whole
+numbers of at least 1. The shared module defaults to `{}` and rejects tool
+servers for the legacy contract.
 
 **Legacy inputs are not supported here.** Omit `existing_private_network`,
 `enable_private_networking`, `enable_private_test_client`,
@@ -141,6 +160,9 @@ availability claim.
 
 - A supplied `model_deployments` map replaces the entire default model map.
 - A supplied `model_aliases` map replaces the entire default alias map.
+- A supplied `mcp_tool_servers` map replaces the entire default tool-server
+  map: include `microsoft-learn` to keep it beside other servers; `{}` registers
+  none.
 - Overrides are independent: overriding models alone does not rewrite the
   default aliases. Each alias backend must refer to a retained deployment key.
 - When changing the profile, keep the complete coordinated maps together in the
@@ -211,7 +233,8 @@ sorted for stable configuration. Use the approved egress address observed by
 the gateway, which can differ from a workstation address behind a proxy or NAT.
 The sample does not discover or enable a caller range automatically. This is
 **model-call filtering**, not private ingress, an Azure firewall, MCP protection
-or a management-plane restriction. It does not govern direct backend calls.
+or a management-plane restriction. It does not govern direct backend calls or
+registered MCP tool servers.
 
 ### Backend safety, not gateway content safety
 
@@ -243,19 +266,35 @@ The policy remains system-managed, so its effective configuration must be read
 back rather than inferred from its name. Other built-in controls are retained;
 the checker does not claim to verify every additional feature. Confirm support
 and suitability for any custom model. This protects the configured model
-prompt/completion path, **not all gateway traffic or MCP tool executions**.
+prompt/completion path, **not all gateway traffic or MCP tool executions**
+through registered tool servers.
 Configuration checks are not proof of equivalent protection or a safety
 certification; representative workload evaluation needs separate approval.
 
 ### MCP tool protection: separate extension
 
+The optional `mcp_tool_servers` input registers existing remote MCP servers as
+gateway tool servers: `type = "mcp"` with one `streamableHttp` endpoint whose
+namespace is the map key. Each registration carries one `requestRateLimit`
+policy with `counterKey = ["identity"]`, by default 20 calls per 60 seconds; the
+caller-identity caveats above apply. That is the only tool-server control here.
+Model token/cost/request policies, the IP allow list and backend safety do not
+apply to tool servers. Registration does not prove that the gateway can reach
+or route to a server, or that the rate limit is enforced.
+
 The portal also exposes `toolThreatProtection` for MCP tools with pre/post
 invocation controls, associated with Agent 365, Defender and Purview. This
-model-only bundle does **not** implement it. A future extension needs explicit
-MCP server/tool registrations, backend authentication, the applicable protection
-service prerequisites and access, and a separately approved test scope. Do not
-attach it to models or claim gateway-wide coverage. CORS and extra fallback
-policy types are not asserted as verified standalone creation options here.
+sample does **not** implement it, tool allow-lists or blocking, or credentials
+for the remote MCP server. The default Microsoft Learn server needs none: its
+[overview](https://learn.microsoft.com/training/support/mcp) states that no
+authentication is required and that use is subject to the Microsoft Learn
+Terms of Use.
+`subscriptionRequired` is not sent, and its service default is unverified.
+A future protection extension needs backend authentication where required, the
+applicable protection service prerequisites and access, and a separately
+approved test scope. Do not attach it to models or claim gateway-wide coverage.
+CORS and extra fallback policy types are not asserted as verified standalone
+creation options here.
 
 ## Deployment gates
 
@@ -276,6 +315,7 @@ wider connection sharing to hide a mismatch.
 | --- | --- |
 | Standalone gateway; model provider/catalog/aliases; runtime key | `2026-09-01-preview` |
 | Telemetry exporter | `2025-09-01-preview`, separately pinned pending live acceptance |
+| Gateway MCP tool servers (`toolServers` under the `default` workspace) | `2025-09-01-preview`, separately pinned; acceptance unverified |
 | Foundry model deployments and the read-only system RAI-policy check | `2025-04-01-preview`; not changed to the gateway API date |
 | Project AppInsights connection | `2025-06-01`; project-local, not an account connection |
 
@@ -300,7 +340,15 @@ The telemetry pin is independent: a newer exporter contract has not been
 established here, so do not mechanically change every API date. Preview schema
 validation is disabled; neither that setting nor successful offline tests
 proves that Azure accepts every request. Verify the `gateway_api_versions`
-output and each exact saved-plan payload before approved live acceptance.
+output, whose six keys include `tool_servers` (`null` for the legacy contract),
+and each exact saved-plan payload before approved live acceptance.
+
+Tool servers follow the same precedent. The public `2026-09-01-preview`
+specification describes only the root gateway resource, and the blue-octopus
+reference sample (see [Provenance](#provenance)) registers tool servers with
+`2025-09-01-preview`. The body sends `displayName`, as that sample does, while
+the GA `2026-11-01` specification names the property `name`. Which property the preview version expects, and whether ARM
+accepts this child type and version in every supported region, are unverified.
 
 - Gateway `prevent_destroy` remains enabled.
 - Backend networking is creation-time configuration; changing it triggers
@@ -309,6 +357,26 @@ output and each exact saved-plan payload before approved live acceptance.
   `If-None-Match: *` and delete `If-Match: *` precondition headers. These are not
   proof of optimistic concurrency against another writer. Review the saved plan
   for alias recreation and impact.
+- Tool servers use the same headers, and any property change destroys and
+  recreates the tool server, which is briefly unavailable meanwhile. The GA
+  `2026-11-01` specification requires `If-Match` for PATCH, DELETE and PUT
+  updates, and the sample does not track ETags. Review the saved plan for
+  tool-server recreation.
+- For the 2026 contract, a gateway postcondition requires Azure to return a
+  non-empty `frontend.defaultHostname`. Otherwise Terraform stops with "The
+  2026 gateway is not ready", creates no dependent child resources in that
+  apply, and later plans also fail until Azure returns the hostname. A missing
+  hostname is now an error rather than an empty `gateway_endpoint` output. Wait
+  for provisioning, then create, review and apply a fresh saved plan. The
+  legacy gateway is unchanged.
+- The postcondition deliberately does not require `provisioningState =
+  "Succeeded"`. Right after an in-place gateway update, Azure can return
+  `Updating` together with the hostname; in live testing, a `Succeeded` gate
+  stopped such an apply before its dependent resources were created. The check
+  reads only the hostname the gateway already exported, so it adds no gateway
+  update to existing deployments' plans. The
+  [configuration checker](#monitoring-and-acceptance) still requires
+  `Succeeded` when it reads the gateway after apply.
 - Provider placement, resource/data labels, instance keys and the legacy
   connector `moved` block are unchanged. Moving blocks among `.tf` files in the
   same module is not a state migration.
@@ -399,6 +467,18 @@ from the parent root; neither copying a state file nor changing a working
 directory adopts a legacy workload safely. No import, migration or
 resource-address rewrite is included.
 
+With `api2026_existing_resource_group = true`, Terraform reads the group named
+by `api2026_resource_group_name` through a
+`Microsoft.Resources/resourceGroups@2021-04-01` data lookup; the plan fails if
+the group does not exist. All sample resources go into that one group.
+Terraform never creates or deletes the reused group: `terraform destroy`
+removes only the sample-managed resources inside it. This is not import or
+adoption, so resources already in the group stay unmanaged. Choose the setting
+before the first apply, with fresh state, and **never toggle it on an existing
+state**: `false` to `true` plans to destroy the Terraform-owned group, and
+deleting a resource group in Azure deletes every resource in it; `true` to
+`false` tries to create a group that already exists. Stop if a plan shows a resource-group destroy.
+
 For local state, protect the entry directory's state, backup and `.terraform`
 metadata. For a separately configured remote backend, use the approved distinct
 key/workspace and access controls. Never share another workload's backend
@@ -415,14 +495,15 @@ All outputs are described in [outputs.tf](../outputs.tf).
 
 | Outputs | Purpose |
 | --- | --- |
-| `resource_groups` | Actual group names keyed by three logical workloads; names coincide in fresh single-group mode |
+| `resource_groups` | Actual group names keyed by three logical workloads; names coincide in fresh single-group mode and report the reused group's name in existing-group mode |
 | `gateway_id`, `foundry_models_id`, `model_deployment_ids` | Gateway, model account and deployment ARM IDs |
 | `gateway_endpoint`, `project_endpoint` | Service endpoints, not connectivity proofs |
 | `project_id` | Project ARM identifier; no running-agent claim |
 | `gateway_api_key_id` | Runtime key resource ID only, never the key value |
-| `gateway_contract`, `gateway_api_versions` | Contract, optional outbound-subnet metadata and exact API versions |
+| `gateway_contract`, `gateway_api_versions` | Contract with its `existing_resource_group` flag, optional outbound-subnet metadata and exact API versions, including `tool_servers` |
 | `backend_public_network_access` | Requested PaaS/monitoring settings, not actual enforcement or private-connectivity proof |
 | `model_api_configuration`, `model_alias_configuration` | Model API formats/endpoints, callable aliases and backend order |
+| `mcp_tool_server_ids` | Registered MCP tool-server ARM IDs keyed by name; `{}` when none; not reachability evidence |
 | `application_insights_ids`, `gateway_monitoring` | Monitoring destinations/exporter metadata, not telemetry-delivery evidence |
 | `container_registry_endpoint`, `storage_account_name` | Agent-support dependency addresses |
 | `api2026_private_lab` | Owned-lab inventory and public identity metadata; `null` outside lab mode; not private-path or runtime evidence |
@@ -437,10 +518,11 @@ including token metrics. Application Insights portal monitoring covers token
 usage, requests, MCP executions, traces and policies.
 
 These are service capabilities, not proof that every signal is enabled or
-delivered by this configuration. MCP monitoring categories do not mean this
-sample deploys MCP tools. The documentation supplies no KQL table or field
-schema: verify actual delivered data and its correlation fields rather than
-inventing queries or treating exporter configuration as delivery evidence.
+delivered by this configuration. The sample can register MCP tool servers, but
+delivery of MCP execution logs is not tested. The documentation supplies no KQL
+table or field schema: verify actual delivered data and its correlation fields
+rather than inventing queries or treating exporter configuration as delivery
+evidence.
 Do not carry over the legacy [OTLP procedure](../../docs/monitoring.md) or its
 schema assumptions to this entry.
 
@@ -453,17 +535,30 @@ directory. It uses the explicitly selected Azure account/subscription without
 changing that account selection.
 
 It reads selected outputs and `terraform show -json` in memory, validates
-isolated module addresses, allowlisted IDs/groups and API versions before ARM
-reads, and returns a sanitized SchemaVersion 2 report. A failure throws/returns
+isolated module addresses, allowlisted IDs/groups and API versions (exactly six
+`gateway_api_versions` keys, including `tool_servers`) before ARM reads, and
+returns a sanitized SchemaVersion 2 report. A failure throws/returns
 nonzero without raw state or Azure bodies. Source-derived configuration/policy
 expectations are not runtime observations. It also reads the fixed
 `Microsoft.DefaultV2` system policy within the validated models account; this
 policy is not counted as a Terraform-managed resource.
 
 After foundational scope/resource checks pass, independent model, safety,
-connection, role and exporter checks all run. A connection-sharing mismatch is
-retained as a failure even if unrelated checks pass: the report and command
-remain failed, and the bounded probe stops before credentials or inference.
+connection, role, exporter and `tool-servers` checks all run. A
+connection-sharing mismatch is retained as a failure even if unrelated checks
+pass: the report and command remain failed, and the bounded probe stops before
+credentials or inference.
+
+Before ARM reads, the checker validates each `mcp_tool_server_ids` entry in
+state: its name, its ARM ID under the gateway's `default` workspace, the
+tool-server type and API version, `type = mcp`, the single endpoint (namespace
+equal to the key, kind `mcp`, transport `streamableHttp`, credential-free
+`https://` URL) and the identity-keyed `requestRateLimit` policy. The
+`tool-servers` check then compares each live ARM read-back with the state body.
+It never calls the MCP server, so the report's `toolServerReachability` entry is
+always `NOT TESTED`. No read-back projection exists for tool servers yet: if
+ARM does not echo a configured property such as `displayName`, the check fails
+and the difference must be investigated, not hidden.
 
 ### Advanced checker options
 
@@ -473,6 +568,7 @@ deployment sequence. The bounded probe forwards them to the same checker.
 | Option | Scope and requirement |
 | --- | --- |
 | `-SingleResourceGroup` | Require the supported fresh single-group layout and exactly one approved group name; it does not consolidate or adopt resources |
+| `-ExistingResourceGroup` | Requires `-SingleResourceGroup`; not supported with `-PrivateLab`. Require `gateway_contract.existing_resource_group = true` and no Terraform-managed resource group in state; a mismatch either way fails |
 | `-PrivateLab` | Verify the owned lab inventory; requires `-SingleResourceGroup` and `-ExpectedBackendPublicNetworkAccess Disabled` |
 | `-ExpectedBackendSubnetId "<exact-subnet-ARM-id>"` | Admit only the explicitly approved same-subscription external subnet reference outside workload groups; does not broaden the managed-resource group allowlist |
 | `-ExpectedBackendPublicNetworkAccess Disabled` | Require matching outputs, state and live backend/monitoring settings; does not infer actual routes, DNS, private traffic or public-path denial |
@@ -494,6 +590,27 @@ A missing diagnostic destination field is not an explicit null; missing
 required fields and explicit wrong values still fail. These comparisons do
 not prove telemetry delivery, a resource-specific destination table or policy
 enforcement, and are not blanket drift suppression.
+
+### Policy-modified storage access
+
+An inherited Azure Policy with a Modify effect can rewrite the agent storage
+account to `publicNetworkAccess = Disabled` whenever Terraform writes
+`Enabled`. Live testing in a subscription where a management-group assignment
+applies such a policy showed:
+
+- Every later plan shows the storage account as an in-place update
+  (`publicNetworkAccess = "Disabled" -> "Enabled"`) and can also list the
+  storage connection, whose target is recomputed. Applying the plan does not
+  clear the drift, because the policy modifies that write as well.
+- The checker fails with `Configured value mismatch: storage
+  properties.publicNetworkAccess`, so the bounded probe stops before
+  credentials or inference.
+- Direct gateway model and MCP calls, made outside the bounded probe, still
+  succeeded. Agent behavior with storage public access disabled was not tested.
+
+Do not hide the drift with `ignore_changes` or a new readback projection.
+Request a policy exemption for the workload resource groups, or record the
+failure as a known finding for that environment.
 
 ### External private-endpoint NSG
 
@@ -558,6 +675,7 @@ stored secret or working agent telemetry from an unknown value.
 | Configuration | `configurationStatus` is `PASS` or `FAIL`; a configuration pass still has `overallStatus = INCOMPLETE` |
 | Runtime inference and caller authentication | Separate approved, bounded live evidence required; not established by this checker |
 | Token/cost/request/IP enforcement and failover | Separate controlled behavior checks; emitted policy/routing JSON is insufficient |
+| Tool-server reachability and rate limit | `toolServerReachability` is `NOT TESTED`; registration and ARM read-back prove neither gateway routing to the MCP server nor rate-limit enforcement |
 | Backend safety configuration | Verify every deployment binding, effective blocking mode, eight Medium harm filters and the required text-model controls; reports enforcement as `NOT TESTED` |
 | Safety behavior | Separate representative workload evaluation; no unsupported gateway `contentSafety` or MCP-coverage claim |
 | Telemetry delivery | Verify the enabled signals arrive in the intended Insights/Log Analytics destination, using observed data/schema and verified request correlation rather than configuration alone |
@@ -565,10 +683,10 @@ stored secret or working agent telemetry from an unknown value.
 | Agent runtime | Requires a separately built/deployed agent and its own evidence |
 | Private ingress | **NOT IMPLEMENTED** by this entry |
 
-The checker's runtime, telemetry delivery, failover/policy, idempotence, portal and
-agent-runtime gates remain `NOT TESTED`. The offline
-[acceptance fixtures](../../tests/Test-Api2026Acceptance.ps1) mock Terraform, Azure
-and HTTP; their results are not live acceptance.
+The checker's runtime, telemetry delivery, failover/policy, tool-server
+reachability, idempotence, portal and agent-runtime gates remain `NOT TESTED`.
+The offline [acceptance fixtures](../../tests/Test-Api2026Acceptance.ps1) mock
+Terraform, Azure and HTTP; their results are not live acceptance.
 
 ### Bounded runtime probe
 
@@ -619,9 +737,10 @@ the explicit subscription for key/token acquisition.
 
 The runtime report keeps `overallStatus = INCOMPLETE`; `status = PASS` covers only
 the bounded chat and selected authentication checks. It does not test the
-Responses API or complete policy/failover, telemetry-delivery, idempotence,
-portal, agent-runtime or private-ingress gates. Unbounded/default script behavior
-remains available for existing legacy consumers; it is not the path described here.
+Responses API, MCP tool servers or complete policy/failover, telemetry-delivery,
+idempotence, portal, agent-runtime or private-ingress gates. Unbounded/default
+script behavior remains available for existing legacy consumers; it is not the
+path described here.
 
 ## Provenance
 
@@ -629,3 +748,10 @@ The model/version pins, capacities and routing originate from the public [histor
 captured on October 29, 2026, including changes that were unmerged at that time.
 Governance settings are now maintained for this standalone entry, as documented
 above. This is origin attribution, not a current PR-status or live-acceptance claim.
+
+The default Microsoft Learn MCP tool server and existing resource-group reuse
+were adapted from ideas in Damien Aicheh's blue-octopus repository, folder
+[`catalog/ai-gateway/standalone` at commit `3222da9`](https://github.com/damienaicheh/blue-octopus/tree/3222da9a84ade7d4bb18f6e5b0e402ef6c7a893d/catalog/ai-gateway/standalone),
+and the 2026 gateway readiness check was inspired by the postconditions on its
+data sources. They were re-implemented for this sample rather than copied; the
+tool-server body follows the payload shape used there.

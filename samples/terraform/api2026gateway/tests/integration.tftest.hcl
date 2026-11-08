@@ -75,6 +75,8 @@ run "default_profile_reaches_child" {
       output.gateway_contract.resource_type == "Microsoft.ApiManagement/aigateways" &&
       alltrue([for key in ["gateway", "catalog", "aliases", "api_keys"] : output.gateway_api_versions[key] == "2026-09-01-preview"]) &&
       output.gateway_api_versions.telemetry == "2025-09-01-preview" &&
+      output.gateway_api_versions.tool_servers == "2025-09-01-preview" &&
+      jsonencode(keys(output.mcp_tool_server_ids)) == jsonencode(["microsoft-learn"]) &&
       output.gateway_endpoint == "https://fixture.example" &&
       output.gateway_monitoring.kind == "applicationInsights" &&
       alltrue([for key in ["models", "agents", "storage", "registry"] : output.backend_public_network_access[key] == "Enabled"]) &&
@@ -123,6 +125,9 @@ run "explicit_inputs_reach_child" {
         }]
       }
     }
+    mcp_tool_servers = {
+      docs = { display_name = "Docs", url = "https://docs.example/mcp", calls_per_period = 5, period_seconds = 30 }
+    }
     tags = { fixture = "forwarded" }
   }
 
@@ -145,8 +150,9 @@ run "explicit_inputs_reach_child" {
       output.model_alias_configuration["custom-route"].backend_models[0].deployment == "custom-model" &&
       output.model_alias_configuration["custom-route"].backend_models[0].priority == 2 &&
       output.model_alias_configuration["custom-route"].backend_models[0].weight == 75 &&
-      jsonencode(output.model_api_configuration["custom-model"].endpoints) == jsonencode(["/openai/v1/chat/completions"])
+      jsonencode(output.model_api_configuration["custom-model"].endpoints) == jsonencode(["/openai/v1/chat/completions"]) &&
+      jsonencode(keys(output.mcp_tool_server_ids)) == jsonencode(["docs"])
     )
-    error_message = "Explicit model/alias maps replace the complete default maps; subnet and route metadata must reach the real child."
+    error_message = "Explicit model/alias/tool-server maps replace the complete default maps; subnet and route metadata must reach the real child."
   }
 }

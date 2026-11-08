@@ -1,7 +1,7 @@
 resource "azapi_resource" "models" {
   type      = "Microsoft.CognitiveServices/accounts@2025-04-01-preview"
   name      = local.names.models
-  parent_id = azapi_resource.resource_group[local.resource_group_keys["models"]].id
+  parent_id = local.resource_group_ids[local.resource_group_keys["models"]]
   location  = var.location
   tags      = local.tags
   identity { type = "SystemAssigned" }

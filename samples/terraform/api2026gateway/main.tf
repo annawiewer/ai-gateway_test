@@ -17,6 +17,7 @@ module "gateway" {
   location                                 = var.location
   gateway_location                         = var.gateway_location
   api2026_resource_group_name              = var.api2026_resource_group_name
+  api2026_existing_resource_group          = var.api2026_existing_resource_group
   api2026_private_lab_enabled              = var.api2026_private_lab_enabled
   api2026_private_lab_ssh_public_key       = var.api2026_private_lab_ssh_public_key
   gateway_backend_subnet_id                = var.gateway_backend_subnet_id
@@ -27,5 +28,6 @@ module "gateway" {
   model_deployments                        = var.model_deployments == null ? local.default_model_deployments : var.model_deployments
   model_aliases                            = var.model_aliases == null ? local.default_profile.model_aliases : var.model_aliases
   model_allowed_client_cidrs               = var.model_allowed_client_cidrs
+  mcp_tool_servers                         = var.mcp_tool_servers
   tags                                     = merge(var.tags, { "gateway-contract" = "api2026gateway" })
 }

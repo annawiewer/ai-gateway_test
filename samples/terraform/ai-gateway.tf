@@ -3,7 +3,7 @@ resource "azapi_resource" "gateway" {
   schema_validation_enabled = !local.gateway_is_2026
   type                      = "${local.gateway_type}@${local.gateway_api_version}"
   name                      = local.names.gateway
-  parent_id                 = azapi_resource.resource_group["gateway"].id
+  parent_id                 = local.resource_group_ids["gateway"]
   location                  = var.gateway_location
   tags                      = local.tags
   identity { type = "SystemAssigned" }
@@ -45,6 +45,12 @@ resource "azapi_resource" "gateway" {
         false
       )
       error_message = "The 2026 backend subnet VNet must be in gateway_location."
+    }
+    # Readiness gate inspired by the postconditions in damienaicheh/blue-octopus. It checks only the
+    # hostname because Azure can still report provisioningState Updating right after an in-place PUT.
+    postcondition {
+      condition     = !local.gateway_is_2026 || try(trimspace(self.output.properties.frontend.defaultHostname), "") != ""
+      error_message = "The 2026 gateway is not ready: Azure has not returned a frontend hostname. Wait for Azure provisioning to complete, then create, review and apply a fresh saved plan."
     }
   }
   timeouts {

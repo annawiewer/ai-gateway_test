@@ -6,6 +6,7 @@ param(
     [Parameter(Mandatory)][guid]$TenantId,
     [Parameter(Mandatory)][ValidateCount(1, 3)][string[]]$AllowedResourceGroups,
     [switch]$SingleResourceGroup,
+    [switch]$ExistingResourceGroup,
     [switch]$PrivateLab,
     [string]$ExpectedPrivateEndpointSubnetNsgId,
     [string]$ExpectedBackendSubnetId,
@@ -38,6 +39,7 @@ $report = [ordered]@{
     }
     idempotence = @{ status = 'NOT TESTED'; detail = 'The coordinator must inspect a separate no-change plan.' }
     failoverAndPolicyEnforcement = @{ status = 'NOT TESTED' }
+    toolServerReachability = @{ status = 'NOT TESTED'; detail = 'Registration only; the remote MCP server and gateway tool routing are not called.' }
     privateIngress = @{ status = 'NOT IMPLEMENTED' }
     agentRuntime = @{ status = 'NOT TESTED' }
     portal = @{ status = 'NOT TESTED' }
@@ -245,6 +247,9 @@ try {
         if ($PrivateLab -and (-not $SingleResourceGroup -or $ExpectedBackendPublicNetworkAccess -cne 'Disabled')) {
             Stop-Api2026 'Private-lab acceptance requires explicit single-group and Disabled backend-access expectations.'
         }
+        if ($ExistingResourceGroup -and (-not $SingleResourceGroup -or $PrivateLab)) {
+            Stop-Api2026 'Existing-group acceptance requires -SingleResourceGroup and is not supported with -PrivateLab.'
+        }
         if ($ExpectedPrivateEndpointSubnetNsgId) {
             Assert-AllowedId $ExpectedPrivateEndpointSubnetNsgId
             if (-not $PrivateLab -or $ExpectedPrivateEndpointSubnetNsgId -notmatch (
@@ -272,6 +277,10 @@ try {
             $contractKeys += @('single_resource_group', 'private_lab')
             Assert-ConfiguredValue $contract @{ single_resource_group = [bool]$SingleResourceGroup; private_lab = [bool]$PrivateLab } 'explicit layout contract'
         }
+        if ($ExistingResourceGroup -or $contract.Contains('existing_resource_group')) {
+            $contractKeys += 'existing_resource_group'
+            Assert-ConfiguredValue $contract @{ existing_resource_group = [bool]$ExistingResourceGroup } 'explicit existing-group contract'
+        }
         if (@(Compare-Object $contractKeys @($contract.Keys)).Count -or
             $contract.name -cne '2026' -or $contract.resource_type -cne 'Microsoft.ApiManagement/aigateways') {
             Stop-Api2026 'Selected state is not the standalone API2026 gateway contract.'
@@ -284,7 +293,7 @@ try {
         }
         $versions = Get-Output 'gateway_api_versions'
         Assert-Map $versions 'gateway API versions'
-        $expectedVersions = @{ gateway = '2026-09-01-preview'; catalog = '2026-09-01-preview'; aliases = '2026-09-01-preview'; api_keys = '2026-09-01-preview'; telemetry = '2025-09-01-preview' }
+        $expectedVersions = @{ gateway = '2026-09-01-preview'; catalog = '2026-09-01-preview'; aliases = '2026-09-01-preview'; api_keys = '2026-09-01-preview'; telemetry = '2025-09-01-preview'; tool_servers = '2025-09-01-preview' }
         if ($versions.Count -ne $expectedVersions.Count) { Stop-Api2026 'Unexpected API-version metadata.' }
         Assert-ConfiguredValue $versions $expectedVersions 'gateway_api_versions'
         $script:groups = Get-Output 'resource_groups'
@@ -386,7 +395,10 @@ try {
             if (-not $ownedIds.Add($resource.values.id)) { Stop-Api2026 'Duplicate ARM ownership in the selected Terraform state.' }
             $stateByAddress[$resource.address] = $resource
         }
-        foreach ($key in $physicalGroupKeys) { $null = Register-Resource resource_group $key 'Microsoft.Resources/resourceGroups@2021-04-01' $groupIds[$key] $prefix }
+        # A reused group is read by Terraform, not managed; the inventory count below rejects a managed group.
+        if (-not $ExistingResourceGroup) {
+            foreach ($key in $physicalGroupKeys) { $null = Register-Resource resource_group $key 'Microsoft.Resources/resourceGroups@2021-04-01' $groupIds[$key] $prefix }
+        }
         $script:gatewayState = Register-Resource gateway '' 'Microsoft.ApiManagement/aigateways@2026-09-01-preview' $gatewayId $groupIds.gateway
         Assert-Map $gatewayState.body.properties 'gateway properties'
         if ($gatewayState.body.Contains('sku') -or
@@ -470,6 +482,25 @@ try {
         $exporter = Register-Resource telemetry_exporter '' 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' "$workspace/telemetryExporters/appinsights" $workspace
         Assert-ConfiguredValue $exporter.body.properties @{ kind = 'ApplicationInsights'; payloadCapture = $false } 'state exporter'
         if ($exporter.body.properties.applicationInsights.resourceId -ine $insightsIds.gateway) { Stop-Api2026 'Exporter destination is outside the selected Insights target.' }
+        $script:toolServers = Get-Output 'mcp_tool_server_ids'
+        Assert-Map $toolServers 'MCP tool server IDs'
+        foreach ($key in $toolServers.Keys) {
+            if ($key -cnotmatch '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$') { Stop-Api2026 'Invalid MCP tool server name.' }
+            if ($toolServers[$key] -ine "$workspace/toolServers/$key") { Stop-Api2026 'MCP tool server ID does not belong to the selected gateway workspace.' }
+            $toolServer = Register-Resource mcp_tool_server $key 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' $toolServers[$key] $workspace
+            Assert-Map $toolServer.body.properties 'MCP tool server properties'
+            Assert-ConfiguredValue $toolServer.body.properties @{
+                type = 'mcp'
+                endpoints = @(@{ namespace = $key; kind = 'mcp'; mcp = @{ transport = 'streamableHttp' } })
+                policies = @(@{ type = 'requestRateLimit'; counterKey = @('identity') })
+            } 'state MCP tool server'
+            $url = $toolServer.body.properties.endpoints[0].mcp.url
+            $uri = $null
+            if ($url -isnot [string] -or $url -match '[\\\s]' -or -not [uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri) -or
+                $uri.Scheme -cne 'https' -or $uri.UserInfo -or [string]::IsNullOrEmpty($uri.Host)) {
+                Stop-Api2026 'Expected a credential-free HTTPS MCP server URL.'
+            }
+        }
         $storageConnection = Register-Resource storage_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/$storageName" $projectId
         $registryConnection = Register-Resource registry_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/$registryName-conn" $projectId
         $insightsName = $insightsIds.agents.Split('/')[-1]
@@ -544,7 +575,10 @@ try {
         }
         if ($PrivateLab) { Register-Api2026PrivateLab }
         if ($expectedResources.Count -ne $stateByAddress.Count) { Stop-Api2026 'State contains resources outside the supported standalone workload, selected private layout and explicit caller/developer grants.' }
-        @{ groups = $groups; managedResources = $expectedResources.Count; versions = $versions }
+        @{
+            groups = $groups; managedResources = $expectedResources.Count; versions = $versions; toolServers = $toolServers.Count
+            resourceGroupOwnership = $(if ($ExistingResourceGroup) { 'Existing group read by Terraform; not managed or deleted' } else { 'Terraform-managed' })
+        }
     }
 
     Invoke-Check 'azure-context' {
@@ -554,7 +588,9 @@ try {
     }
 
     Invoke-Check 'resources-and-placement' {
-        foreach ($key in $physicalGroupKeys) { $null = Read-Resource resource_group $key -Ready }
+        if (-not $ExistingResourceGroup) {
+            foreach ($key in $physicalGroupKeys) { $null = Read-Resource resource_group $key -Ready }
+        }
         $script:gateway = Read-Resource gateway -Ready
         $script:models = Read-Resource models -Ready
         $script:agents = Read-Resource agents -Ready
@@ -768,6 +804,14 @@ try {
             Stop-Api2026 'Returned exporter connection string differs from the live Insights destination.'
         }
         @{ kind = 'applicationInsights'; apiVersion = '2025-09-01-preview'; payloadCapture = $false; destinationId = $insightsIds.gateway; delivery = 'NOT TESTED'; credentialVerification = $(if ($properties.applicationInsights.connectionString) { 'Returned value matched; omitted from report' } else { 'Not returned by exporter; delivery remains unproven' }) }
+    }
+
+    Invoke-Check 'tool-servers' -ContinueOnFailure {
+        foreach ($key in $toolServers.Keys) {
+            $toolServer = Read-Resource mcp_tool_server $key
+            Assert-ConfiguredValue $toolServer.properties (Get-StateValue mcp_tool_server $key).body.properties 'MCP tool server registration'
+        }
+        @{ toolServers = $toolServers.Count; apiVersion = '2025-09-01-preview'; reachability = 'NOT TESTED' }
     }
     $failedChecks = @($checks.Keys | Where-Object { $checks[$_].status -cne 'PASS' })
     if ($failedChecks.Count) { throw $checks[$failedChecks[0]].error }

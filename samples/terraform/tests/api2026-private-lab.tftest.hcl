@@ -30,6 +30,7 @@ run "single_group_without_private_lab" {
   assert {
     condition = (
       toset(keys(azapi_resource.resource_group)) == toset(["gateway"]) &&
+      length(data.azapi_resource.existing_resource_group) == 0 &&
       alltrue([for name in values(output.resource_groups) : name == var.api2026_resource_group_name]) &&
       alltrue([for resource in [
         azapi_resource.models, azapi_resource.agents, azapi_resource.storage, azapi_resource.registry,
@@ -41,6 +42,42 @@ run "single_group_without_private_lab" {
       output.api2026_private_lab == null
     )
     error_message = "Exact-name mode must have one physical owner with every workload routed to it, independently of the legacy retention switch."
+  }
+}
+
+run "existing_resource_group_is_read_not_managed" {
+  command = plan
+  variables {
+    api2026_private_lab_enabled              = false
+    api2026_private_lab_ssh_public_key       = null
+    standalone_backend_public_network_access = null
+    retain_legacy_resource_groups            = true
+    api2026_existing_resource_group          = true
+  }
+  override_data {
+    target = data.azapi_resource.existing_resource_group[0]
+    values = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/single-fixture" }
+  }
+  assert {
+    condition = (
+      length(azapi_resource.resource_group) == 0 &&
+      length(data.azapi_resource.existing_resource_group) == 1 &&
+      data.azapi_resource.existing_resource_group[0].type == "Microsoft.Resources/resourceGroups@2021-04-01" &&
+      data.azapi_resource.existing_resource_group[0].name == var.api2026_resource_group_name &&
+      data.azapi_resource.existing_resource_group[0].parent_id == "/subscriptions/${var.subscription_id}" &&
+      output.gateway_contract.single_resource_group &&
+      output.gateway_contract.existing_resource_group &&
+      output.resource_group_name == var.api2026_resource_group_name &&
+      alltrue([for name in values(output.resource_groups) : name == var.api2026_resource_group_name]) &&
+      alltrue([for resource in [
+        azapi_resource.gateway, azapi_resource.models, azapi_resource.agents, azapi_resource.storage, azapi_resource.registry,
+        azapi_resource.logs["gateway"], azapi_resource.logs["agents"],
+        azapi_resource.insights["gateway"], azapi_resource.insights["agents"]
+      ] : resource.parent_id == data.azapi_resource.existing_resource_group[0].id]) &&
+      length(azapi_resource.api2026_vnet) == 0 &&
+      output.api2026_private_lab == null
+    )
+    error_message = "Existing-group mode must read, never create, the named RG and place every workload in it, independently of the legacy retention switch."
   }
 }
 
@@ -219,4 +256,26 @@ run "reject_exact_group_for_legacy_contract" {
     }
   }
   expect_failures = [var.api2026_resource_group_name]
+}
+
+run "reject_existing_group_with_private_lab" {
+  command = plan
+  variables { api2026_existing_resource_group = true }
+  override_data {
+    target = data.azapi_resource.existing_resource_group[0]
+    values = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/single-fixture" }
+  }
+  expect_failures = [var.api2026_existing_resource_group]
+}
+
+run "reject_existing_group_without_name" {
+  command = plan
+  variables {
+    api2026_resource_group_name              = null
+    api2026_existing_resource_group          = true
+    api2026_private_lab_enabled              = false
+    api2026_private_lab_ssh_public_key       = null
+    standalone_backend_public_network_access = null
+  }
+  expect_failures = [var.api2026_existing_resource_group]
 }

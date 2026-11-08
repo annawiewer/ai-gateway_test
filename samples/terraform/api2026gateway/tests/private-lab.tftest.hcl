@@ -13,11 +13,32 @@ run "single_group_profile_reaches_child" {
   assert {
     condition = (
       output.gateway_contract.single_resource_group &&
+      !output.gateway_contract.existing_resource_group &&
       !output.gateway_contract.private_lab &&
       output.api2026_private_lab == null &&
       alltrue([for name in values(output.resource_groups) : name == var.api2026_resource_group_name])
     )
     error_message = "The real wrapper must forward the exact-name opt-in without silently enabling private resources."
+  }
+}
+
+run "existing_group_profile_reaches_child" {
+  command = plan
+  variables {
+    api2026_existing_resource_group = true
+  }
+  override_data {
+    target = module.gateway.data.azapi_resource.existing_resource_group[0]
+    values = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/single-fixture" }
+  }
+  assert {
+    condition = (
+      output.gateway_contract.single_resource_group &&
+      output.gateway_contract.existing_resource_group &&
+      !output.gateway_contract.private_lab &&
+      alltrue([for name in values(output.resource_groups) : name == var.api2026_resource_group_name])
+    )
+    error_message = "The real wrapper must forward existing-group reuse so the child reads, but does not own, the named group."
   }
 }
 

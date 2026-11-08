@@ -286,6 +286,16 @@ run "standalone_profile_routes_policies_and_placement" {
 
   assert {
     condition = (
+      length(azapi_resource.mcp_tool_server) == 0 &&
+      length(data.azapi_resource.existing_resource_group) == 0 &&
+      !output.gateway_contract.existing_resource_group &&
+      output.gateway_api_versions.tool_servers == "2025-09-01-preview"
+    )
+    error_message = "The root default must register no tool servers and must own, not look up, its groups; the tool-server API pin stays explicit."
+  }
+
+  assert {
+    condition = (
       length(azapi_resource.resource_group) == 3 &&
       length(distinct(values(output.resource_groups))) == 3 &&
       azapi_resource.gateway.parent_id == azapi_resource.resource_group["gateway"].id &&
@@ -516,7 +526,7 @@ run "reject_zero_padded_unrestricted_cidr" {
   expect_failures = [var.model_allowed_client_cidrs]
 }
 
-run "nullable_frontend_does_not_use_legacy_gateway_url" {
+run "reject_gateway_without_frontend_hostname" {
   command = plan
   override_resource {
     target          = azapi_resource.gateway
@@ -526,9 +536,24 @@ run "nullable_frontend_does_not_use_legacy_gateway_url" {
       output = { properties = { frontend = { defaultHostname = null }, gatewayUrl = "https://fallback-gateway.example" } }
     }
   }
+  # The readiness postcondition fails instead of falling back to the legacy gatewayUrl.
+  expect_failures = [azapi_resource.gateway]
+}
+
+run "accept_gateway_updating_with_hostname" {
+  command = plan
+  override_resource {
+    target          = azapi_resource.gateway
+    override_during = plan
+    values = {
+      id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/gateway/providers/Microsoft.ApiManagement/aigateways/test"
+      output = { properties = { frontend = { defaultHostname = "new-gateway.example" }, provisioningState = "Updating" } }
+    }
+  }
+  # Azure can report Updating right after an in-place PUT; the returned hostname must keep the apply going.
   assert {
-    condition     = output.gateway_endpoint == ""
-    error_message = "A missing standalone frontend hostname must not be replaced by the legacy gatewayUrl or a constructed hostname."
+    condition     = output.gateway_endpoint == "https://new-gateway.example"
+    error_message = "A returned frontend hostname must pass the readiness gate even while provisioningState is Updating."
   }
 }
 
@@ -686,4 +711,86 @@ run "reject_invalid_governance_settings" {
     })
   }
   expect_failures = [var.model_deployments]
+}
+
+run "mcp_tool_servers_register_with_identity_rate_limit" {
+  command = plan
+  variables {
+    mcp_tool_servers = {
+      microsoft-learn = {
+        display_name = "Microsoft Learn"
+        url          = "https://learn.microsoft.com/api/mcp"
+      }
+      docs = {
+        display_name     = "Docs"
+        description      = "Internal documentation"
+        url              = "https://docs.example.test/mcp"
+        calls_per_period = 5
+        period_seconds   = 30
+      }
+    }
+  }
+  assert {
+    condition = (
+      toset(keys(output.mcp_tool_server_ids)) == toset(["microsoft-learn", "docs"]) &&
+      alltrue([for key, server in azapi_resource.mcp_tool_server :
+        server.type == "Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview" &&
+        server.name == key &&
+        server.parent_id == "${azapi_resource.gateway.id}/workspaces/default" &&
+        !server.schema_validation_enabled &&
+        server.body.properties.type == "mcp" &&
+        server.body.properties.displayName == var.mcp_tool_servers[key].display_name &&
+        length(server.body.properties.endpoints) == 1 &&
+        server.body.properties.endpoints[0].namespace == key &&
+        server.body.properties.endpoints[0].kind == "mcp" &&
+        server.body.properties.endpoints[0].mcp.url == var.mcp_tool_servers[key].url &&
+        server.body.properties.endpoints[0].mcp.transport == "streamableHttp" &&
+        length(server.body.properties.policies) == 1 &&
+        server.body.properties.policies[0].type == "requestRateLimit" &&
+        jsonencode(server.body.properties.policies[0].counterKey) == jsonencode(["identity"]) &&
+        jsonencode(server.create_headers) == jsonencode({ "If-None-Match" = "*" }) &&
+        jsonencode(server.delete_headers) == jsonencode({ "If-Match" = "*" }) &&
+        jsonencode(server.replace_triggers_refs) == jsonencode(["properties"])
+      ]) &&
+      azapi_resource.mcp_tool_server["microsoft-learn"].body.properties.description == "Microsoft Learn" &&
+      azapi_resource.mcp_tool_server["microsoft-learn"].body.properties.policies[0].callsPerPeriod == 20 &&
+      azapi_resource.mcp_tool_server["microsoft-learn"].body.properties.policies[0].periodSeconds == 60 &&
+      azapi_resource.mcp_tool_server["docs"].body.properties.description == "Internal documentation" &&
+      azapi_resource.mcp_tool_server["docs"].body.properties.policies[0].callsPerPeriod == 5 &&
+      azapi_resource.mcp_tool_server["docs"].body.properties.policies[0].periodSeconds == 30
+    )
+    error_message = "Each tool server must register one streamable-HTTP MCP endpoint in the default workspace, with an identity-keyed rate limit, conditional create/delete and replace-on-change."
+  }
+}
+
+run "reject_plain_http_tool_server" {
+  command = plan
+  variables {
+    mcp_tool_servers = { docs = { display_name = "Docs", url = "http://docs.example.test/mcp" } }
+  }
+  expect_failures = [var.mcp_tool_servers]
+}
+
+run "reject_tool_server_url_credentials" {
+  command = plan
+  variables {
+    mcp_tool_servers = { docs = { display_name = "Docs", url = "https://user@docs.example.test/mcp" } }
+  }
+  expect_failures = [var.mcp_tool_servers]
+}
+
+run "reject_short_tool_server_key" {
+  command = plan
+  variables {
+    mcp_tool_servers = { ab = { display_name = "Docs", url = "https://docs.example.test/mcp" } }
+  }
+  expect_failures = [var.mcp_tool_servers]
+}
+
+run "reject_zero_tool_server_rate_limit" {
+  command = plan
+  variables {
+    mcp_tool_servers = { docs = { display_name = "Docs", url = "https://docs.example.test/mcp", calls_per_period = 0 } }
+  }
+  expect_failures = [var.mcp_tool_servers]
 }

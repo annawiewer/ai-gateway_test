@@ -13,6 +13,7 @@ param(
     [guid]$TenantId,
     [string[]]$AllowedResourceGroups,
     [switch]$SingleResourceGroup,
+    [switch]$ExistingResourceGroup,
     [switch]$PrivateLab,
     [string]$ExpectedPrivateEndpointSubnetNsgId,
     [string]$ExpectedBackendSubnetId,
@@ -49,7 +50,7 @@ function Test-AuthenticationRejection([int]$Status, $Reply) {
         $message -match '(?i)(api[- ]?key|subscription[- ]?key|authentication|bearer token|access token|invalid token|missing token|unauthorized)'
 }
 
-$boundedArguments = @('SubscriptionId', 'TenantId', 'AllowedResourceGroups', 'SingleResourceGroup', 'PrivateLab', 'ExpectedPrivateEndpointSubnetNsgId', 'ExpectedBackendSubnetId', 'ExpectedBackendPublicNetworkAccess', 'MaxOutputTokens', 'TimeoutSeconds', 'RunId', 'TestNegativeAuthentication', 'ReportPath')
+$boundedArguments = @('SubscriptionId', 'TenantId', 'AllowedResourceGroups', 'SingleResourceGroup', 'ExistingResourceGroup', 'PrivateLab', 'ExpectedPrivateEndpointSubnetNsgId', 'ExpectedBackendSubnetId', 'ExpectedBackendPublicNetworkAccess', 'MaxOutputTokens', 'TimeoutSeconds', 'RunId', 'TestNegativeAuthentication', 'ReportPath')
 if (-not $Bounded -and @($boundedArguments | Where-Object { $PSBoundParameters.ContainsKey($_) }).Count) {
     throw 'Bounded probe arguments require -Bounded; legacy probe defaults were not changed.'
 }
@@ -82,12 +83,13 @@ if ($Bounded) {
         negativeAuthentication = @{ status = 'NOT TESTED'; scope = 'Missing and synthetic-invalid credentials only; a valid but ungranted identity is NOT TESTED.' }
         telemetryDelivery = @{ status = 'NOT TESTED'; detail = 'Run/trace IDs identify client requests only; delivery schema and server-side correlation support must be verified separately.' }
         failoverAndPolicyEnforcement = @{ status = 'NOT TESTED' }
+        toolServerReachability = @{ status = 'NOT TESTED'; detail = 'The probe calls model aliases only; MCP tool servers are not called.' }
         responsesApi = @{ status = 'NOT TESTED' }
     }
     $apiKey = $accessToken = $headers = $secretJson = $secret = $reply = $body = $null
     try {
         $backendArguments = @{}
-        foreach ($name in @('SingleResourceGroup', 'PrivateLab', 'ExpectedPrivateEndpointSubnetNsgId', 'ExpectedBackendSubnetId', 'ExpectedBackendPublicNetworkAccess')) {
+        foreach ($name in @('SingleResourceGroup', 'ExistingResourceGroup', 'PrivateLab', 'ExpectedPrivateEndpointSubnetNsgId', 'ExpectedBackendSubnetId', 'ExpectedBackendPublicNetworkAccess')) {
             if ($PSBoundParameters.ContainsKey($name)) { $backendArguments[$name] = $PSBoundParameters[$name] }
         }
         $context = & (Join-Path $PSScriptRoot 'Test-Api2026Deployment.ps1') `

@@ -15,8 +15,14 @@ gateway_location = "<approved-gateway-region>"
 
 # Optional model-call IP allow list. Empty leaves IP filtering off.
 # Replace these documentation ranges with approved client/proxy egress ranges
-# before enabling. They do not configure private ingress or management/MCP access.
+# before enabling. They do not configure private ingress or management access
+# and do not apply to MCP tool servers.
 # model_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48"]
+
+# Optional MCP tool servers. The default registers the public Microsoft Learn
+# MCP server; {} registers none. A supplied map replaces the whole default.
+# Registration does not prove that the remote server is reachable.
+# mcp_tool_servers = {}
 
 # Outbound integration only, configured before creating the gateway:
 # gateway_backend_subnet_id = "/subscriptions/<id>/resourceGroups/<platform-rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<delegated-subnet>"
@@ -31,3 +37,9 @@ gateway_location = "<approved-gateway-region>"
 #     principal_type = "ServicePrincipal"
 #   }
 # }
+
+# Optional: reuse one existing resource group. Fresh state only, chosen before
+# the first apply; Terraform reads the group but never creates or deletes it.
+# Never toggle this on an existing state; stop if a plan destroys a group.
+# api2026_resource_group_name     = "<existing-resource-group>"
+# api2026_existing_resource_group = true

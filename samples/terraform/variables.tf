@@ -19,7 +19,7 @@ variable "gateway_contract" {
 }
 
 variable "api2026_resource_group_name" {
-  description = "Fresh standalone deployments only: exact name of one owned RG for all workloads. Null preserves the three-group API2026 layout; never use this to consolidate an existing state."
+  description = "Fresh standalone deployments only: exact name of one RG for all workloads, owned by default or reused with api2026_existing_resource_group. Null preserves the three-group API2026 layout; never use this to consolidate an existing state."
   type        = string
   default     = null
   validation {
@@ -29,6 +29,25 @@ variable "api2026_resource_group_name" {
       !endswith(var.api2026_resource_group_name, ".")
     )
     error_message = "api2026_resource_group_name is standalone-only: use 1-90 letters, digits, underscores, parentheses, hyphens or periods, starting alphanumeric and without a trailing period."
+  }
+}
+
+variable "api2026_existing_resource_group" {
+  description = "Fresh standalone state only: reuse the existing RG named by api2026_resource_group_name instead of creating it. Terraform reads that RG but never creates, tags or deletes it. Never toggle this on an existing state: switching it on plans to delete the previously owned RG and everything in it."
+  type        = bool
+  default     = false
+  nullable    = false
+  validation {
+    condition     = !var.api2026_existing_resource_group || var.gateway_contract == "2026"
+    error_message = "api2026_existing_resource_group is standalone-only and requires gateway_contract = 2026."
+  }
+  validation {
+    condition     = !var.api2026_existing_resource_group || var.api2026_resource_group_name != null
+    error_message = "api2026_existing_resource_group requires api2026_resource_group_name, the exact name of the existing RG."
+  }
+  validation {
+    condition     = !var.api2026_existing_resource_group || !var.api2026_private_lab_enabled
+    error_message = "api2026_existing_resource_group cannot be combined with the private lab, which requires an RG owned by this deployment."
   }
 }
 
@@ -89,6 +108,38 @@ variable "standalone_backend_public_network_access" {
   validation {
     condition     = !var.api2026_private_lab_enabled || var.standalone_backend_public_network_access == "Disabled"
     error_message = "The private lab requires standalone_backend_public_network_access explicitly set to Disabled."
+  }
+}
+
+variable "mcp_tool_servers" {
+  description = "Optional existing remote MCP servers registered as 2026 gateway tool servers, keyed by tool-server name. Each gets an identity-keyed request rate limit. Registration is not proof that the remote server is reachable; empty registers none."
+  type = map(object({
+    display_name     = string
+    description      = optional(string)
+    url              = string
+    calls_per_period = optional(number, 20)
+    period_seconds   = optional(number, 60)
+  }))
+  default  = {}
+  nullable = false
+  validation {
+    condition     = length(var.mcp_tool_servers) == 0 || var.gateway_contract == "2026"
+    error_message = "mcp_tool_servers requires gateway_contract = 2026; the legacy gateway does not register tool servers."
+  }
+  validation {
+    condition = alltrue([for name, server in var.mcp_tool_servers : try(
+      can(regex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$", name)) &&
+      trimspace(server.display_name) != "" &&
+      can(regex("^https://[^\\s/?#@]+([/?#]\\S*)?$", server.url)), false
+    )])
+    error_message = "Each tool server needs a 3-63 character key of lowercase letters, digits and hyphens that starts and ends alphanumeric, a non-empty display_name and a credential-free https:// url."
+  }
+  validation {
+    condition = alltrue([for server in var.mcp_tool_servers : try(
+      server.calls_per_period >= 1 && floor(server.calls_per_period) == server.calls_per_period &&
+      server.period_seconds >= 1 && floor(server.period_seconds) == server.period_seconds, false
+    )])
+    error_message = "calls_per_period and period_seconds must be whole numbers of at least 1."
   }
 }
 
