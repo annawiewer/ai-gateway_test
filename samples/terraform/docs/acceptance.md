@@ -646,7 +646,7 @@ try {
         -Headers $headers -ContentType 'application/json' -Body $body `
         -SkipHttpErrorCheck -MaximumRedirection 0 -TimeoutSec 90
     $status = [int]$response.StatusCode
-    $networkSpecific = [string]$response.Content -match 'public[\s_-]*network[\s_-]*access(?:\s+is)?[\s_:=.-]*(?:disabled|denied|blocked)'
+    $networkSpecific = [string]$response.Content -match 'public[\s_-]*network[\s_-]*access(?:\s+on\s+this\s+\S+)?(?:\s+is)?[\s_:=.-]*(?:disabled|denied|blocked)'
     $authenticationSpecific = [string]$response.Content -match 'api[- _]?key|subscription.?key|unauthori[sz]ed|authentication|credentials'
     if ($status -ne 403 -or -not $networkSpecific -or $authenticationSpecific) {
         throw "Explicit public-network rejection not verified, HTTP $status. Do not classify an authentication error as a pass."
@@ -693,8 +693,10 @@ Get-FileHash -LiteralPath $publicResultFile -Algorithm SHA256
    Confirm the recorded network context with the network owner.
    A DNS failure, TLS error, timeout, redirect, `401`, authentication-specific
    `403`, generic/proxy-firewall `403` or ambiguous response is **not verified**,
-   not a pass. The block requires an explicit public-network-access denial;
-   investigate different service wording without weakening it to any `403`.
+   not a pass. The block requires an explicit public-network-access denial.
+   API Management's denial names the resource ("public network access on this
+   `Microsoft.ApiManagement/service/<name>` is disabled"), which the pattern
+   accepts; investigate other service wording without weakening it to any `403`.
    Never reopen the gateway to bypass this check.
 
 This proves only the tested gateway ingress boundary. It does not certify
