@@ -22,6 +22,7 @@ implementation as `module.gateway` with `source = "../"`.
 | [../../ai-gateway.tf](../../ai-gateway.tf) | Gateway and its readiness check, endpoint, runtime key and retained legacy connector compatibility |
 | [../../model-routing.tf](../../model-routing.tf) | Model provider, catalog policies and aliases |
 | [../../mcp-tool-servers.tf](../../mcp-tool-servers.tf) | Optional remote MCP tool-server registrations and their per-caller rate limit |
+| [../../gateway-policies.tf](../../gateway-policies.tf) | Optional gateway-wide client IP allow list merged into the `default` workspace policies |
 | [../../foundry-models.tf](../../foundry-models.tf) | Foundry model account, deployments and explicit backend safety binding |
 | [../../foundry-agents.tf](../../foundry-agents.tf) / [../../rbac.tf](../../rbac.tf) | Agent-support resources, connections and scoped identity bindings |
 | [../../monitoring.tf](../../monitoring.tf) | Log Analytics, Application Insights and telemetry exporter |
@@ -38,7 +39,7 @@ responsibilities, not deployment order.
 
 | Group | Resources in this entry |
 | --- | --- |
-| Gateway | Standalone AI Gateway without an explicit SKU override, Foundry provider, model catalog registrations, aliases, optional MCP tool servers (the entry default registers Microsoft Learn), `default` runtime key, Log Analytics, Application Insights and exporter |
+| Gateway | Standalone AI Gateway without an explicit SKU override, Foundry provider, model catalog registrations, aliases, optional MCP tool servers (the entry default registers Microsoft Learn), optional gateway-wide IP allow list, `default` runtime key, Log Analytics, Application Insights and exporter |
 | Models | Separate Foundry model account and selected deployments bound to the existing system-managed `Microsoft.DefaultV2` safety policy |
 | Agents | Separate agent account and project, Storage, Premium Registry, agent Log Analytics/Application Insights and connections |
 
@@ -113,6 +114,7 @@ contract checks remain in [../../variables.tf](../../variables.tf).
 | `standalone_backend_public_network_access` | Optional `Enabled`/`Disabled` backend PaaS/monitoring override; `null` preserves defaults; `Disabled` requires the owned lab or an external outbound subnet and separately provisioned private connectivity |
 | `model_deployments`, `model_aliases` | Optional complete replacement maps; `null` selects each checked-in default map |
 | `model_allowed_client_cidrs` | Optional IPv4/IPv6 egress CIDR allow list for model calls; default `[]` emits no IP policy |
+| `gateway_allowed_client_cidrs` | Optional gateway-wide IPv4/IPv6 egress CIDR allow list for models and MCP tool servers; default `null` leaves workspace policies unmanaged and `[]` removes the managed filter; see [gateway-wide IP allow list](#gateway-wide-ip-allow-list) |
 | `mcp_tool_servers` | Optional remote MCP servers to register as gateway tool servers, keyed by name; the entry default registers the public Microsoft Learn server and `{}` registers none; see [MCP tool protection](#mcp-tool-protection-separate-extension) |
 | `gateway_access_principals` | Optional named, typed Entra caller bindings; keys remain enabled |
 | `developer_principal_id`, `developer_principal_type` | Optional explicit developer object ID/type; an empty ID creates no developer grants |
@@ -210,11 +212,13 @@ governance bundle.
 | Token limit | `tokenLimit`, minute window, `counterKey = ["identity"]`; counts in the profile table above | Per-model `token_limit`, positive integer |
 | Monthly cost | `costLimit`, ID `monthly-caller-budget`, month window, amount 10, identity counter | Optional per-model `cost_limit`, positive amount |
 | Request rate | `requestRateLimit`, 100 calls per 60 seconds, identity counter | Optional per-model `request_limit`, positive integer requests/minute |
-| Client IP allow list | Off by default; nonempty input adds `ipFilter`, `action = "Allow"`, to every model registration | `model_allowed_client_cidrs` |
+| Model client IP allow list | Off by default; nonempty input adds `ipFilter`, `action = "Allow"`, to every model registration | `model_allowed_client_cidrs` |
+| Gateway-wide client IP allow list | Off by default (`null`); a list adds one `ipFilter`, `action = "Allow"`, to the `default` workspace, covering models and MCP tool servers | `gateway_allowed_client_cidrs`; see [gateway-wide IP allow list](#gateway-wide-ip-allow-list) |
 | Backend content filtering | Each Foundry deployment sets `raiPolicyName = "Microsoft.DefaultV2"` | Explicit binding in `foundry-models.tf`; not a gateway policy or a configurable opt-out |
 
-These are inline JSON entries in each catalog model's `properties.policies`,
-not APIM XML or a `/policies/policy` resource. They use the current
+These are inline JSON entries in each catalog model's `properties.policies`
+(for the gateway-wide list, the `default` workspace's), not APIM XML or a
+`/policies/policy` resource. They use the current
 [portal policy catalogue](https://ai.gateway.azure.com/docs/policies);
 that page also contains older contract examples. This entry retains its own
 September 2026 resource paths. Catalogue exposure and offline tests do not prove
@@ -234,7 +238,66 @@ the gateway, which can differ from a workstation address behind a proxy or NAT.
 The sample does not discover or enable a caller range automatically. This is
 **model-call filtering**, not private ingress, an Azure firewall, MCP protection
 or a management-plane restriction. It does not govern direct backend calls or
-registered MCP tool servers.
+registered MCP tool servers. For one list that also covers MCP tool servers,
+see the [gateway-wide IP allow list](#gateway-wide-ip-allow-list).
+
+### Gateway-wide IP allow list
+
+`gateway_allowed_client_cidrs` adds one `ipFilter` policy, `action = "Allow"`,
+to the `properties.policies` of the gateway's `default` workspace, which the
+portal calls **Gateway** scope. According to the Azure/aigateway
+[gateway baselines lab](https://github.com/Azure/aigateway/tree/fcac8910384749de906e665c8b9ff8dea74c9f16/labs/09-gateway-baselines),
+a Gateway scope policy applies to every compatible model, alias and MCP tool
+server, including ones registered later. The lab also states that a request
+is blocked if any applicable policy blocks it, so a per-model
+`model_allowed_client_cidrs` list can only narrow the gateway-wide one. This
+layering is not tested here.
+
+A PATCH replaces the whole workspace policy array, so
+[gateway-policies.tf](../../gateway-policies.tf) reads the current policies,
+keeps every entry except an existing `ipFilter` (matched case-insensitively,
+including one added outside Terraform), appends the configured filter and sends
+one PATCH.
+
+| Value | Effect |
+| --- | --- |
+| `null` (default) | No read and no change; workspace policies stay unmanaged |
+| `[]` | Removes the `ipFilter` and keeps the other workspace policies |
+| CIDR list | One `Allow` `ipFilter`; ranges are deduplicated and sorted |
+
+To remove the filter, apply `[]` first and then unset the input. Changing a
+list directly to `null` only removes the Terraform action and sends no request,
+so the filter stays on the gateway.
+
+Entries must be valid IPv4/IPv6 CIDRs with a nonzero prefix; use `/32` or
+`/128` for single addresses. IPv4 parts and prefix lengths must not have
+leading zeros: `010.0.0.1/32` is rejected because other parsers can read it
+as octal. IPv6 hextets such as `2001:0db8::/32` remain valid. Only the
+standalone 2026 entry accepts this input.
+
+> [!CAUTION]
+> Every runtime caller outside the list receives `403`, including teammates,
+> CI pipelines, hosted agents, the private lab's verification client and
+> callers on another network, VPN or proxy. Use the egress address that the
+> gateway observes. Behind a split-tunnel VPN, proxy or secure-access client,
+> traffic to Azure can leave through a different egress than the one an
+> IP-echo website reports, so listing the echoed address can still return
+> `403 Forbidden`. Run the [bounded probe](#bounded-runtime-probe) and other
+> runtime checks from an allowed address. Portal, CLI and ARM management are
+> not affected. The lab notes that policy changes take up to a minute.
+
+- **No drift detection.** A change made outside Terraform does not appear in a
+  plan. To re-send the configured list, create and review a saved plan with
+  `-replace` on `module.gateway.azapi_resource_action.gateway_ip_filter["default"]`
+  (quoted for your shell), then apply it. The configuration checker reports a
+  difference.
+- **Fresh deployment:** the workspace ID is unknown at plan time, so the read
+  happens during apply and the saved plan shows the request body as unknown.
+- **Existing gateway:** the policies are read at plan time and the saved plan
+  applies that snapshot, so avoid other workspace policy changes between plan
+  and apply.
+- Other workspace policies are kept but neither managed nor checked.
+- `model_allowed_client_cidrs` remains a separate per-model policy.
 
 ### Backend safety, not gateway content safety
 
@@ -277,10 +340,12 @@ The optional `mcp_tool_servers` input registers existing remote MCP servers as
 gateway tool servers: `type = "mcp"` with one `streamableHttp` endpoint whose
 namespace is the map key. Each registration carries one `requestRateLimit`
 policy with `counterKey = ["identity"]`, by default 20 calls per 60 seconds; the
-caller-identity caveats above apply. That is the only tool-server control here.
-Model token/cost/request policies, the IP allow list and backend safety do not
-apply to tool servers. Registration does not prove that the gateway can reach
-or route to a server, or that the rate limit is enforced.
+caller-identity caveats above apply. Apart from the optional
+[gateway-wide IP allow list](#gateway-wide-ip-allow-list), that is the only
+tool-server control here. Model token/cost/request policies, the per-model IP
+allow list and backend safety do not apply to tool servers. Registration does
+not prove that the gateway can reach or route to a server, or that the rate
+limit is enforced.
 
 The portal also exposes `toolThreatProtection` for MCP tools with pre/post
 invocation controls, associated with Agent 365, Defender and Purview. This
@@ -309,6 +374,11 @@ Also resolve any Azure Policy or service-readback differences before approving
 a saved plan. Do not use ignored changes, targeting, policy exemptions or
 wider connection sharing to hide a mismatch.
 
+If `gateway_allowed_client_cidrs` is set, confirm the egress address that the
+gateway sees for every runtime caller, including CI pipelines and hosted
+agents, before approving the saved plan; callers outside the list receive
+`403`.
+
 ## API contracts and lifecycle
 
 | Resource family | Version used by this entry |
@@ -316,6 +386,7 @@ wider connection sharing to hide a mismatch.
 | Standalone gateway; model provider/catalog/aliases; runtime key | `2026-09-01-preview` |
 | Telemetry exporter | `2025-09-01-preview`, separately pinned pending live acceptance |
 | Gateway MCP tool servers (`toolServers` under the `default` workspace) | `2025-09-01-preview`, separately pinned; acceptance unverified |
+| Gateway-wide policies (`properties.policies` of the `default` workspace, read then PATCHed) | `2025-09-01-preview`, pinned as `gateway_policy_api_version` in [../../main.tf](../../main.tf); used only when `gateway_allowed_client_cidrs` is not `null`; acceptance unverified |
 | Foundry model deployments and the read-only system RAI-policy check | `2025-04-01-preview`; not changed to the gateway API date |
 | Project AppInsights connection | `2025-06-01`; project-local, not an account connection |
 
@@ -341,7 +412,9 @@ established here, so do not mechanically change every API date. Preview schema
 validation is disabled; neither that setting nor successful offline tests
 proves that Azure accepts every request. Verify the `gateway_api_versions`
 output, whose six keys include `tool_servers` (`null` for the legacy contract),
-and each exact saved-plan payload before approved live acceptance.
+and each exact saved-plan payload before approved live acceptance. The
+gateway-wide policy version is not in that output; check it in the saved-plan
+`gateway_ip_filter` action.
 
 Tool servers follow the same precedent. The public `2026-09-01-preview`
 specification describes only the root gateway resource, and the blue-octopus
@@ -385,7 +458,10 @@ accepts this child type and version in every supported region, are unverified.
 
 The baseline is **public endpoints with authentication**, not unauthenticated
 access and not private-only access. Gateway private ingress, its DNS path and a
-public-access-disable switch are not implemented by this entry.
+public-access-disable switch are not implemented by this entry. The optional
+[gateway-wide IP allow list](#gateway-wide-ip-allow-list) narrows which public
+caller addresses the gateway serves at runtime; it does not make the gateway
+private.
 
 An optional external `gateway_backend_subnet_id`:
 
@@ -544,7 +620,8 @@ expectations are not runtime observations. It also reads the fixed
 policy is not counted as a Terraform-managed resource.
 
 After foundational scope/resource checks pass, independent model, safety,
-connection, role, exporter and `tool-servers` checks all run. A
+connection, role, exporter and `tool-servers` checks all run, plus
+`gateway-policies` when the gateway IP filter is managed. A
 connection-sharing mismatch is retained as a failure even if unrelated checks
 pass: the report and command remain failed, and the bounded probe stops before
 credentials or inference.
@@ -559,6 +636,16 @@ It never calls the MCP server, so the report's `toolServerReachability` entry is
 always `NOT TESTED`. No read-back projection exists for tool servers yet: if
 ARM does not echo a configured property such as `displayName`, the check fails
 and the difference must be investigated, not hidden.
+
+When `gateway_allowed_client_cidrs` is not `null`, the checker also validates
+the `gateway_ip_filter` action in state before ARM reads: its type and API
+version, the `default` workspace ID, a body that replaces only
+`properties.policies`, and at most one duplicate-free, non-empty `Allow` filter
+of valid CIDRs. The `gateway-policies` check then reads the live workspace and
+compares only the IP filter, canonically (host bits masked, IPv6 normalized,
+duplicates and order ignored); a difference fails the check. Its evidence
+reports the scope, mode (`Allow` or `Removed`), range count and API version but
+never the ranges, and records `enforcement = NOT TESTED`.
 
 ### Advanced checker options
 
@@ -674,7 +761,7 @@ stored secret or working agent telemetry from an unknown value.
 | Offline validation | Canonical [Test-Offline.ps1](../../scripts/Test-Offline.ps1); local and mocked checks only |
 | Configuration | `configurationStatus` is `PASS` or `FAIL`; a configuration pass still has `overallStatus = INCOMPLETE` |
 | Runtime inference and caller authentication | Separate approved, bounded live evidence required; not established by this checker |
-| Token/cost/request/IP enforcement and failover | Separate controlled behavior checks; emitted policy/routing JSON is insufficient |
+| Token/cost/request/IP enforcement and failover | Separate controlled behavior checks; emitted policy/routing JSON is insufficient; the `gateway-policies` check reports gateway-wide IP enforcement as `NOT TESTED` |
 | Tool-server reachability and rate limit | `toolServerReachability` is `NOT TESTED`; registration and ARM read-back prove neither gateway routing to the MCP server nor rate-limit enforcement |
 | Backend safety configuration | Verify every deployment binding, effective blocking mode, eight Medium harm filters and the required text-model controls; reports enforcement as `NOT TESTED` |
 | Safety behavior | Separate representative workload evaluation; no unsupported gateway `contentSafety` or MCP-coverage claim |
@@ -711,6 +798,9 @@ $runId = [guid]::NewGuid().ToString()
 For a single-group or owned-lab layout, use the same approved
 [layout and backend checker options](#advanced-checker-options) on this probe
 as on the configuration check; changing only the group list is insufficient.
+
+If `gateway_allowed_client_cidrs` is set, run the probe from an address in that
+list; calls from other addresses receive `403`.
 
 `-MaxOutputTokens` and `-TimeoutSeconds` are explicitly required in bounded
 mode. The request uses `max_completion_tokens`; the probe does not redirect or
@@ -755,3 +845,9 @@ were adapted from ideas in Damien Aicheh's blue-octopus repository, folder
 and the 2026 gateway readiness check was inspired by the postconditions on its
 data sources. They were re-implemented for this sample rather than copied; the
 tool-server body follows the payload shape used there.
+
+The gateway-wide IP allow list follows the read, merge and PATCH pattern of the
+Azure/aigateway lab
+[`labs/09-gateway-baselines` at commit `fcac891`](https://github.com/Azure/aigateway/tree/fcac8910384749de906e665c8b9ff8dea74c9f16/labs/09-gateway-baselines),
+re-implemented in Terraform. Unlike the lab, this merge drops an existing
+`ipFilter` case-insensitively.

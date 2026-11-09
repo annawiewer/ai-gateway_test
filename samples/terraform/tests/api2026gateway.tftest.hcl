@@ -288,10 +288,12 @@ run "standalone_profile_routes_policies_and_placement" {
     condition = (
       length(azapi_resource.mcp_tool_server) == 0 &&
       length(data.azapi_resource.existing_resource_group) == 0 &&
+      length(data.azapi_resource.gateway_policies) == 0 &&
+      length(azapi_resource_action.gateway_ip_filter) == 0 &&
       !output.gateway_contract.existing_resource_group &&
       output.gateway_api_versions.tool_servers == "2025-09-01-preview"
     )
-    error_message = "The root default must register no tool servers and must own, not look up, its groups; the tool-server API pin stays explicit."
+    error_message = "The root default must register no tool servers, must own, not look up, its groups and must not read or patch workspace policies; the tool-server API pin stays explicit."
   }
 
   assert {
@@ -793,4 +795,176 @@ run "reject_zero_tool_server_rate_limit" {
     mcp_tool_servers = { docs = { display_name = "Docs", url = "https://docs.example.test/mcp", calls_per_period = 0 } }
   }
   expect_failures = [var.mcp_tool_servers]
+}
+
+run "gateway_ip_filter_merges_workspace_policies" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48", "203.0.113.42/32"]
+  }
+
+  override_data {
+    target = data.azapi_resource.gateway_policies["default"]
+    values = {
+      output = {
+        properties = {
+          policies = [
+            { type = "tokenLimit", tokensPerMinute = 1000 },
+            { type = "IPFilter", action = "Allow", cidrRanges = ["198.51.100.0/24"] },
+          ]
+        }
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      data.azapi_resource.gateway_policies["default"].type == "Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview" &&
+      data.azapi_resource.gateway_policies["default"].resource_id == "${azapi_resource.gateway.id}/workspaces/default" &&
+      azapi_resource_action.gateway_ip_filter["default"].type == "Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview" &&
+      azapi_resource_action.gateway_ip_filter["default"].resource_id == "${azapi_resource.gateway.id}/workspaces/default" &&
+      azapi_resource_action.gateway_ip_filter["default"].method == "PATCH" &&
+      azapi_resource_action.gateway_ip_filter["default"].when == "apply"
+    )
+    error_message = "The gateway-wide allow list must read and PATCH this gateway's default workspace with the pinned workspace API version, on apply only."
+  }
+
+  assert {
+    condition = (
+      jsonencode(keys(azapi_resource_action.gateway_ip_filter["default"].body)) == jsonencode(["properties"]) &&
+      jsonencode(keys(azapi_resource_action.gateway_ip_filter["default"].body.properties)) == jsonencode(["policies"]) &&
+      length(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies) == 2 &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].type == "tokenLimit" &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].tokensPerMinute == 1000 &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[1].type == "ipFilter" &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[1].action == "Allow" &&
+      jsonencode(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[1].cidrRanges) == jsonencode(["2001:db8:1234::/48", "203.0.113.42/32"])
+    )
+    error_message = "The PATCH must send only the policies array, keep unrelated workspace policies, replace any existing ipFilter regardless of casing and send one sorted, de-duplicated Allow list."
+  }
+
+  assert {
+    condition = alltrue([for model in azapi_resource.catalog_model :
+      alltrue([for policy in model.body.properties.policies : lower(policy.type) != "ipfilter"])
+    ])
+    error_message = "The gateway-wide allow list must not be copied into per-model policies."
+  }
+}
+
+run "gateway_ip_filter_empty_list_removes_only_filter" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = []
+  }
+
+  override_data {
+    target = data.azapi_resource.gateway_policies["default"]
+    values = {
+      output = {
+        properties = {
+          policies = [
+            { type = "tokenLimit", tokensPerMinute = 1000 },
+            { type = "ipFilter", action = "Allow", cidrRanges = ["198.51.100.0/24"] },
+          ]
+        }
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      azapi_resource_action.gateway_ip_filter["default"].method == "PATCH" &&
+      length(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies) == 1 &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].type == "tokenLimit" &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].tokensPerMinute == 1000
+    )
+    error_message = "An empty allow list must PATCH the workspace without an ipFilter while keeping its other policies."
+  }
+}
+
+run "gateway_ip_filter_on_workspace_without_policies" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["203.0.113.42/32"]
+  }
+
+  override_data {
+    target = data.azapi_resource.gateway_policies["default"]
+    values = { output = { properties = {} } }
+  }
+
+  assert {
+    condition = (
+      length(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies) == 1 &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].type == "ipFilter" &&
+      azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].action == "Allow" &&
+      jsonencode(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].cidrRanges) == jsonencode(["203.0.113.42/32"])
+    )
+    error_message = "A workspace without a policies array must receive exactly the configured ipFilter."
+  }
+}
+
+run "reject_invalid_gateway_client_ipv4_cidr" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["203.0.113.999/32"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "reject_invalid_gateway_client_ipv6_prefix" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["2001:db8::/129"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "reject_unrestricted_gateway_client_cidrs" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["0.0.0.0/0", "::/0"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "reject_zero_padded_unrestricted_gateway_cidr" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["::/00"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "reject_leading_zero_gateway_client_ipv4" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["203.0.113.042/32"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "reject_leading_zero_gateway_client_prefix" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["2001:db8::/032"]
+  }
+  expect_failures = [var.gateway_allowed_client_cidrs]
+}
+
+run "accept_zero_padded_ipv6_groups_in_gateway_cidrs" {
+  command = plan
+  variables {
+    gateway_allowed_client_cidrs = ["2001:0db8:0001::/48", "::ffff:198.51.100.0/120"]
+  }
+
+  override_data {
+    target = data.azapi_resource.gateway_policies["default"]
+    values = { output = { properties = {} } }
+  }
+
+  assert {
+    condition     = jsonencode(azapi_resource_action.gateway_ip_filter["default"].body.properties.policies[0].cidrRanges) == jsonencode(["2001:0db8:0001::/48", "::ffff:198.51.100.0/120"])
+    error_message = "The leading-zero rule must reject only decimal IPv4 parts and prefix lengths, not hexadecimal IPv6 groups."
+  }
 }

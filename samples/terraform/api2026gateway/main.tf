@@ -28,6 +28,7 @@ module "gateway" {
   model_deployments                        = var.model_deployments == null ? local.default_model_deployments : var.model_deployments
   model_aliases                            = var.model_aliases == null ? local.default_profile.model_aliases : var.model_aliases
   model_allowed_client_cidrs               = var.model_allowed_client_cidrs
+  gateway_allowed_client_cidrs             = var.gateway_allowed_client_cidrs
   mcp_tool_servers                         = var.mcp_tool_servers
   tags                                     = merge(var.tags, { "gateway-contract" = "api2026gateway" })
 }

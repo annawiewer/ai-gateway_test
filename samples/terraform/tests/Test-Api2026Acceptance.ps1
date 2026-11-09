@@ -40,9 +40,10 @@ function Add-FixtureResource([string]$Name, [string]$Key, [string]$Type, [string
     $address = "module.gateway.$TerraformType.$Name"
     if ($Key) { $address += '["' + $Key + '"]' }
     $value = @{ id = $Id; name = $Id.Split('/')[-1]; parent_id = $Parent; type = $Type; body = $Body }
-    if ($TerraformType -ceq 'azapi_update_resource') {
+    if ($TerraformType -cin @('azapi_update_resource', 'azapi_resource_action')) {
         $value.Remove('name'); $value.Remove('parent_id'); $value.resource_id = $Id
     }
+    if ($TerraformType -ceq 'azapi_resource_action') { $value.method = 'PATCH'; $value.when = 'apply'; $value.action = '' }
     $resource = @{ mode = 'managed'; type = $TerraformType; address = $address; values = $value }
     $global:api2026Fixture.resources.Add($resource)
     $global:api2026Fixture.state[$address] = $value
@@ -73,7 +74,7 @@ function Add-FixtureRole([string]$Key, [string]$Scope, [string]$Principal, [stri
 }
 
 function Reset-Fixture {
-    param([string[]]$AllowedClientCidrs = @(), [switch]$SingleGroup, [switch]$PrivateLab)
+    param([string[]]$AllowedClientCidrs = @(), [string[]]$GatewayAllowedClientCidrs, [switch]$SingleGroup, [switch]$PrivateLab)
     $script:caseCount++
     Set-FixtureLayout -SingleGroup:($SingleGroup -or $PrivateLab)
     $profile = Copy-Json $script:profile
@@ -217,6 +218,11 @@ function Reset-Fixture {
             endpoints = @(@{ namespace = 'microsoft-learn'; kind = 'mcp'; mcp = @{ url = 'https://learn.microsoft.com/api/mcp'; transport = 'streamableHttp' } })
             policies = @(@{ type = 'requestRateLimit'; callsPerPeriod = 20; periodSeconds = 60; counterKey = @('identity') })
         }
+    }
+    # Omitting the parameter leaves the gateway filter unmanaged; an empty list models an applied removal.
+    if ($PSBoundParameters.ContainsKey('GatewayAllowedClientCidrs')) {
+        $gatewayPolicies = @(if ($GatewayAllowedClientCidrs.Count) { @{ type = 'ipFilter'; action = 'Allow'; cidrRanges = @($GatewayAllowedClientCidrs | Sort-Object -Unique) } })
+        $null = Add-FixtureResource gateway_ip_filter default 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' $workspace $gatewayId @{ properties = @{ policies = $gatewayPolicies } } azapi_resource_action
     }
     $null = Add-FixtureResource storage_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/syntheticstorage" $projectId @{
         properties = @{ category = 'AzureStorageAccount'; authType = 'AAD'; target = 'https://syntheticstorage.blob.core.windows.net/'; metadata = @{ ApiType = 'Azure'; ResourceId = $storageId; location = 'swedencentral' } }
@@ -673,6 +679,7 @@ try {
     $result = Invoke-Fixture -ReportPath $reportPath
     if ($result.configurationStatus -cne 'PASS' -or $result.overallStatus -cne 'INCOMPLETE' -or
         $result.checks.'state-and-scope'.evidence.managedResources -ne 34 -or
+        $null -ne $result.checks['gateway-policies'] -or
         $result.checks.'tool-servers'.evidence.toolServers -ne 1 -or
         $result.checks.'tool-servers'.evidence.reachability -cne 'NOT TESTED' -or
         $result.toolServerReachability.status -cne 'NOT TESTED' -or
@@ -883,6 +890,117 @@ try {
             'missing' { $global:api2026Fixture.arm["$providerId/models/gpt-latest"].properties.policies = @($policies[0..2]) }
         }
         Assert-Rejected 'catalog and ordered policies' -Probe
+    }
+
+    $gatewayFilterAddress = 'module.gateway.azapi_resource_action.gateway_ip_filter["default"]'
+    $gatewayRanges = @('203.0.113.42/32', '198.51.100.0/24', '2001:db8:1234::/48')
+    Reset-Fixture -GatewayAllowedClientCidrs $gatewayRanges
+    $gatewayReportPath = Join-Path $fixtureDirectory 'gateway-ip-filter.json'
+    $result = Invoke-Fixture -ReportPath $gatewayReportPath
+    $evidence = $result.checks['gateway-policies'].evidence
+    if ($result.configurationStatus -cne 'PASS' -or $result.checks['gateway-policies'].status -cne 'PASS' -or $evidence.mode -cne 'Allow' -or
+        $evidence.cidrCount -ne 3 -or $evidence.apiVersion -cne '2025-09-01-preview' -or $evidence.enforcement -cne 'NOT TESTED' -or
+        $result.checks.'state-and-scope'.evidence.managedResources -ne 35) { throw 'The gateway IP filter was not verified against live ARM.' }
+    foreach ($text in @(($result | ConvertTo-Json -Depth 40), (Get-Content -LiteralPath $gatewayReportPath -Raw))) {
+        if ($text -match '203\.0\.113\.42|198\.51\.100|2001:db8') { throw 'Gateway IP filter evidence disclosed client networks.' }
+    }
+    Reset-Fixture -GatewayAllowedClientCidrs @()
+    $result = Invoke-Fixture
+    $evidence = $result.checks['gateway-policies'].evidence
+    if ($result.configurationStatus -cne 'PASS' -or $evidence.mode -cne 'Removed' -or $evidence.cidrCount -ne 0 -or
+        $result.checks.'state-and-scope'.evidence.managedResources -ne 35) { throw 'An applied gateway IP filter removal was not verified.' }
+    # ARM may clear host bits, respell IPv6, change casing or reorder ranges; other workspace policies are preserved, not owned.
+    Reset-Fixture -GatewayAllowedClientCidrs @('203.0.113.7/24', '2001:db8:1234::/48')
+    $f = $global:api2026Fixture
+    $f.state[$gatewayFilterAddress].body.properties.policies = @(@{ type = 'tokenLimit'; tokensPerMinute = 1000 }) + $f.state[$gatewayFilterAddress].body.properties.policies
+    $f.arm[$workspace].properties.policies = @(
+        @{ type = 'tokenLimit'; tokensPerMinute = 500 }
+        @{ type = 'IPFilter'; action = 'allow'; cidrRanges = @('2001:DB8:1234:0:0::/48', '203.0.113.0/24') }
+    )
+    $result = Invoke-Fixture
+    if ($result.configurationStatus -cne 'PASS' -or $result.checks['gateway-policies'].evidence.cidrCount -ne 2) { throw 'Equivalent gateway networks or unowned workspace policies were rejected.' }
+    Reset-Fixture -GatewayAllowedClientCidrs $gatewayRanges
+    $result = Invoke-Fixture -Probe
+    if ($result.status -cne 'PASS' -or $result.configurationStatus -cne 'PASS') { throw 'The bounded probe did not accept the gateway IP filter.' }
+
+    $gatewayLiveCases = [ordered]@{
+        'live-empty' = 'differs from the last applied Terraform configuration'
+        'live-null' = 'differs from the last applied Terraform configuration'
+        'live-network' = 'differs from the last applied Terraform configuration'
+        'live-added' = 'differs from the last applied Terraform configuration'
+        'live-deny' = 'live gateway IP filter must be a non-empty allow list'
+        'live-empty-ranges' = 'live gateway IP filter must be a non-empty allow list'
+        'live-duplicate' = 'More than one live gateway IP filter'
+        'live-leading-zero' = 'Invalid gateway client IP range'
+        'live-list' = 'Invalid live gateway policy list'
+        'live-properties' = 'invalid live gateway workspace properties'
+        'live-missing' = 'Azure CLI read failed'
+    }
+    foreach ($case in $gatewayLiveCases.Keys) {
+        if ($case -ceq 'live-added') { Reset-Fixture -GatewayAllowedClientCidrs @() } else { Reset-Fixture -GatewayAllowedClientCidrs $gatewayRanges }
+        $f = $global:api2026Fixture
+        $liveWorkspace = $f.arm[$workspace].properties
+        switch ($case) {
+            'live-empty' { $liveWorkspace.policies = @() }
+            'live-null' { $liveWorkspace.Remove('policies') }
+            'live-network' { $liveWorkspace.policies[0].cidrRanges = @('192.0.2.42/32') }
+            'live-added' { $liveWorkspace.policies = @(@{ type = 'ipFilter'; action = 'Allow'; cidrRanges = @('203.0.113.42/32') }) }
+            'live-deny' { $liveWorkspace.policies[0].action = 'Deny' }
+            'live-empty-ranges' { $liveWorkspace.policies[0].cidrRanges = @() }
+            'live-duplicate' { $liveWorkspace.policies += Copy-Json $liveWorkspace.policies[0] }
+            'live-leading-zero' { $liveWorkspace.policies[0].cidrRanges = @('203.0.113.042/32') }
+            'live-list' { $liveWorkspace.policies = $liveWorkspace.policies[0] }
+            'live-properties' { $f.arm[$workspace].properties = 'invalid' }
+            'live-missing' { $f.missingResources = @($workspace) }
+        }
+        Assert-Rejected $gatewayLiveCases[$case] -Probe
+    }
+    $gatewayStateCases = [ordered]@{
+        'state-deny' = 'state gateway IP filter must be a non-empty allow list'
+        'state-method' = 'mismatch: gateway_ip_filter'
+        'state-when' = 'mismatch: gateway_ip_filter'
+        'state-resource-id' = 'mismatch: gateway_ip_filter'
+        'state-type' = 'mismatch: gateway_ip_filter'
+        'state-action' = 'mismatch: gateway_ip_filter'
+        'state-body' = 'only replace the default workspace policy list'
+        'state-body-location' = 'only replace the default workspace policy list'
+        'state-duplicate' = 'More than one state gateway IP filter'
+        'state-octet' = 'Invalid gateway client IP range'
+        'state-zero-prefix' = 'Invalid gateway client IP range'
+        'state-leading-zero' = 'Invalid gateway client IP range'
+        'state-duplicate-range' = 'differs from the module contract'
+        'state-extra-key' = 'differs from the module contract'
+        'state-casing' = 'differs from the module contract'
+        'state-address' = 'Unexpected or duplicate managed address'
+    }
+    foreach ($case in $gatewayStateCases.Keys) {
+        Reset-Fixture -GatewayAllowedClientCidrs $gatewayRanges
+        $f = $global:api2026Fixture
+        $filterState = $f.state[$gatewayFilterAddress]
+        $gatewayFilter = $filterState.body.properties.policies[0]
+        switch ($case) {
+            'state-deny' { $gatewayFilter.action = 'Deny' }
+            'state-method' { $filterState.method = 'POST' }
+            'state-when' { $filterState.when = 'destroy' }
+            'state-resource-id' { $filterState.resource_id = "$workspace-other" }
+            'state-type' { $filterState.type = 'Microsoft.ApiManagement/aigateways/workspaces@2026-09-01-preview' }
+            'state-action' { $filterState.action = 'listSecrets' }
+            'state-body' { $filterState.body.properties.extra = $true }
+            'state-body-location' { $filterState.body.location = 'swedencentral' }
+            'state-duplicate' { $filterState.body.properties.policies += Copy-Json $gatewayFilter }
+            'state-octet' { $gatewayFilter.cidrRanges = @('203.0.113.300/32') }
+            'state-zero-prefix' { $gatewayFilter.cidrRanges = @('0.0.0.0/0') }
+            'state-leading-zero' { $gatewayFilter.cidrRanges = @('203.0.113.042/32') }
+            'state-duplicate-range' { $gatewayFilter.cidrRanges = @('203.0.113.42/32', '203.0.113.42/32') }
+            'state-extra-key' { $gatewayFilter.id = 'synthetic' }
+            'state-casing' { $gatewayFilter.type = 'IPFilter' }
+            'state-address' {
+                foreach ($resource in $f.resources) {
+                    if ($resource.address -ceq $gatewayFilterAddress) { $resource.address = $gatewayFilterAddress.Replace('"default"', '"other"') }
+                }
+            }
+        }
+        Assert-Rejected $gatewayStateCases[$case] -BeforeAzure -Probe
     }
 
     Reset-Fixture

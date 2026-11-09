@@ -214,7 +214,8 @@ run "legacy_gateway_content_safety_remains_available" {
 run "reject_standalone_policy_inputs_for_legacy" {
   command = plan
   variables {
-    model_allowed_client_cidrs = ["203.0.113.42/32"]
+    model_allowed_client_cidrs   = ["203.0.113.42/32"]
+    gateway_allowed_client_cidrs = ["203.0.113.42/32"]
     model_deployments = {
       test-model = {
         model_name    = "test-model-name"
@@ -225,7 +226,7 @@ run "reject_standalone_policy_inputs_for_legacy" {
       }
     }
   }
-  expect_failures = [var.model_deployments, var.model_allowed_client_cidrs]
+  expect_failures = [var.model_deployments, var.model_allowed_client_cidrs, var.gateway_allowed_client_cidrs]
 }
 
 run "reject_tool_servers_for_legacy" {
