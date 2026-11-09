@@ -211,6 +211,13 @@ function Reset-Fixture {
     $null = Add-FixtureResource telemetry_exporter '' 'Microsoft.ApiManagement/aigateways/workspaces/telemetryExporters@2025-09-01-preview' "$workspace/telemetryExporters/appinsights" $workspace @{
         properties = @{ kind = 'ApplicationInsights'; payloadCapture = $false; applicationInsights = @{ resourceId = $insightsIds.gateway; connectionString = $f.arm[$insightsIds.gateway].properties.ConnectionString } }
     }
+    $null = Add-FixtureResource mcp_tool_server 'microsoft-learn' 'Microsoft.ApiManagement/aigateways/workspaces/toolServers@2025-09-01-preview' "$workspace/toolServers/microsoft-learn" $workspace @{
+        properties = @{
+            displayName = 'Microsoft Learn'; description = 'Microsoft Learn'; type = 'mcp'
+            endpoints = @(@{ namespace = 'microsoft-learn'; kind = 'mcp'; mcp = @{ url = 'https://learn.microsoft.com/api/mcp'; transport = 'streamableHttp' } })
+            policies = @(@{ type = 'requestRateLimit'; callsPerPeriod = 20; periodSeconds = 60; counterKey = @('identity') })
+        }
+    }
     $null = Add-FixtureResource storage_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/syntheticstorage" $projectId @{
         properties = @{ category = 'AzureStorageAccount'; authType = 'AAD'; target = 'https://syntheticstorage.blob.core.windows.net/'; metadata = @{ ApiType = 'Azure'; ResourceId = $storageId; location = 'swedencentral' } }
     }
@@ -229,7 +236,8 @@ function Reset-Fixture {
     $null = Add-FixtureRole project-user $agentsId $projectPrincipal ServicePrincipal 'a97b65f3-24c7-4388-baec-2e87135dc908'
     $f.outputs = @{
         gateway_contract = @{ value = @{ name = '2026'; resource_type = 'Microsoft.ApiManagement/aigateways'; backend_subnet_id = $null } }
-        gateway_api_versions = @{ value = @{ gateway = '2026-09-01-preview'; catalog = '2026-09-01-preview'; aliases = '2026-09-01-preview'; api_keys = '2026-09-01-preview'; telemetry = '2025-09-01-preview' } }
+        gateway_api_versions = @{ value = @{ gateway = '2026-09-01-preview'; catalog = '2026-09-01-preview'; aliases = '2026-09-01-preview'; api_keys = '2026-09-01-preview'; telemetry = '2025-09-01-preview'; tool_servers = '2025-09-01-preview' } }
+        mcp_tool_server_ids = @{ value = @{ 'microsoft-learn' = "$workspace/toolServers/microsoft-learn" } }
         resource_groups = @{ value = Copy-Json $groups }
         gateway_id = @{ value = $gatewayId }; gateway_endpoint = @{ value = 'https://gateway.example' }; gateway_api_key_id = @{ value = $keyId }
         foundry_models_id = @{ value = $modelsId }; project_id = @{ value = $projectId }
@@ -246,6 +254,17 @@ function Reset-Fixture {
         $f.outputs.gateway_contract.value.private_lab = [bool]$PrivateLab
     }
     if ($PrivateLab) { Set-OwnedPrivateLabFixture }
+}
+
+function Set-ExistingGroupFixture {
+    $f = $global:api2026Fixture
+    $address = 'module.gateway.azapi_resource.resource_group["gateway"]'
+    $f.resources.RemoveAt([Array]::IndexOf(@($f.resources | ForEach-Object { $_.address }), $address))
+    $f.state.Remove($address)
+    # A reused group is a Terraform data source, so the checker must not read it as a managed resource.
+    $f.missingResources = @($groupIds.gateway)
+    $f.outputs.gateway_contract.value.existing_resource_group = $true
+    $f.extraArguments.ExistingResourceGroup = $true
 }
 
 function Set-OwnedPrivateLabFixture {
@@ -653,7 +672,10 @@ try {
     $reportPath = Join-Path $fixtureDirectory 'configuration.json'
     $result = Invoke-Fixture -ReportPath $reportPath
     if ($result.configurationStatus -cne 'PASS' -or $result.overallStatus -cne 'INCOMPLETE' -or
-        $result.checks.'state-and-scope'.evidence.managedResources -ne 33 -or
+        $result.checks.'state-and-scope'.evidence.managedResources -ne 34 -or
+        $result.checks.'tool-servers'.evidence.toolServers -ne 1 -or
+        $result.checks.'tool-servers'.evidence.reachability -cne 'NOT TESTED' -or
+        $result.toolServerReachability.status -cne 'NOT TESTED' -or
         $result.checks.roles.evidence.defaultBindings -ne 6 -or $result.aliases.Count -ne 2 -or
         $result.checks.'exporter-topology'.evidence.apiVersion -cne '2025-09-01-preview' -or
         $result.checks.'backend-content-safety'.evidence.coreHarmFilters -ne 8 -or
@@ -787,7 +809,7 @@ try {
     $partial = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json -AsHashtable
     if ($failure -notmatch 'metadata/sharing.isSharedToAll' -or $partial.configurationStatus -cne 'FAIL' -or
         $partial.checks.connections.status -cne 'FAIL' -or
-        @('models-and-routes', 'backend-content-safety', 'roles', 'exporter-topology').Where({ $partial.checks[$_].status -cne 'PASS' }).Count -or
+        @('models-and-routes', 'backend-content-safety', 'roles', 'exporter-topology', 'tool-servers').Where({ $partial.checks[$_].status -cne 'PASS' }).Count -or
         $global:api2026Fixture.credentialCalls -or $global:api2026Fixture.httpCalls) {
         throw 'Connection sharing failure hid independent checks or weakened the overall gate.'
     }
@@ -904,6 +926,54 @@ try {
         }
         Assert-Rejected 'API2026:' -BeforeAzure -Probe
     }
+    foreach ($case in @('tool-server-version', 'tool-server-output', 'tool-server-unlisted', 'tool-server-unmanaged', 'tool-server-id', 'tool-server-http', 'tool-server-credential-url', 'tool-server-type', 'tool-server-namespace', 'tool-server-transport', 'tool-server-endpoints', 'tool-server-policy')) {
+        Reset-Fixture
+        $f = $global:api2026Fixture
+        $toolServer = $f.state['module.gateway.azapi_resource.mcp_tool_server["microsoft-learn"]'].body.properties
+        switch ($case) {
+            'tool-server-version' { $f.outputs.gateway_api_versions.value.tool_servers = '2026-09-01-preview' }
+            'tool-server-output' { $f.outputs.Remove('mcp_tool_server_ids') }
+            'tool-server-unlisted' { $f.outputs.mcp_tool_server_ids.value = @{} }
+            'tool-server-unmanaged' { $f.outputs.mcp_tool_server_ids.value.other = "$workspace/toolServers/other" }
+            'tool-server-id' { $f.outputs.mcp_tool_server_ids.value.'microsoft-learn' = "$workspace/toolServers/other" }
+            'tool-server-http' { $toolServer.endpoints[0].mcp.url = 'http://learn.microsoft.com/api/mcp' }
+            'tool-server-credential-url' { $toolServer.endpoints[0].mcp.url = 'https://user:secret@learn.microsoft.com/api/mcp' }
+            'tool-server-type' { $toolServer.type = 'openApi' }
+            'tool-server-namespace' { $toolServer.endpoints[0].namespace = 'other' }
+            'tool-server-transport' { $toolServer.endpoints[0].mcp.transport = 'sse' }
+            'tool-server-endpoints' { $toolServer.endpoints += Copy-Json $toolServer.endpoints[0] }
+            'tool-server-policy' { $toolServer.policies[0].counterKey = @('ipAddress') }
+        }
+        Assert-Rejected 'API2026:' -BeforeAzure -Probe
+    }
+
+    Reset-Fixture -SingleGroup
+    Set-ExistingGroupFixture
+    $result = Invoke-Fixture
+    $evidence = $result.checks.'state-and-scope'.evidence
+    if ($result.configurationStatus -cne 'PASS' -or $evidence.managedResources -ne $global:api2026Fixture.resources.Count -or
+        $evidence.resourceGroupOwnership -notlike 'Existing group*') {
+        throw 'Existing-group acceptance treated the reused group as managed.'
+    }
+    Reset-Fixture -SingleGroup
+    Set-ExistingGroupFixture
+    $result = Invoke-Fixture -Probe
+    if ($result.status -cne 'PASS' -or $result.configurationStatus -cne 'PASS') { throw 'The bounded probe did not forward the existing-group switch.' }
+    foreach ($case in @('no-switch', 'false-contract', 'missing-contract-key', 'managed-group', 'three-groups', 'private-lab')) {
+        if ($case -ceq 'three-groups') { Reset-Fixture } elseif ($case -ceq 'private-lab') { Reset-Fixture -PrivateLab } else { Reset-Fixture -SingleGroup }
+        $f = $global:api2026Fixture
+        if ($case -ceq 'managed-group') {
+            $f.outputs.gateway_contract.value.existing_resource_group = $true
+            $f.extraArguments.ExistingResourceGroup = $true
+        }
+        else { Set-ExistingGroupFixture }
+        switch ($case) {
+            'no-switch' { $f.extraArguments.Remove('ExistingResourceGroup') }
+            'false-contract' { $f.outputs.gateway_contract.value.existing_resource_group = $false }
+            'missing-contract-key' { $f.outputs.gateway_contract.value.Remove('existing_resource_group') }
+        }
+        Assert-Rejected 'API2026:' -BeforeAzure -Probe
+    }
     foreach ($url in @('http://gateway.example', 'https://gateway.example:444', 'https://user:password@gateway.example', 'https://gateway.example/path', 'https://gateway.example?query=secret', 'https://127.0.0.1', 'https://gateway..example')) {
         Reset-Fixture
         $global:api2026Fixture.outputs.gateway_endpoint.value = $url
@@ -914,7 +984,7 @@ try {
         $global:api2026Fixture.account[$field] = '00000000-0000-0000-0000-000000000099'
         Assert-Rejected 'wrong tenant or subscription' -BeforeArm -Probe
     }
-    foreach ($case in @('not-ready', 'missing-frontend', 'region', 'gateway-origin', 'arm-host', 'arm-id', 'identity', 'model-project-management', 'provider-target', 'route-order', 'policy', 'request-limit', 'request-window', 'request-counter', 'connection-sharing', 'connection-metadata', 'storage-target', 'role-principal', 'role-scope', 'exporter-kind', 'exporter-capture', 'exporter-secret', 'safety-binding', 'safety-policy-id', 'safety-policy-mode', 'safety-disabled', 'safety-nonblocking', 'safety-threshold', 'safety-missing-completion', 'safety-duplicate', 'safety-jailbreak', 'safety-protected-text', 'safety-protected-code')) {
+    foreach ($case in @('not-ready', 'missing-frontend', 'region', 'gateway-origin', 'arm-host', 'arm-id', 'identity', 'model-project-management', 'provider-target', 'route-order', 'policy', 'request-limit', 'request-window', 'request-counter', 'connection-sharing', 'connection-metadata', 'storage-target', 'role-principal', 'role-scope', 'exporter-kind', 'exporter-capture', 'exporter-secret', 'tool-server-url', 'tool-server-limit', 'tool-server-missing', 'safety-binding', 'safety-policy-id', 'safety-policy-mode', 'safety-disabled', 'safety-nonblocking', 'safety-threshold', 'safety-missing-completion', 'safety-duplicate', 'safety-jailbreak', 'safety-protected-text', 'safety-protected-code')) {
         Reset-Fixture
         $f = $global:api2026Fixture
         switch ($case) {
@@ -943,6 +1013,9 @@ try {
             'exporter-kind' { $f.arm["$workspace/telemetryExporters/appinsights"].properties.kind = 'OpenTelemetry' }
             'exporter-capture' { $f.arm["$workspace/telemetryExporters/appinsights"].properties.payloadCapture = $true }
             'exporter-secret' { $f.arm["$workspace/telemetryExporters/appinsights"].properties.applicationInsights.connectionString = 'synthetic-wrong-secret' }
+            'tool-server-url' { $f.arm["$workspace/toolServers/microsoft-learn"].properties.endpoints[0].mcp.url = 'https://other.example/mcp' }
+            'tool-server-limit' { $f.arm["$workspace/toolServers/microsoft-learn"].properties.policies[0].callsPerPeriod = 1000 }
+            'tool-server-missing' { $f.missingResources = @("$workspace/toolServers/microsoft-learn") }
             'safety-binding' { $f.arm["$modelsId/deployments/gpt-latest"].properties.raiPolicyName = 'Microsoft.Default' }
             'safety-policy-id' { $f.arm[$safetyPolicyId].id = "$modelsId/raiPolicies/Other" }
             'safety-policy-mode' { $f.arm[$safetyPolicyId].properties.mode = 'Asynchronous_filter' }

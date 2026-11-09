@@ -1,5 +1,5 @@
 output "resource_groups" {
-  description = "Actual group names keyed by workload; exact-name mode maps all three to one owned group."
+  description = "Actual group names keyed by workload; exact-name mode maps all three to one owned or reused group."
   value       = module.gateway.resource_groups
 }
 
@@ -19,8 +19,13 @@ output "gateway_contract" {
 }
 
 output "gateway_api_versions" {
-  description = "Exact management API versions, including the intentionally retained 2025 telemetry contract."
+  description = "Exact management API versions, including the intentionally retained 2025 telemetry contract and the 2025 tool-server preview pin."
   value       = module.gateway.gateway_api_versions
+}
+
+output "mcp_tool_server_ids" {
+  description = "Gateway tool-server ARM IDs keyed by name; registration is not proof that the remote MCP server is reachable."
+  value       = module.gateway.mcp_tool_server_ids
 }
 
 output "gateway_api_key_id" {

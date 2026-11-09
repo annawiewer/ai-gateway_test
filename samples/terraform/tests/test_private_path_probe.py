@@ -118,7 +118,9 @@ class PrivatePathProbeTests(unittest.TestCase):
         with patch.object(probe.sys, "argv", ["probe", "--configuration", json.dumps(configuration)]), \
                 patch.object(probe.socket, "getaddrinfo", side_effect=resolve), \
                 patch.object(probe.urllib.request, "build_opener", return_value=opener), \
-                patch.object(probe, "request_json", side_effect=responses), contextlib.redirect_stdout(output):
+                patch.object(probe, "request_json", side_effect=responses) as request, \
+                contextlib.redirect_stdout(output):
+            self.request_calls = request.call_args_list
             probe.main()
         return output.getvalue()
 
@@ -203,8 +205,19 @@ class PrivatePathProbeTests(unittest.TestCase):
                 probe.private_dns("gateway.example", subnets)
 
     def test_rejects_success_status_with_wrong_model_reply(self):
-        with self.assertRaisesRegex(RuntimeError, "Inference failed for full"):
-            self.run_probe(["OK", "unexpected"])
+        for replies, model in ((["OK", "unexpected"], "full"), ([None, "OK"], "mini"), (["", "OK"], "mini")):
+            with self.subTest(replies=replies), self.assertRaisesRegex(RuntimeError, f"Inference failed for {model}"):
+                self.run_probe(replies)
+
+    def test_reasoning_model_requests_and_reply_variants(self):
+        output = self.run_probe(["OK.", " ok\n"])
+        self.assertEqual(["OK", "OK"], [entry["reply"] for entry in json.loads(output)["inference"]])
+        bodies = [call.args[3] for call in self.request_calls[2:]]
+        self.assertEqual(4, len(bodies))
+        for body in bodies:
+            self.assertIn("max_completion_tokens", body)
+            self.assertNotIn("max_tokens", body)
+            self.assertNotIn("temperature", body)
 
     def test_negative_auth_requires_a_real_rejection(self):
         for code, message, accepted in (

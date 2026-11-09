@@ -15,8 +15,10 @@ or a migration.** Terraform does not build or run an agent application.
 | [Reference](docs/reference.md) | Look up inputs, contracts, detailed safeguards and acceptance gates. |
 
 The default bundle adds **token, monthly cost and request limits** to each
-model registration. Model-call IP filtering is opt-in; backend safety uses
-`Microsoft.DefaultV2`. Telemetry uses `payloadCapture = false`.
+model registration and registers the public Microsoft Learn MCP server as a
+rate-limited gateway tool server (opt out in step 2). Model-call IP filtering
+is opt-in; backend safety uses `Microsoft.DefaultV2`. Telemetry uses
+`payloadCapture = false`.
 See [policy scope](docs/reference.md#policies-and-backend-safety) for the limits of
 these settings; configuration alone does not prove enforcement or delivery.
 
@@ -64,8 +66,9 @@ foundation or disabling backend public access, review
 
 - Obtain approval for the subscription, tenant, exact resource groups, regions,
   state boundary and **full resource footprint**, not only the gateway.
-  The default uses three groups; a fresh-state single-group option is described
-  in the [input reference](docs/reference.md#inputs).
+  The default uses three groups; a fresh-state single-group option, which can
+  also reuse an existing group, is described in the
+  [input reference](docs/reference.md#inputs).
 - Verify API access, model/version/SKU availability and quota for the selected
   subscription and regions. The checked-in profile is not availability evidence.
 - Budget for model deployments, the agent account/project, Storage, **Premium**
@@ -114,6 +117,22 @@ Keep `model_allowed_client_cidrs` empty unless an allow list is approved. To
 enable it, use the actual client/proxy egress IPv4/IPv6 CIDRs, not the commented
 documentation ranges. It filters model calls; it does not create private ingress.
 
+By default the entry registers the public Microsoft Learn MCP server
+(`https://learn.microsoft.com/api/mcp`) as the `microsoft-learn` gateway tool
+server. Unless its inputs set `mcp_tool_servers`, an existing workload's next
+plan also adds it. Set `mcp_tool_servers = {}` to register none. A supplied map
+replaces the whole default, so include `microsoft-learn` to keep it beside other
+servers. Registration does not prove reachability, and the IP allow list does
+not apply to tool servers. See
+[MCP tool protection](docs/reference.md#mcp-tool-protection-separate-extension).
+
+To use one **existing** resource group, set `api2026_resource_group_name` to its
+exact name and `api2026_existing_resource_group = true` before the first apply,
+with fresh state. It cannot be combined with the private lab. Terraform reads
+that group but never creates or deletes it. **Never toggle this on an existing
+state**; stop if any plan shows a resource-group destroy. See
+[state and lifecycle](docs/reference.md#state-and-lifecycle).
+
 Terraform loads this directory's `.tf` files together, not in filename order.
 Its `main.tf` calls the parent implementation as `module.gateway`; the resource
 groups do not have separate states. Running from `..` instead selects the
@@ -159,10 +178,10 @@ terraform show "$planFile"
 if ($LASTEXITCODE -ne 0) { throw "Plan display failed; do not apply." }
 ```
 
-Review the exact groups, model capacities, identities, public endpoints,
-monitoring, optional resources and every replacement/deletion. Keep the output
-private and obtain approval for **this saved plan**. A changed input, source or
-state requires a fresh plan and review, not a targeted shortcut.
+Review the exact groups, model capacities, tool servers, identities, public
+endpoints, monitoring, optional resources and every replacement/deletion. Keep
+the output private and obtain approval for **this saved plan**. A changed input,
+source or state requires a fresh plan and review, not a targeted shortcut.
 
 ## 5. Apply only the approved saved plan
 
@@ -178,6 +197,11 @@ approval; do not replace it with an unreviewed apply. Gateway deletion protectio
 remains enabled. Backend subnet changes are replacement-sensitive, not a way to
 convert an existing public gateway to private ingress.
 
+If the apply stops with "The 2026 gateway is not ready", Azure has not yet
+returned a frontend hostname, and the dependent resources were not created in
+that apply. Wait for provisioning to finish, then repeat steps 4 and 5 with a
+fresh saved plan.
+
 ## 6. Verify the deployed configuration
 
 Read only the outputs needed for the next check:
@@ -186,13 +210,20 @@ Read only the outputs needed for the next check:
 terraform output resource_groups
 terraform output gateway_endpoint
 terraform output gateway_api_versions
+terraform output mcp_tool_server_ids
 ```
+
+`gateway_api_versions` also reports `tool_servers = 2025-09-01-preview`, the
+separately pinned tool-server version; `mcp_tool_server_ids` is empty when no
+tool server is registered.
 
 With the already-authenticated account selected, pass the **approved exact
 group names**, subscription and tenant to the configuration checker. The example
 uses the default three groups; for an approved single-group lab, supply only its
-exact group name **and add `-SingleResourceGroup`**. For the owned private-backend
-lab, also add `-PrivateLab -ExpectedBackendPublicNetworkAccess Disabled`.
+exact group name **and add `-SingleResourceGroup`**. For a reused existing group,
+also add `-ExistingResourceGroup`, which must match the deployment and is not
+supported with `-PrivateLab`. For the owned private-backend lab, also add
+`-PrivateLab -ExpectedBackendPublicNetworkAccess Disabled`.
 Apply any separately approved external NSG option from the references below.
 
 ```powershell
@@ -205,6 +236,9 @@ Apply any separately approved external NSG option from the references below.
 
 The checker does not deploy or run inference. It checks selected Terraform/ARM
 configuration, keeps raw state in memory and returns a sanitized report.
+Its `tool-servers` check compares each registered tool server with state and
+its ARM read-back; it never calls the MCP server, so the report's
+`toolServerReachability` is always `NOT TESTED`.
 Optional `-ReportPath` must name a **new** file in an existing private directory.
 Failure is terminating/nonzero, not an acceptance pass.
 
@@ -216,6 +250,9 @@ Use these focused references when they apply; do not relax the checker:
   exact approved attachment and strict exception checks.
 - [Live readback projections](docs/reference.md#live-readback-projections):
   narrowly accepted service projections, not permission to ignore mismatches.
+- [Policy-modified storage access](docs/reference.md#policy-modified-storage-access):
+  a tenant policy that rewrites storage public access fails the checker; request
+  an exemption or record the finding.
 - [Project monitoring connection](docs/reference.md#project-monitoring-connection):
   project-local ownership, sharing checks and separately approved correction.
 
@@ -224,8 +261,8 @@ Use these focused references when they apply; do not relax the checker:
 `configurationStatus = PASS` still means `overallStatus = INCOMPLETE`.
 For separately approved inference, follow the
 [bounded runtime probe](docs/reference.md#bounded-runtime-probe), with a token cap and
-timeout. Record runtime, policy/failover behavior, telemetry delivery,
-idempotence, portal and agent-runtime evidence as separate
+timeout. Record runtime, policy/failover behavior, tool-server reachability,
+telemetry delivery, idempotence, portal and agent-runtime evidence as separate
 [acceptance gates](docs/reference.md#monitoring-and-acceptance). Private connectivity
 needs its own evidence; gateway private ingress is not implemented. Do not infer
 customer readiness from a clean plan, offline tests or a configuration-only PASS.

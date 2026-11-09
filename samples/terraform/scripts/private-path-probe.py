@@ -20,6 +20,24 @@ def request_json(opener, url, headers=None, body=None):
         return response.status, json.load(response)
 
 
+def inference_body(model):
+    # GPT-5-class and later reasoning models reject max_tokens and non-default temperature,
+    # and spend part of the completion budget on reasoning before they answer.
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": "Reply with exactly OK."}],
+        "max_completion_tokens": 256,
+    }
+
+
+def is_ok_reply(response):
+    try:
+        content = response["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError):
+        return False
+    return isinstance(content, str) and content.strip().rstrip(".!").casefold() == "ok"
+
+
 def endpoint_subnets(configuration):
     services = ["gateway", "models"]
     if "storage_endpoint" in configuration:
@@ -191,15 +209,9 @@ def main():
                 "Api-Key": key,
                 "traceparent": f"00-{trace_id}-{uuid.uuid4().hex[:16]}-01",
             },
-            {
-                "model": model,
-                "messages": [{"role": "user", "content": "Reply with exactly OK."}],
-                "max_tokens": 8,
-                "temperature": 0,
-            },
+            inference_body(model),
         )
-        text = response["choices"][0]["message"]["content"].strip()
-        if status != 200 or text != "OK":
+        if status != 200 or not is_ok_reply(response):
             raise RuntimeError(f"Inference failed for {model}: HTTP {status}, unexpected reply")
         usage = response.get("usage")
         safe_usage = None if not isinstance(usage, dict) else {
@@ -207,15 +219,10 @@ def main():
             if type(usage.get(name)) is int and usage[name] >= 0
         }
         results.append({
-            "model": model, "status": status, "reply": text,
+            "model": model, "status": status, "reply": "OK",
             "trace_id": trace_id, "usage": safe_usage,
         })
-    body = {
-        "model": configuration["model_names"][0],
-        "messages": [{"role": "user", "content": "Reply with exactly OK."}],
-        "max_tokens": 8,
-        "temperature": 0,
-    }
+    body = inference_body(configuration["model_names"][0])
     authentication = [
         {"case": name, "status": check_key_rejection(opener, url, body, headers)}
         for name, headers in (

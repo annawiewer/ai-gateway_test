@@ -14,16 +14,16 @@ publisher_email = "platform-team@example.com"
 
 model_deployments = {
   gpt-mini = {
-    model_name    = "gpt-4.1-mini"
-    model_version = "2025-04-14"
+    model_name    = "gpt-5.4-mini"
+    model_version = "2026-03-17"
     sku_name      = "GlobalStandard"
     capacity      = 10
     token_limit   = 5000
   }
 
   gpt-full = {
-    model_name    = "gpt-4.1"
-    model_version = "2025-04-14"
+    model_name    = "gpt-6.1-sol"
+    model_version = "2026-09-29"
     sku_name      = "GlobalStandard"
     capacity      = 10
     token_limit   = 10000

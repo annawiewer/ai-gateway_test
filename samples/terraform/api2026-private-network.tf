@@ -61,7 +61,7 @@ resource "azapi_resource" "api2026_vnet" {
   for_each  = local.api2026_lab_keys
   type      = "Microsoft.Network/virtualNetworks@2024-05-01"
   name      = "vnet-${local.resource_token}-lab"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   body = {
@@ -77,7 +77,7 @@ resource "azapi_resource" "api2026_nsg" {
   for_each  = var.api2026_private_lab_enabled ? toset(["client", "gateway"]) : toset([])
   type      = "Microsoft.Network/networkSecurityGroups@2024-05-01"
   name      = "nsg-${local.resource_token}-${each.key}"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   body = {
@@ -122,7 +122,7 @@ resource "azapi_resource" "api2026_nat_ip" {
   for_each  = var.api2026_private_lab_enabled ? toset(["client"]) : toset([])
   type      = "Microsoft.Network/publicIPAddresses@2024-05-01"
   name      = "pip-${local.resource_token}-egress"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   body = {
@@ -140,7 +140,7 @@ resource "azapi_resource" "api2026_nat" {
   for_each  = var.api2026_private_lab_enabled ? toset(["client"]) : toset([])
   type      = "Microsoft.Network/natGateways@2024-05-01"
   name      = "nat-${local.resource_token}-client"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   body = {
@@ -189,7 +189,7 @@ resource "azapi_resource" "api2026_ampls" {
   for_each  = local.api2026_lab_keys
   type      = "Microsoft.Insights/privateLinkScopes@2021-09-01"
   name      = "ampls-${local.resource_token}"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = "global"
   tags      = local.tags
   body = {
@@ -218,7 +218,7 @@ resource "azapi_resource" "api2026_private_endpoint" {
   for_each  = local.api2026_endpoint_targets
   type      = "Microsoft.Network/privateEndpoints@2024-05-01"
   name      = "pe-${local.resource_token}-${each.key}"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   locks     = [azapi_resource.api2026_subnet["private-endpoints"].id]
@@ -244,7 +244,7 @@ resource "azapi_resource" "api2026_dns_zone" {
   for_each  = local.api2026_dns_zones
   type      = "Microsoft.Network/privateDnsZones@2020-06-01"
   name      = each.key
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = "global"
   tags      = local.tags
   body      = { properties = {} }

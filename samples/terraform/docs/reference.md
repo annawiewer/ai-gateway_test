@@ -349,10 +349,13 @@ metadata stops the test rather than skipping a model.
 
 This is a necessary compatibility check, not proof that a model accepts every
 parameter. The public test sends `messages` and expects `choices[0].message.content`.
-The private test additionally uses `max_tokens = 8`, `temperature = 0`, and expects
-the exact reply `OK`. The example GPT-4.1 models are the reference configuration.
-Do not assume a reasoning model supports those parameters just because it exposes
-Chat Completions.
+The private test additionally sends `max_completion_tokens = 256` without
+`temperature` and expects the reply `OK`, ignoring surrounding whitespace, case and
+a trailing `.` or `!`. The example `gpt-6.1-sol` and `gpt-5.4-mini` models are the
+reference configuration. GPT-5-class and later reasoning models reject `max_tokens`
+and non-default `temperature` values, and they spend part of the completion budget
+on reasoning. Do not assume another model supports these parameters just because
+it exposes Chat Completions.
 
 For Responses-only models, embeddings, image generation or other APIs, supply a
 model-specific test on the **same intended network path**, with the documented

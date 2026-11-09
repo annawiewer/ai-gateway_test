@@ -2,7 +2,7 @@ resource "azapi_resource" "logs" {
   for_each  = toset(["gateway", "agents"])
   type      = "Microsoft.OperationalInsights/workspaces@2023-09-01"
   name      = "${local.names[each.key]}-logs"
-  parent_id = azapi_resource.resource_group[local.resource_group_keys[each.key]].id
+  parent_id = local.resource_group_ids[local.resource_group_keys[each.key]]
   location  = var.location
   tags      = local.tags
   body = {
@@ -20,7 +20,7 @@ resource "azapi_resource" "insights" {
   for_each                  = toset(["gateway", "agents"])
   type                      = "Microsoft.Insights/components@2020-02-02"
   name                      = "${local.names[each.key]}-insights"
-  parent_id                 = azapi_resource.resource_group[local.resource_group_keys[each.key]].id
+  parent_id                 = local.resource_group_ids[local.resource_group_keys[each.key]]
   location                  = var.location
   tags                      = local.tags
   body = {

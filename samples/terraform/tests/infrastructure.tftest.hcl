@@ -228,6 +228,27 @@ run "reject_standalone_policy_inputs_for_legacy" {
   expect_failures = [var.model_deployments, var.model_allowed_client_cidrs]
 }
 
+run "reject_tool_servers_for_legacy" {
+  command = plan
+  variables {
+    mcp_tool_servers = {
+      microsoft-learn = {
+        display_name = "Microsoft Learn"
+        url          = "https://learn.microsoft.com/api/mcp"
+      }
+    }
+  }
+  expect_failures = [var.mcp_tool_servers]
+}
+
+run "reject_existing_group_for_legacy" {
+  command = plan
+  variables {
+    api2026_existing_resource_group = true
+  }
+  expect_failures = [var.api2026_existing_resource_group]
+}
+
 run "explicit_developer_service_principal" {
   command = plan
   variables {

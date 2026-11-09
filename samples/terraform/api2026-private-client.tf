@@ -20,7 +20,7 @@ resource "azapi_resource" "api2026_identity" {
   for_each               = var.api2026_private_lab_enabled ? toset(["positive", "negative"]) : toset([])
   type                   = "Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31"
   name                   = "id-${local.resource_token}-${each.key}"
-  parent_id              = azapi_resource.resource_group["gateway"].id
+  parent_id              = local.resource_group_ids["gateway"]
   location               = var.location
   tags                   = local.tags
   body                   = {}
@@ -32,7 +32,7 @@ resource "azapi_resource" "api2026_nic" {
   for_each  = var.api2026_private_lab_enabled ? toset(["client"]) : toset([])
   type      = "Microsoft.Network/networkInterfaces@2024-05-01"
   name      = "nic-${local.resource_token}-client"
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   body = {
@@ -58,7 +58,7 @@ resource "azapi_resource" "api2026_vm" {
   for_each  = var.api2026_private_lab_enabled ? toset(["client"]) : toset([])
   type      = "Microsoft.Compute/virtualMachines@2024-07-01"
   name      = local.api2026_client_vm_name
-  parent_id = azapi_resource.resource_group["gateway"].id
+  parent_id = local.resource_group_ids["gateway"]
   location  = var.location
   tags      = local.tags
   identity {
@@ -131,7 +131,7 @@ resource "azapi_update_resource" "disk_access" {
     prevent_destroy = true
     precondition {
       condition = lower(azapi_resource.api2026_vm[each.key].output.properties.storageProfile.osDisk.managedDisk.id) == lower(
-        "${azapi_resource.resource_group["gateway"].id}/providers/Microsoft.Compute/disks/${local.api2026_client_disk_name}"
+        "${local.resource_group_ids["gateway"]}/providers/Microsoft.Compute/disks/${local.api2026_client_disk_name}"
       )
       error_message = "Only this fresh verification VM's exact OS disk may receive the export-access restriction."
     }

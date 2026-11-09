@@ -25,6 +25,13 @@ variable "api2026_resource_group_name" {
   default     = null
 }
 
+variable "api2026_existing_resource_group" {
+  description = "Fresh state only: reuse the existing RG named by api2026_resource_group_name instead of creating it. Terraform never creates, tags or deletes that RG; never toggle this on an existing state."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
 variable "api2026_private_lab_enabled" {
   description = "Opt into the owned single-RG private backend foundation and verification client, not gateway private ingress or a hosted agent."
   type        = bool
@@ -118,6 +125,24 @@ variable "model_aliases" {
     }))
   }))
   default = null
+}
+
+variable "mcp_tool_servers" {
+  description = "Existing remote MCP servers registered as gateway tool servers, keyed by tool-server name. Defaults to the public Microsoft Learn MCP server; set {} to register none. Registration is not proof that the remote server is reachable."
+  type = map(object({
+    display_name     = string
+    description      = optional(string)
+    url              = string
+    calls_per_period = optional(number, 20)
+    period_seconds   = optional(number, 60)
+  }))
+  default = {
+    "microsoft-learn" = {
+      display_name = "Microsoft Learn"
+      url          = "https://learn.microsoft.com/api/mcp"
+    }
+  }
+  nullable = false
 }
 
 variable "tags" {
