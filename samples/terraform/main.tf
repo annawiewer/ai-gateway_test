@@ -6,6 +6,8 @@ locals {
   gateway_telemetry_api_version = "2025-09-01-preview"
   # Tool servers keep a separate pin: the blue-octopus reference registers them with this preview version.
   gateway_tool_server_api_version = "2025-09-01-preview"
+  # The gateway-wide policy PATCH uses the preview version from the Azure/aigateway gateway baselines lab.
+  gateway_policy_api_version      = "2025-09-01-preview"
   api2026_single_resource_group   = local.gateway_is_2026 && var.api2026_resource_group_name != null
   api2026_existing_resource_group = local.api2026_single_resource_group && var.api2026_existing_resource_group
   resource_group_keys             = { for key in ["gateway", "models", "agents"] : key => local.gateway_is_2026 && !local.api2026_single_resource_group ? key : "gateway" }

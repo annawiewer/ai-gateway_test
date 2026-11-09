@@ -550,6 +550,29 @@ variable "model_allowed_client_cidrs" {
   }
 }
 
+variable "gateway_allowed_client_cidrs" {
+  description = "Optional gateway-wide IP allow list for models and MCP tool servers. Null leaves gateway policies unmanaged; an empty list removes the managed ipFilter. Use approved caller egress IPv4/IPv6 CIDRs; this is not private ingress or a management firewall."
+  type        = list(string)
+  default     = null
+  validation {
+    condition = var.gateway_allowed_client_cidrs == null ? true : alltrue([
+      for cidr in var.gateway_allowed_client_cidrs :
+      can(cidrhost(cidr, 0)) && try(tonumber(split("/", cidr)[1]) > 0, false)
+    ])
+    error_message = "Each gateway_allowed_client_cidrs entry must be a valid IPv4/IPv6 CIDR with a nonzero prefix; use /32 or /128 for a single address."
+  }
+  validation {
+    condition = var.gateway_allowed_client_cidrs == null ? true : alltrue([
+      for cidr in var.gateway_allowed_client_cidrs : !can(regex("(^|[.:])0[0-9]+[.]|[.]0[0-9]+/|/0[0-9]", cidr))
+    ])
+    error_message = "Write gateway_allowed_client_cidrs IPv4 parts and prefix lengths without leading zeros, for example 10.0.0.1/32 instead of 010.0.0.1/32, because other parsers can read them as octal."
+  }
+  validation {
+    condition     = var.gateway_allowed_client_cidrs == null || var.gateway_contract == "2026"
+    error_message = "gateway_allowed_client_cidrs is supported only by the standalone 2026 entry."
+  }
+}
+
 variable "model_aliases" {
   description = "Optional aliases keyed by ARM name. Null preserves one alias per deployment. Explicit routes use unique deployment keys, priority 0-100 and relative weight 1-100."
   type = map(object({

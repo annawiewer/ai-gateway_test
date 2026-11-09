@@ -16,9 +16,9 @@ or a migration.** Terraform does not build or run an agent application.
 
 The default bundle adds **token, monthly cost and request limits** to each
 model registration and registers the public Microsoft Learn MCP server as a
-rate-limited gateway tool server (opt out in step 2). Model-call IP filtering
-is opt-in; backend safety uses `Microsoft.DefaultV2`. Telemetry uses
-`payloadCapture = false`.
+rate-limited gateway tool server (opt out in step 2). Model-call and
+gateway-wide IP filtering are opt-in; backend safety uses `Microsoft.DefaultV2`.
+Telemetry uses `payloadCapture = false`.
 See [policy scope](docs/reference.md#policies-and-backend-safety) for the limits of
 these settings; configuration alone does not prove enforcement or delivery.
 
@@ -117,13 +117,20 @@ Keep `model_allowed_client_cidrs` empty unless an allow list is approved. To
 enable it, use the actual client/proxy egress IPv4/IPv6 CIDRs, not the commented
 documentation ranges. It filters model calls; it does not create private ingress.
 
+Separately, `gateway_allowed_client_cidrs` (default `null`) sets one allow list
+on the gateway's `default` workspace that covers models **and** MCP tool
+servers. Every runtime caller outside it, including CI pipelines and hosted
+agents, receives `403`; portal and ARM management are not affected. To remove
+it, apply `[]` and then unset it. See
+[gateway-wide IP allow list](docs/reference.md#gateway-wide-ip-allow-list).
+
 By default the entry registers the public Microsoft Learn MCP server
 (`https://learn.microsoft.com/api/mcp`) as the `microsoft-learn` gateway tool
 server. Unless its inputs set `mcp_tool_servers`, an existing workload's next
 plan also adds it. Set `mcp_tool_servers = {}` to register none. A supplied map
 replaces the whole default, so include `microsoft-learn` to keep it beside other
-servers. Registration does not prove reachability, and the IP allow list does
-not apply to tool servers. See
+servers. Registration does not prove reachability. The model IP allow list does
+not apply to tool servers; the gateway-wide one does. See
 [MCP tool protection](docs/reference.md#mcp-tool-protection-separate-extension).
 
 To use one **existing** resource group, set `api2026_resource_group_name` to its
@@ -239,6 +246,9 @@ configuration, keeps raw state in memory and returns a sanitized report.
 Its `tool-servers` check compares each registered tool server with state and
 its ARM read-back; it never calls the MCP server, so the report's
 `toolServerReachability` is always `NOT TESTED`.
+When the gateway IP allow list is managed, its `gateway-policies` check compares
+the live IP filter with the last applied list, omits the ranges and reports
+enforcement as `NOT TESTED`.
 Optional `-ReportPath` must name a **new** file in an existing private directory.
 Failure is terminating/nonzero, not an acceptance pass.
 
@@ -261,7 +271,8 @@ Use these focused references when they apply; do not relax the checker:
 `configurationStatus = PASS` still means `overallStatus = INCOMPLETE`.
 For separately approved inference, follow the
 [bounded runtime probe](docs/reference.md#bounded-runtime-probe), with a token cap and
-timeout. Record runtime, policy/failover behavior, tool-server reachability,
+timeout, from an allowed address when `gateway_allowed_client_cidrs` is set.
+Record runtime, policy/failover behavior, tool-server reachability,
 telemetry delivery, idempotence, portal and agent-runtime evidence as separate
 [acceptance gates](docs/reference.md#monitoring-and-acceptance). Private connectivity
 needs its own evidence; gateway private ingress is not implemented. Do not infer

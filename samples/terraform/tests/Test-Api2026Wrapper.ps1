@@ -127,7 +127,7 @@ foreach ($message in $plans) {
         $model = $resources['module.gateway.azapi_resource.model_deployment["custom-model"]']
         $catalog = $resources['module.gateway.azapi_resource.catalog_model["custom-model"]']
         $caller = $resources['module.gateway.azapi_resource.role_assignment["gateway-models-user-fixture"]']
-        if ($resources.Count -ne 37 -or $roles.Count -ne 14 -or
+        if ($resources.Count -ne 38 -or $roles.Count -ne 14 -or
             $model.body.properties.model.name -cne 'gpt-5.4-mini' -or $model.body.properties.model.version -cne '2026-03-17' -or
             $model.body.sku.capacity -ne 7 -or $catalog.body.properties.policies[0].count -ne 700 -or
             $catalog.body.properties.policies[1].amount -ne 3 -or
@@ -144,6 +144,19 @@ foreach ($message in $plans) {
             $caller.body.properties.principalId -cne '00000000-0000-0000-0000-000000000004' -or
             $caller.body.properties.principalType -cne 'ServicePrincipal' -or $caller.parent_id -ine $gateway.id) {
             throw 'Explicit models, policies, subnet, tags or scoped runtime caller were not forwarded.'
+        }
+        $ipFilter = $resources['module.gateway.azapi_resource_action.gateway_ip_filter["default"]']
+        $workspacePolicies = @($ipFilter.body.properties.policies)
+        if ($null -eq $ipFilter -or
+            $ipFilter.type -cne 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' -or
+            $ipFilter.method -cne 'PATCH' -or $ipFilter.when -cne 'apply' -or
+            ($gateway.id -and $ipFilter.resource_id -cne "$($gateway.id)/workspaces/default") -or
+            @($ipFilter.body.Keys).Count -ne 1 -or @($ipFilter.body.properties.Keys).Count -ne 1 -or
+            $workspacePolicies.Count -ne 2 -or
+            $workspacePolicies[0].type -cne 'tokenLimit' -or $workspacePolicies[0].tokensPerMinute -ne 1000 -or
+            $workspacePolicies[1].type -cne 'ipFilter' -or $workspacePolicies[1].action -cne 'Allow' -or
+            ($workspacePolicies[1].cidrRanges -join ',') -cne '2001:db8:1234::/48,203.0.113.42/32') {
+            throw 'The gateway-wide allow list must reach the child module as one merged workspace PATCH.'
         }
         $developers = @($roles | Where-Object { $_ -match '\["developer-' })
         if ($developers.Count -ne 7) { throw 'Explicit developer principal must produce its seven configured grants.' }

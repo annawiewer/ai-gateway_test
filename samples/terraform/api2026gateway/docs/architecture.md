@@ -15,7 +15,7 @@ The entry calls the shared implementation as `module.gateway` with the standalon
 
 | Workload | Configured resources | Source |
 | --- | --- | --- |
-| Gateway | Standalone gateway, Foundry provider, catalog models and policies, aliases, default runtime key, optional MCP tool servers (the entry default registers Microsoft Learn), gateway monitoring and exporter | [Gateway](../../ai-gateway.tf), [routing](../../model-routing.tf), [tool servers](../../mcp-tool-servers.tf), [monitoring](../../monitoring.tf) |
+| Gateway | Standalone gateway, Foundry provider, catalog models and policies, aliases, default runtime key, optional MCP tool servers (the entry default registers Microsoft Learn), optional gateway-wide IP allow list, gateway monitoring and exporter | [Gateway](../../ai-gateway.tf), [routing](../../model-routing.tf), [tool servers](../../mcp-tool-servers.tf), [gateway policies](../../gateway-policies.tf), [monitoring](../../monitoring.tf) |
 | Models | Dedicated Foundry model-serving account and selected model deployments, explicitly bound to system-managed `Microsoft.DefaultV2` safety | [Foundry models](../../foundry-models.tf) |
 | Agents | Separate Foundry account and project, Storage, Premium container registry, project connections, scoped roles and separate monitoring | [Agent support](../../foundry-agents.tf), [roles](../../rbac.tf), [monitoring](../../monitoring.tf) |
 
@@ -52,15 +52,17 @@ These are separate authorization boundaries:
 - **Caller → gateway:** the runtime key is gateway-wide; optional
   `gateway_access_principals` add Entra invocation access without disabling keys.
   Backend permissions do not authorize a caller. See
-  [caller authentication](reference.md#caller-authentication).
+  [caller authentication](reference.md#caller-authentication). The optional
+  [gateway-wide IP allow list](reference.md#gateway-wide-ip-allow-list) also
+  limits which caller addresses reach models and tool servers.
 - **Gateway → model account:** the gateway managed identity authenticates to
   Foundry. Alias backend keys must refer to deployments in the complete model
   map. The model account is distinct from the agents account.
 - **Gateway → MCP tool server:** each registered tool server points the gateway
   at a remote MCP URL with a request rate limit keyed by caller identity. The
   sample configures no credentials for the remote server; the Microsoft Learn
-  default needs none. Caller authentication, routing, rate limiting and
-  reachability on this path are unverified. See
+  default needs none. Caller authentication, the optional gateway-wide IP allow
+  list, routing, rate limiting and reachability on this path are unverified. See
   [MCP tool protection](reference.md#mcp-tool-protection-separate-extension).
 - **Project → agent dependencies:** the project's own managed identity receives
   scoped dependency roles. It is not the gateway identity. Optional developer
@@ -105,6 +107,7 @@ received records.
 | Inputs | [variables.tf](../variables.tf) exposes the entry controls; [main.tf](../main.tf) forwards them to the shared module; [shared variables](../../variables.tf) enforce inherited validations |
 | Model defaults | [model-profile.json](../model-profile.json) supplies each map when that input is null; custom `model_deployments` and `model_aliases` independently replace entire maps, not merge |
 | Tool servers | [variables.tf](../variables.tf) defaults `mcp_tool_servers` to the public Microsoft Learn server; a supplied map, including `{}`, replaces it; [mcp-tool-servers.tf](../../mcp-tool-servers.tf) registers each entry under the gateway's `default` workspace |
+| Gateway policies | [gateway-policies.tf](../../gateway-policies.tf) merges the optional `gateway_allowed_client_cidrs` filter into the `default` workspace's existing policies with one PATCH; `null` leaves them unmanaged |
 | Unsupported inputs | [legacy-input-guards.tf](../legacy-input-guards.tf) rejects legacy flags rather than silently accepting private-ingress claims |
 | Implementation | The entry's parent directory supplies the shared module, but remains a separate legacy root when selected directly; [file map](reference.md#file-map) identifies each responsibility |
 | Outputs | [outputs.tf](../outputs.tf) forwards scoped IDs, endpoints and review metadata; endpoints are not connectivity proofs and no runtime key value is exposed |

@@ -101,6 +101,56 @@ function Assert-BackendSubnetId($Id) {
     }
 }
 
+function Get-ClientNetwork($Value) {
+    # Mirrors the Terraform rules, including no leading zeros in IPv4 parts or prefix lengths, and returns
+    # the canonical network, so ARM clearing host bits or respelling an IPv6 address is not reported as drift.
+    $match = if ($Value -is [string] -and $Value -cnotmatch '(?:^|[.:])0[0-9]+[.]|[.]0[0-9]+/') {
+        [regex]::Match($Value, '^([0-9A-Fa-f:.]+)/([1-9][0-9]{0,2})\z')
+    }
+    if ($null -eq $match -or -not $match.Success) { Stop-Api2026 'Invalid gateway client IP range.' }
+    $address, $bits = $match.Groups[1].Value, [int]$match.Groups[2].Value
+    $ip = $null
+    if ($address -cmatch '^[0-9]{1,3}(?:[.][0-9]{1,3}){3}$') {
+        $octets = [int[]]$address.Split('.')
+        if ($bits -gt 32 -or @($octets | Where-Object { $_ -gt 255 }).Count) { Stop-Api2026 'Invalid gateway client IP range.' }
+        $bytes = [byte[]]$octets
+    }
+    elseif ($address.Contains(':') -and [Net.IPAddress]::TryParse($address, [ref]$ip) -and
+        $ip.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetworkV6 -and $bits -le 128) {
+        $bytes = $ip.GetAddressBytes()
+    }
+    else { Stop-Api2026 'Invalid gateway client IP range.' }
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        $kept = [Math]::Min(8, [Math]::Max(0, $bits - 8 * $i))
+        $bytes[$i] = $bytes[$i] -band ((0xFF -shl (8 - $kept)) -band 0xFF)
+    }
+    "$([Net.IPAddress]::new($bytes))/$bits"
+}
+
+function Get-GatewayIpFilter($Policies, [string]$Label, [switch]$State) {
+    # Returns $null without an ipFilter, otherwise the range count and sorted canonical networks.
+    if ($Policies -isnot [array]) { Stop-Api2026 "Invalid $Label policy list." }
+    foreach ($policy in $Policies) {
+        Assert-Map $policy "$Label policy"
+        if ($policy.type -isnot [string] -or [string]::IsNullOrWhiteSpace($policy.type)) { Stop-Api2026 "Invalid $Label policy type." }
+    }
+    $filters = @($Policies | Where-Object { $_.type -ieq 'ipFilter' })
+    if ($filters.Count -gt 1) { Stop-Api2026 "More than one $Label IP filter." }
+    if (-not $filters.Count) { return $null }
+    $filter = $filters[0]
+    $ranges = $filter.cidrRanges
+    if ($filter.action -isnot [string] -or $filter.action -ine 'Allow' -or $ranges -isnot [array] -or -not $ranges.Count) {
+        Stop-Api2026 "The $Label IP filter must be a non-empty allow list."
+    }
+    $networks = @($ranges | ForEach-Object { Get-ClientNetwork $_ })
+    if ($State -and ($filter.type -cne 'ipFilter' -or $filter.action -cne 'Allow' -or
+            (@($filter.Keys | Sort-Object) -join ',') -cne 'action,cidrRanges,type' -or
+            [Collections.Generic.HashSet[string]]::new([string[]]$ranges, [StringComparer]::Ordinal).Count -ne $ranges.Count)) {
+        Stop-Api2026 'The state IP filter differs from the module contract.'
+    }
+    @{ count = $ranges.Count; networks = @($networks | Sort-Object -Unique) -join ',' }
+}
+
 function Get-Origin($Value) {
     $uri = $null
     $ip = $null
@@ -150,6 +200,10 @@ function Register-Resource([string]$Name, [string]$Key, [string]$Type, [string]$
     }
     $wrongOwner = if ($TerraformType -ceq 'azapi_update_resource') {
         $Name -cne 'disk_access' -or $Key -cne 'client' -or -not $PrivateLab -or $value.resource_id -ine $Id
+    }
+    elseif ($TerraformType -ceq 'azapi_resource_action') {
+        $Name -cne 'gateway_ip_filter' -or $Key -cne 'default' -or $value.resource_id -ine $Id -or
+        $value.method -cne 'PATCH' -or $value.when -cne 'apply' -or -not [string]::IsNullOrEmpty($value.action)
     }
     else { $value.parent_id -ine $Parent -or $value.name -cne $Id.Split('/')[-1] }
     if ($value.id -ine $Id -or $value.type -cne $Type -or $wrongOwner) {
@@ -388,7 +442,8 @@ try {
         foreach ($resource in @(Get-StateResources $state.values.root_module | Where-Object { $_.mode -eq 'managed' })) {
             $normalResource = $resource.type -ceq 'azapi_resource' -and $resource.address -match '^module\.gateway\.azapi_resource\.'
             $ownedDiskUpdate = $PrivateLab -and $resource.type -ceq 'azapi_update_resource' -and $resource.address -ceq 'module.gateway.azapi_update_resource.disk_access["client"]'
-            if ((-not $normalResource -and -not $ownedDiskUpdate) -or $stateByAddress.ContainsKey($resource.address)) {
+            $ownedIpFilter = $resource.type -ceq 'azapi_resource_action' -and $resource.address -ceq 'module.gateway.azapi_resource_action.gateway_ip_filter["default"]'
+            if ((-not $normalResource -and -not $ownedDiskUpdate -and -not $ownedIpFilter) -or $stateByAddress.ContainsKey($resource.address)) {
                 Stop-Api2026 'Unexpected or duplicate managed address; use the isolated API entry state.'
             }
             Assert-AllowedId $resource.values.id
@@ -500,6 +555,15 @@ try {
                 $uri.Scheme -cne 'https' -or $uri.UserInfo -or [string]::IsNullOrEmpty($uri.Host)) {
                 Stop-Api2026 'Expected a credential-free HTTPS MCP server URL.'
             }
+        }
+        $script:gatewayPolicyState = $null
+        if ($stateByAddress.ContainsKey((Get-Address gateway_ip_filter default azapi_resource_action))) {
+            $policyUpdate = Register-Resource gateway_ip_filter default 'Microsoft.ApiManagement/aigateways/workspaces@2025-09-01-preview' $workspace $gatewayId azapi_resource_action
+            if ((@($policyUpdate.body.Keys) -join ',') -cne 'properties' -or $policyUpdate.body.properties -isnot [Collections.IDictionary] -or
+                (@($policyUpdate.body.properties.Keys) -join ',') -cne 'policies') {
+                Stop-Api2026 'The gateway policy update must only replace the default workspace policy list.'
+            }
+            $script:gatewayPolicyState = @{ ipFilter = Get-GatewayIpFilter $policyUpdate.body.properties.policies 'state gateway' -State }
         }
         $storageConnection = Register-Resource storage_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/$storageName" $projectId
         $registryConnection = Register-Resource registry_connection '' 'Microsoft.CognitiveServices/accounts/projects/connections@2025-04-01-preview' "$projectId/connections/$registryName-conn" $projectId
@@ -812,6 +876,25 @@ try {
             Assert-ConfiguredValue $toolServer.properties (Get-StateValue mcp_tool_server $key).body.properties 'MCP tool server registration'
         }
         @{ toolServers = $toolServers.Count; apiVersion = '2025-09-01-preview'; reachability = 'NOT TESTED' }
+    }
+
+    if ($null -ne $gatewayPolicyState) {
+        Invoke-Check 'gateway-policies' -ContinueOnFailure {
+            $liveWorkspace = Read-Resource gateway_ip_filter default -TerraformType azapi_resource_action
+            Assert-Map $liveWorkspace.properties 'live gateway workspace properties'
+            $livePolicies = $liveWorkspace.properties.policies
+            if ($null -eq $livePolicies) { $livePolicies = @() }
+            $liveFilter = Get-GatewayIpFilter $livePolicies 'live gateway'
+            $stateFilter = $gatewayPolicyState.ipFilter
+            if (($null -eq $liveFilter) -ne ($null -eq $stateFilter) -or ($null -ne $stateFilter -and $liveFilter.networks -cne $stateFilter.networks)) {
+                Stop-Api2026 'The live gateway IP filter differs from the last applied Terraform configuration.'
+            }
+            @{
+                scope = 'Default workspace: models and MCP tool servers'; mode = $(if ($null -ne $stateFilter) { 'Allow' } else { 'Removed' })
+                cidrCount = $(if ($null -ne $stateFilter) { $stateFilter.count } else { 0 }); apiVersion = '2025-09-01-preview'
+                driftDetection = 'Not automatic; compares live ARM with the last applied list'; enforcement = 'NOT TESTED'
+            }
+        }
     }
     $failedChecks = @($checks.Keys | Where-Object { $checks[$_].status -cne 'PASS' })
     if ($failedChecks.Count) { throw $checks[$failedChecks[0]].error }

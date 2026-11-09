@@ -19,6 +19,13 @@ gateway_location = "<approved-gateway-region>"
 # and do not apply to MCP tool servers.
 # model_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48"]
 
+# Optional gateway-wide allow list for models AND MCP tool servers. Leave it unset
+# (null) to keep gateway policies unmanaged. Callers outside it, including CI and
+# hosted agents, get 403; portal and ARM management are unaffected. To remove it,
+# apply [] and then unset it. Replace these documentation ranges with approved
+# egress ranges first.
+# gateway_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48"]
+
 # Optional MCP tool servers. The default registers the public Microsoft Learn
 # MCP server; {} registers none. A supplied map replaces the whole default.
 # Registration does not prove that the remote server is reachable.

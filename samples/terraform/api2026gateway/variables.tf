@@ -113,6 +113,12 @@ variable "model_allowed_client_cidrs" {
   nullable    = false
 }
 
+variable "gateway_allowed_client_cidrs" {
+  description = "Optional gateway-wide allow list of approved caller egress IPv4/IPv6 CIDRs for models and MCP tool servers. Null leaves gateway policies unmanaged; an empty list removes the managed ipFilter. Apply an empty list before returning to null."
+  type        = list(string)
+  default     = null
+}
+
 variable "model_aliases" {
   description = "Optional complete replacement of the default aliases. Backends reference keys in model_deployments."
   type = map(object({

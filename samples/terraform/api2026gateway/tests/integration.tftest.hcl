@@ -101,9 +101,10 @@ run "explicit_inputs_reach_child" {
     gateway_access_principals = {
       fixture = { principal_id = "00000000-0000-0000-0000-000000000004", principal_type = "ServicePrincipal" }
     }
-    developer_principal_id     = "00000000-0000-0000-0000-000000000005"
-    developer_principal_type   = "Group"
-    model_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48"]
+    developer_principal_id       = "00000000-0000-0000-0000-000000000005"
+    developer_principal_type     = "Group"
+    model_allowed_client_cidrs   = ["203.0.113.42/32", "2001:db8:1234::/48"]
+    gateway_allowed_client_cidrs = ["203.0.113.42/32", "2001:db8:1234::/48", "203.0.113.42/32"]
     model_deployments = {
       custom-model = {
         model_name    = "gpt-5.4-mini"
@@ -138,6 +139,19 @@ run "explicit_inputs_reach_child" {
   override_data {
     target = module.gateway.data.azapi_resource.gateway_backend_vnet[0]
     values = { output = { location = "Sweden Central" } }
+  }
+  override_data {
+    target = module.gateway.data.azapi_resource.gateway_policies["default"]
+    values = {
+      output = {
+        properties = {
+          policies = [
+            { type = "tokenLimit", tokensPerMinute = 1000 },
+            { type = "ipFilter", action = "Allow", cidrRanges = ["198.51.100.0/24"] },
+          ]
+        }
+      }
+    }
   }
 
   assert {
