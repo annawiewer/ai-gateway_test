@@ -279,9 +279,12 @@ standalone 2026 entry accepts this input.
 > Every runtime caller outside the list receives `403`, including teammates,
 > CI pipelines, hosted agents, the private lab's verification client and
 > callers on another network, VPN or proxy. Use the egress address that the
-> gateway observes, and run the [bounded probe](#bounded-runtime-probe) and
-> other runtime checks from an allowed address. Portal, CLI and ARM management
-> are not affected. The lab notes that policy changes take up to a minute.
+> gateway observes. Behind a split-tunnel VPN, proxy or secure-access client,
+> traffic to Azure can leave through a different egress than the one an
+> IP-echo website reports, so listing the echoed address can still return
+> `403 Forbidden`. Run the [bounded probe](#bounded-runtime-probe) and other
+> runtime checks from an allowed address. Portal, CLI and ARM management are
+> not affected. The lab notes that policy changes take up to a minute.
 
 - **No drift detection.** A change made outside Terraform does not appear in a
   plan. To re-send the configured list, create and review a saved plan with
@@ -371,9 +374,10 @@ Also resolve any Azure Policy or service-readback differences before approving
 a saved plan. Do not use ignored changes, targeting, policy exemptions or
 wider connection sharing to hide a mismatch.
 
-If `gateway_allowed_client_cidrs` is set, confirm the egress address of every
-runtime caller, including CI pipelines and hosted agents, before approving the
-saved plan; callers outside the list receive `403`.
+If `gateway_allowed_client_cidrs` is set, confirm the egress address that the
+gateway sees for every runtime caller, including CI pipelines and hosted
+agents, before approving the saved plan; callers outside the list receive
+`403`.
 
 ## API contracts and lifecycle
 

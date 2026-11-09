@@ -120,8 +120,10 @@ documentation ranges. It filters model calls; it does not create private ingress
 Separately, `gateway_allowed_client_cidrs` (default `null`) sets one allow list
 on the gateway's `default` workspace that covers models **and** MCP tool
 servers. Every runtime caller outside it, including CI pipelines and hosted
-agents, receives `403`; portal and ARM management are not affected. To remove
-it, apply `[]` and then unset it. See
+agents, receives `403`; portal and ARM management are not affected. List the
+egress address the gateway sees: behind a split-tunnel VPN or proxy, it can
+differ from the address an IP-echo website reports. To remove the filter, apply
+`[]` and then unset the input. See
 [gateway-wide IP allow list](docs/reference.md#gateway-wide-ip-allow-list).
 
 By default the entry registers the public Microsoft Learn MCP server
