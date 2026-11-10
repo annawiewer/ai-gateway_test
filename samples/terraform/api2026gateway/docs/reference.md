@@ -299,6 +299,61 @@ standalone 2026 entry accepts this input.
 - Other workspace policies are kept but neither managed nor checked.
 - `model_allowed_client_cidrs` remains a separate per-model policy.
 
+### What clients see at a limit or fallback
+
+The service documents these responses in the
+[policy catalogue](https://ai.gateway.azure.com/docs/policies) and the
+[cost-limit guide](https://ai.gateway.azure.com/docs/finops#cost-limits):
+
+| Limit | Response | Client handling |
+| --- | --- | --- |
+| Token or request limit | `429` with `Retry-After` | Wait for the indicated time, then retry. |
+| Monthly cost limit | `403` with `LlmCostQuotaExceeded` | Do not retry like a `429`; the allowance renews at the start of the next UTC month. |
+
+An IP filter also returns `403`, so check the error before treating a `403` as
+a cost-limit rejection. The cost limit checks the recorded spend before it
+admits a call and adds the call's estimated cost afterwards, without reserving
+a maximum. An admitted call can therefore cross the allowance, and concurrent
+calls can briefly overshoot it. The amounts are gateway estimates, not billing
+records; see [set cost limits](https://ai.gateway.azure.com/docs/finops/set-cost-limits).
+
+For an alias, the gateway selects the available backend group with the lowest
+priority number, then applies weights within that group
+([priorities and weights](https://ai.gateway.azure.com/docs/models/priorities-and-weights)).
+In the `gpt-latest` alias, each priority has one backend. The documentation
+does not define when a backend counts as unavailable. This fallback comes from
+the alias priorities, not from a separate `fallback` policy.
+
+The following behavior is **not described in the public documentation** and
+can change. Base client logic on the documented status codes and
+`Retry-After`, and treat these details as informational:
+
+- A gateway-limit `429` has `Retry-After` but no `x-ratelimit-*` headers. A
+  `429` from the model provider also carries `x-ratelimit-*` and
+  `retry-after-ms` headers, which distinguishes it from a gateway limit.
+- The cost-limit `403` has no standard `Retry-After` header;
+  `x-cost-per-month-retry-after` gives the seconds until the next UTC month.
+  When a monthly cost limit applies, successful calls carry
+  `x-cost-per-month-consumed`, the estimated cost of that call rather than a
+  monthly total. `x-cost-per-month-remaining` appears once the allowance is
+  used up.
+- Calls rejected by a gateway limit are not forwarded to the model.
+- Token and request limits can also admit slightly more than the configured
+  value before they reject calls. Set each limit a little below the intended
+  maximum.
+- Successful responses carry `x-ms-served-model` with the model name and
+  version that answered, so a client can see when a later backend served an
+  alias call.
+- The `gpt-latest` alias moves calls to the next backend after the model
+  provider throttles the current one. The throttled call still returns the
+  provider's `429`; the gateway does not retry it on the next backend, so
+  clients need their own retry handling.
+- When the priority-0 backend reaches its request limit, alias calls receive a
+  gateway `429` and do not move to the next backend.
+- After the provider throttling ends, calls return to the priority-0 backend
+  after a short time. No documented setting controls when calls move to
+  another backend or return.
+
 ### Backend safety, not gateway content safety
 
 The [standalone contract](https://learn.microsoft.com/azure/ai-gateway/ai-gateway-resource#limitations)

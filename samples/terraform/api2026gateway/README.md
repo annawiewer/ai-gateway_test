@@ -21,6 +21,8 @@ gateway-wide IP filtering are opt-in; backend safety uses `Microsoft.DefaultV2`.
 Telemetry uses `payloadCapture = false`.
 See [policy scope](docs/reference.md#policies-and-backend-safety) for the limits of
 these settings; configuration alone does not prove enforcement or delivery.
+For the responses clients receive at a limit or during alias fallback, see
+[client-visible behavior](docs/reference.md#what-clients-see-at-a-limit-or-fallback).
 
 ## Directory layout
 
